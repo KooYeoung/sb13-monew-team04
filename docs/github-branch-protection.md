@@ -39,6 +39,48 @@ main-source-guard
 
 이 check를 required로 지정해야 `feature/* -> main` 또는 fork source PR이 실수로 merge되는 것을 막을 수 있습니다.
 
+## develop PR build/test
+
+`develop` 브랜치는 기능 작업을 통합하는 개발 브랜치입니다.
+
+`develop` 대상 PR에서는 `.github/workflows/develop-build-test.yml`의 `develop-build-test` check가 실행됩니다.
+
+## 허용되는 develop PR
+
+다음 PR은 `develop-build-test` 대상입니다.
+
+```plaintext
+feature/MID4-59-test -> develop
+```
+
+이 check는 Java 17 환경에서 Gradle wrapper로 build와 test를 실행합니다.
+
+```plaintext
+./gradlew clean build
+```
+
+build 또는 test가 실패하면 `develop-build-test` check도 실패합니다.
+
+## 실패해야 하는 develop PR
+
+다음 PR은 source branch guard에서 실패하는 것이 정상입니다.
+
+```plaintext
+main -> develop
+```
+
+`main` 브랜치는 운영 반영 기준이므로 `develop`으로 되돌리는 source branch로 사용하지 않습니다.
+
+## develop required status check 설정
+
+GitHub repository settings에서 `develop` branch protection 또는 ruleset을 설정할 때 required status check에 다음 check를 추가합니다.
+
+```plaintext
+develop-build-test
+```
+
+이 check를 required로 지정해야 build 또는 test가 실패한 PR이 `develop`에 merge되는 것을 막을 수 있습니다.
+
 ## 적용 기준
 
 * `main`에는 직접 push하지 않습니다.
