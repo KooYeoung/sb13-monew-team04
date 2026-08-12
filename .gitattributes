@@ -3,5 +3,6 @@
 .githooks/* text eol=lf
 .gitmessage.txt text eol=lf
 docs/*.md text eol=lf
+scripts/*.sh text eol=lf
 *.bat text eol=crlf
 *.jar binary

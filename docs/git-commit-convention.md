@@ -29,13 +29,38 @@ docs: MID4-5 커밋 컨벤션 문서 정리
 
 50자 제한은 현재 정책에서 적용하지 않습니다.
 
-## 로컬 Git 설정
+## 팀원용 Git 설정 스크립트
+
+저장소를 받은 뒤 각 사용자 로컬에서 본인 clone에 맞는 스크립트를 한 번 실행합니다.
+
+Mac, Linux, Git Bash 환경에서는 다음 명령을 사용합니다.
+
+```bash
+sh scripts/setup-git.sh
+```
+
+Windows CMD 또는 PowerShell 환경에서는 다음 명령을 사용합니다.
+
+```powershell
+.\scripts\setup-git.bat
+```
+
+스크립트는 Git 저장소 내부에서만 동작하며, 저장소 local Git 설정에 아래 값을 적용한 뒤 결과를 출력합니다.
+
+```plaintext
+commit.template=.gitmessage.txt
+core.hooksPath=.githooks
+```
+
+다른 팀원이 작업 중인 저장소에서는 대신 실행하지 않습니다. 각 팀원은 본인 PC의 본인 clone에서 직접 실행합니다.
+
+## 수동 Git 설정
 
 저장소를 받은 뒤 각 사용자 로컬에서 아래 명령을 실행합니다.
 
 ```powershell
-git config core.hooksPath .githooks
-git config commit.template .gitmessage.txt
+git config --local core.hooksPath .githooks
+git config --local commit.template .gitmessage.txt
 ```
 
 `core.hooksPath`를 설정하면 `.githooks/commit-msg`가 커밋 메시지를 검사합니다.
