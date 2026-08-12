@@ -1,5 +1,11 @@
 # GitHub Branch Protection 설정
 
+## 공통 주의
+
+GitHub Actions workflow 파일만 추가하면 merge 차단이 자동으로 보장되지 않습니다.
+
+각 branch protection 또는 ruleset에서 필요한 workflow check를 required status check로 지정해야 실제 merge 차단 기준으로 동작합니다.
+
 ## main PR source guard
 
 `main` 브랜치는 운영 반영 흐름으로 사용하므로, `main` 대상 PR은 같은 저장소의 `develop` 브랜치에서만 생성합니다.

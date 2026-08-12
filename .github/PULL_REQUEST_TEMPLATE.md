@@ -16,6 +16,6 @@
 - [ ] branch 이름이 `<type>/MID4-번호-간단한-설명` 형식을 따른다.
 - [ ] PR 제목 또는 본문에 대표 Jira 번호를 포함했다.
 - [ ] 로컬 실행 또는 테스트를 확인했다.
-- [ ] `develop` 대상 PR은 build/test 통과 대상임을 확인했다.
-- [ ] `main` 대상 PR은 `develop -> main` 흐름임을 확인했다.
+- [ ] `develop` 대상 PR은 `develop-build-test` check 대상이며 build/test 통과가 필요함을 확인했다.
+- [ ] `main` 대상 PR은 `develop -> main` 흐름이며 `main-source-guard` check 대상임을 확인했다.
 - [ ] 불필요한 파일과 민감한 값이 포함되지 않았다.
