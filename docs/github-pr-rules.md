@@ -48,6 +48,32 @@ develop-build-test
 
 workflow 파일만 추가된 상태에서는 check가 실행될 수는 있지만, required status check로 지정되지 않으면 실패한 PR의 merge를 GitHub 설정에서 차단하지 못할 수 있습니다.
 
+## Jira 상태 동기화 GitHub Actions 설정
+
+Jira PR 상태 동기화 workflow를 사용하려면 GitHub repository settings의 `Secrets and variables` > `Actions`에 값을 등록합니다.
+
+필수 secrets는 다음과 같습니다.
+
+```plaintext
+JIRA_BASE_URL
+JIRA_EMAIL
+JIRA_API_TOKEN
+```
+
+variables는 기본값을 그대로 사용할 수 있지만, 팀 Jira 상태명이나 대상 branch가 달라지면 아래 값을 등록해 조정합니다.
+
+```plaintext
+JIRA_PROJECT_KEY=MID4
+JIRA_TARGET_BASE_REF=develop
+JIRA_STATUS_IN_PROGRESS=진행 중
+JIRA_STATUS_CODE_REVIEW=코드 리뷰
+JIRA_STATUS_VERIFYING=검증 중
+JIRA_STATUS_DONE=완료
+JIRA_DRY_RUN=false
+```
+
+`JIRA_DRY_RUN=true`로 설정하면 실제 Jira 상태 변경 없이 workflow 동작을 확인합니다.
+
 ## CodeRabbit 리뷰 기준
 
 CodeRabbit은 PR 리뷰를 보조하는 도구입니다.
