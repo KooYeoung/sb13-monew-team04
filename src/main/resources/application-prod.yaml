@@ -1,0 +1,21 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://${MONEW_DB_HOST}:${MONEW_DB_PORT:5432}/${MONEW_DB_NAME}
+    username: ${MONEW_DB_USERNAME}
+    password: ${MONEW_DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: ${MONEW_JPA_DDL_AUTO:validate}
+    properties:
+      hibernate:
+        format_sql: false
+    show-sql: false
+  flyway:
+    enabled: ${MONEW_FLYWAY_ENABLED:true}
+  docker:
+    compose:
+      enabled: false
+
+server:
+  port: ${MONEW_SERVER_PORT:8080}

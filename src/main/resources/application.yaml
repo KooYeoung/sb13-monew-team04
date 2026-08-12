@@ -1,3 +1,7 @@
 spring:
   application:
     name: sb13-monew-team04
+  profiles:
+    default: dev
+  jpa:
+    open-in-view: false
