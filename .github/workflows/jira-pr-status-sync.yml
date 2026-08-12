@@ -1,0 +1,62 @@
+name: jira-pr-status-sync
+
+# PR 단계와 Jira 티켓 상태를 동기화한다.
+# pull_request_target과 pull_request_review에서는 PR head 코드를 checkout하거나 실행하지 않는다.
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+      - converted_to_draft
+      - review_requested
+      - closed
+  pull_request_review:
+    types:
+      - submitted
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: jira-pr-status-sync-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  sync-jira-status:
+    if: ${{ github.event.pull_request.base.ref == (vars.JIRA_TARGET_BASE_REF || 'develop') && (github.event_name == 'pull_request_target' || github.event.review.state == 'changes_requested') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted base commit scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Sync Jira status from PR event
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_PROJECT_KEY: ${{ vars.JIRA_PROJECT_KEY || 'MID4' }}
+          JIRA_TARGET_BASE_REF: ${{ vars.JIRA_TARGET_BASE_REF || 'develop' }}
+          JIRA_STATUS_IN_PROGRESS: ${{ vars.JIRA_STATUS_IN_PROGRESS || '진행 중' }}
+          JIRA_STATUS_CODE_REVIEW: ${{ vars.JIRA_STATUS_CODE_REVIEW || '코드 리뷰' }}
+          JIRA_STATUS_VERIFYING: ${{ vars.JIRA_STATUS_VERIFYING || '검증 중' }}
+          JIRA_STATUS_DONE: ${{ vars.JIRA_STATUS_DONE || '완료' }}
+          JIRA_DRY_RUN: ${{ vars.JIRA_DRY_RUN || 'false' }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_ACTION: ${{ github.event.action }}
+          PR_REVIEW_STATE: ${{ github.event.review.state || '' }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_IS_DRAFT: ${{ github.event.pull_request.draft }}
+          PR_MERGED: ${{ github.event.pull_request.merged }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        shell: bash
+        run: bash .github/scripts/sync-jira-pr-status.sh
