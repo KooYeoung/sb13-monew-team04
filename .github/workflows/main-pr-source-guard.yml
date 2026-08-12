@@ -1,0 +1,41 @@
+name: main-source-guard
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  main-source-guard:
+    name: main-source-guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Allow only develop to main
+        env:
+          REPOSITORY: ${{ github.repository }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        shell: bash
+        run: |
+          if [ "$BASE_REF" != "main" ]; then
+            echo "::notice::main 대상 PR이 아니므로 건너뜁니다."
+            exit 0
+          fi
+
+          if [ "$HEAD_REPOSITORY" != "$REPOSITORY" ] || [ "$HEAD_REF" != "develop" ]; then
+            echo "::error::main 브랜치 PR은 같은 저장소의 develop 브랜치에서만 생성할 수 있습니다. current: ${HEAD_REPOSITORY}:${HEAD_REF} -> ${BASE_REF}"
+            exit 1
+          fi
+
+          echo "develop -> main PR source guard passed."
