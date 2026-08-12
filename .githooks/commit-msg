@@ -1,0 +1,37 @@
+#!/bin/sh
+
+COMMIT_MSG_FILE="$1"
+
+TITLE=$(grep -vE '^[[:space:]]*#' "$COMMIT_MSG_FILE" | sed '/^[[:space:]]*$/d' | head -n 1)
+
+if [ -z "$TITLE" ]; then
+  echo ""
+  echo "커밋 메시지를 입력해주세요."
+  echo ""
+  echo "사용 예시:"
+  echo "  feat: MID4-12 회원가입 기능 구현"
+  echo "  fix: MID4-20 로그인 예외 처리 수정"
+  echo "  docs: MID4-5 커밋 컨벤션 문서 정리"
+  echo ""
+  exit 1
+fi
+
+if ! printf '%s' "$TITLE" | grep -Eq '^(feat|fix|refactor|test|docs|chore):[[:space:]]+MID4-[0-9]+[[:space:]]+[^[:space:]].*$'; then
+  echo ""
+  echo "커밋 메시지 형식이 올바르지 않습니다."
+  echo ""
+  echo "사용 가능한 형식:"
+  echo "  feat: MID4-12 회원가입 기능 구현"
+  echo "  fix: MID4-20 로그인 예외 처리 수정"
+  echo "  refactor: MID4-21 서비스 로직 분리"
+  echo "  test: MID4-22 회원가입 테스트 추가"
+  echo "  docs: MID4-5 커밋 컨벤션 문서 정리"
+  echo "  chore: MID4-30 Gradle 설정 정리"
+  echo ""
+  echo "현재 입력된 커밋 메시지:"
+  echo "  $TITLE"
+  echo ""
+  exit 1
+fi
+
+exit 0
