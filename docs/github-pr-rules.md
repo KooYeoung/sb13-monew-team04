@@ -11,7 +11,13 @@ PR 본문에는 다음 Jira 필드를 유지합니다.
 - 대표 Jira 티켓 1개만 작성합니다.
 ```
 
-PR 제목 또는 본문에는 대표 Jira 번호가 포함되어야 합니다.
+PR 제목은 다음 형식을 사용합니다.
+
+```plaintext
+MID4-번호 작업 요약
+```
+
+PR 제목과 PR 본문에는 각각 대표 Jira 번호가 포함되어야 합니다.
 
 작업 브랜치 이름은 다음 형식을 사용합니다.
 
@@ -24,11 +30,30 @@ PR 제목 또는 본문에는 대표 Jira 번호가 포함되어야 합니다.
 PR 작성자는 merge 전 다음 항목을 확인합니다.
 
 * Jira 필드에 대표 Jira 번호를 작성했다.
+* PR 제목이 `MID4-번호 작업 요약` 형식을 따른다.
 * branch 이름이 팀 규칙을 따른다.
 * 로컬 실행 또는 테스트를 확인했다.
 * `develop` 대상 PR은 `develop-build-test` check 대상임을 확인했다.
 * `main` 대상 PR은 `develop -> main` 흐름이며 `main-source-guard` check 대상임을 확인했다.
 * 불필요한 파일과 민감정보가 포함되지 않았다.
+
+## 리뷰와 병합 기준
+
+CodeRabbit은 PR 리뷰를 보조하는 도구입니다.
+
+CodeRabbit 의견은 코드 품질, 누락 가능성, 리뷰 효율을 높이기 위한 참고로 사용합니다. 단, CodeRabbit은 사람 리뷰, branch protection, ruleset, required status check를 대체하지 않습니다.
+
+PR은 관련 도메인 담당자의 사람 리뷰를 거친 뒤 병합합니다.
+
+PR 병합 방식은 Squash merge를 사용합니다. merge commit과 rebase merge는 사용하지 않는 것을 기준으로 합니다.
+
+PR merge 후 작업 브랜치를 삭제합니다.
+
+## 충돌 처리 기준
+
+PR에서 충돌이 발생하면 PR 작성자가 최신 `develop`을 작업 브랜치에 반영해 충돌을 해결합니다.
+
+충돌 해결 후 로컬 실행 또는 테스트를 다시 확인하고 PR에 결과를 남깁니다.
 
 ## required status check 기준
 
@@ -74,11 +99,7 @@ JIRA_DRY_RUN=false
 
 `JIRA_DRY_RUN=true`로 설정하면 실제 Jira 상태 변경 없이 workflow 동작을 확인합니다.
 
-## CodeRabbit 리뷰 기준
-
-CodeRabbit은 PR 리뷰를 보조하는 도구입니다.
-
-CodeRabbit 의견은 코드 품질, 누락 가능성, 리뷰 효율을 높이기 위한 참고로 사용합니다. 단, CodeRabbit은 branch protection, ruleset, required status check를 대체하지 않습니다.
+## CodeRabbit 설정 기준
 
 CodeRabbit 리뷰는 `.coderabbit.yaml` 설정을 기준으로 한국어 자동 리뷰를 수행합니다.
 
