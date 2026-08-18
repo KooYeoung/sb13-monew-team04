@@ -12,8 +12,8 @@ import java.util.UUID;
 @Table(
         name = "article_views",
         indexes = {
-                @Index(name = "idx_article_views_user_id", columnList = "user_id"),
-                @Index(name = "idx_article_views_viewed_at", columnList = "viewed_at DESC")
+                @Index(name = "idx_article_views_article_viewed", columnList = "article_id, viewed_at DESC"),
+                @Index(name = "idx_article_views_user_viewed", columnList = "user_id, viewed_at DESC")
         },
         uniqueConstraints = {
                 @UniqueConstraint(
