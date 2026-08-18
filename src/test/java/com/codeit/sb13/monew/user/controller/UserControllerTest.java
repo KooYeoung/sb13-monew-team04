@@ -60,9 +60,14 @@ class UserControllerTest {
   @ParameterizedTest
   @DisplayName("필드 형식이 유효하지 않으면 400으로 응답한다")
   @CsvSource({
+      "'',             닉네임, PassWord123!",
       "email,          닉네임, PassWord123!",
       "email@email.com, '',   PassWord123!",
-      "email@email.com, 닉네임, ''"
+      "email@email.com, 'a',   PassWord123!",
+      "email@email.com, 닉네임, ''",
+      "email@email.com, 닉네임, 'PassWord123'",
+      "email@email.com, 닉네임, 'PassWord123456789012!'",
+      "email@email.com, 닉네임, 'Pw1!'"
   })
   void 형식_검증_실패시_400을_반환한다(String email, String nickname, String password) throws Exception{
     // given
