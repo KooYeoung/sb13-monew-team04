@@ -7,6 +7,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -18,11 +19,20 @@ import lombok.NoArgsConstructor;
  * {@link Interest}가 제공하는 메서드를 통해서만 맺어지고 끊어지도록
  * 설계되어 있어, 이 클래스의 생성자와 {@link #detachInterest()}는
  * 패키지 프라이빗으로 제한되어 있다.</p>
+ *
+ * <p>같은 관심사 안에서 동일한 키워드가 중복 등록되지 않도록
+ * {@code interest_id}와 {@code keyword} 조합에 유니크 제약조건을 둔다.</p>
  */
 @Entity
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Getter
-@Table(name = "keywords")
+@Table(
+        name = "keywords",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_keywords_interest_keyword",
+                columnNames = {"interest_id", "keyword"}
+        )
+)
 public class Keyword extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
