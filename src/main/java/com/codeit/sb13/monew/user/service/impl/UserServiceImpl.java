@@ -39,7 +39,7 @@ public class UserServiceImpl implements UserService {
         .build();
 
     try {
-      User saveUser = userRepository.save(user);
+      User saveUser = userRepository.saveAndFlush(user);
       UserCreateResponse response = userMapper.toResponse(saveUser);
       return response;
     } catch (DataIntegrityViolationException e) {

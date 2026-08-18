@@ -74,7 +74,7 @@ public class UserServiceImplTest {
         .thenReturn(false);
     when(passwordEncoder.encode(command.password()))
         .thenReturn("encodedPassword123");
-    when(userRepository.save(any(User.class)))
+    when(userRepository.saveAndFlush(any(User.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
     when(userMapper.toResponse(any(User.class)))
         .thenReturn(expectedResponse);
@@ -83,7 +83,7 @@ public class UserServiceImplTest {
     UserCreateResponse actualResponse = userServiceImpl.signUp(command);
 
     // then
-    verify(userRepository).save(userCaptor.capture());
+    verify(userRepository).saveAndFlush(userCaptor.capture());
     User capturedUser = userCaptor.getValue();
     assertThat(capturedUser.getPassword()).isEqualTo("encodedPassword123");
     assertThat(capturedUser.getPassword()).isNotEqualTo(command.password());
@@ -103,7 +103,7 @@ public class UserServiceImplTest {
     .thenReturn(false);
     when(passwordEncoder.encode(command.password()))
         .thenReturn("encodedPassword123");
-    when(userRepository.save(any(User.class)))
+    when(userRepository.saveAndFlush(any(User.class)))
         .thenThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint \"uk_users_email\""));
 
     // when & then
