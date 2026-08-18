@@ -21,6 +21,9 @@ public class Notification extends UpdatedAtEntity {
 //    private User user;
 
     @Column(nullable = false)
+    private UUID userId;
+
+    @Column(nullable = false)
     private String content;
 
     @Column(nullable = false)
@@ -50,5 +53,23 @@ public class Notification extends UpdatedAtEntity {
 //                .resourceType(resourceType)
 //                .build();
 //    }
+
+    @Builder
+    private Notification(UUID userId, String content, UUID resourceId, ResourceType resourceType) {
+        this.userId = userId;
+        this.content = content;
+        this.resourceId = resourceId;
+        this.resourceType = resourceType;
+        this.confirmed = false;
+    }
+
+    public static Notification create(UUID userId, String content, UUID resourceId, ResourceType resourceType) {
+        return Notification.builder()
+                .userId(userId)
+                .content(content)
+                .resourceId(resourceId)
+                .resourceType(resourceType)
+                .build();
+    }
 
 }
