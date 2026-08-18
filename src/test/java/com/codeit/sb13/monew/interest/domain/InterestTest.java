@@ -4,13 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
-import java.util.UUID;
 
 import com.codeit.sb13.monew.global.exception.interest.InterestKeywordRequiredException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 class InterestTest {
 
@@ -152,11 +150,10 @@ class InterestTest {
         }
 
         @Test
-        @DisplayName("마지막 남은 키워드를 제거하려 하면 예외가 발생하고 키워드는 그대로 남는다")
+        @DisplayName("영속화되지 않은 관심사라도 마지막 남은 키워드를 제거하려 하면 예외가 발생하고 키워드는 그대로 남는다")
         void removeKeyword_lastOne_throwsException() {
             // given
             Interest interest = Interest.create("스포츠");
-            ReflectionTestUtils.setField(interest, "id", UUID.randomUUID());
             Keyword keyword = interest.addKeyword("축구");
 
             // when & then

@@ -56,7 +56,7 @@ class InterestRepositoryTest {
         void removeKeyword_thenFlushAndReload() {
             // given
             Interest interest = Interest.create("스포츠");
-            Keyword football = interest.addKeyword("축구");
+            interest.addKeyword("축구");
             interest.addKeyword("야구");
             interestRepository.save(interest);
             em.flush();
