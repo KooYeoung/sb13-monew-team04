@@ -1,11 +1,16 @@
 package com.codeit.sb13.monew.interest.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import java.util.UUID;
+
+import com.codeit.sb13.monew.global.exception.interest.InterestKeywordRequiredException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class InterestTest {
 
@@ -87,13 +92,15 @@ class InterestTest {
         void removeKeyword_removesFromKeywordList() {
             // given
             Interest interest = Interest.create("스포츠");
-            Keyword keyword = interest.addKeyword("축구");
+            Keyword football = interest.addKeyword("축구");
+            interest.addKeyword("야구");
 
             // when
-            interest.removeKeyword(keyword);
+            interest.removeKeyword(football);
 
             // then
-            assertThat(interest.getKeywords()).isEmpty();
+            assertThat(interest.getKeywords().size()).isEqualTo(1);
+            assertThat(interest.getKeywords()).doesNotContain(football);
         }
 
         @Test
@@ -111,6 +118,52 @@ class InterestTest {
             assertThat(interest.getKeywords())
                     .hasSize(1)
                     .doesNotContain(football);
+        }
+
+        @Test
+        @DisplayName("키워드를 제거하면 제거된 키워드의 interest 참조도 끊어진다")
+        void removeKeyword_detachesInterestReference() {
+            // given
+            Interest interest = Interest.create("스포츠");
+            Keyword keyword = interest.addKeyword("축구");
+            interest.addKeyword("야구");
+
+            // when
+            interest.removeKeyword(keyword);
+
+            // then
+            assertThat(keyword.getInterest()).isEqualTo(null);
+        }
+
+        @Test
+        @DisplayName("소속되지 않은 키워드를 제거해도 무시되며, 원래 소속의 참조는 유지된다")
+        void removeKeyword_notContained_doesNotDetach() {
+            // given
+            Interest interest = Interest.create("스포츠");
+            Interest other = Interest.create("음악");
+            Keyword otherKeyword = other.addKeyword("재즈");
+
+            // when
+            interest.removeKeyword(otherKeyword);
+
+            // then
+            assertThat(otherKeyword.getInterest()).isEqualTo(other);
+            assertThat(other.getKeywords()).contains(otherKeyword);
+        }
+
+        @Test
+        @DisplayName("마지막 남은 키워드를 제거하려 하면 예외가 발생하고 키워드는 그대로 남는다")
+        void removeKeyword_lastOne_throwsException() {
+            // given
+            Interest interest = Interest.create("스포츠");
+            ReflectionTestUtils.setField(interest, "id", UUID.randomUUID());
+            Keyword keyword = interest.addKeyword("축구");
+
+            // when & then
+            assertThatThrownBy(() -> interest.removeKeyword(keyword))
+                    .isInstanceOf(InterestKeywordRequiredException.class);
+            assertThat(interest.getKeywords()).containsExactly(keyword);
+            assertThat(keyword.getInterest()).isEqualTo(interest);
         }
     }
 
