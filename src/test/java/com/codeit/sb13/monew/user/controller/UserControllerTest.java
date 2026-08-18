@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.codeit.sb13.monew.user.controller.dto.UserCreateRequest;
 import com.codeit.sb13.monew.user.controller.dto.UserCreateResponse;
+import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
 import com.codeit.sb13.monew.user.service.UserService;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -18,6 +19,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
+
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(UserController.class)
@@ -77,10 +80,34 @@ class UserControllerTest {
     mockMvc.perform(post("/api/users")
         .contentType(MediaType.APPLICATION_JSON)
         .content(objectMapper.writeValueAsString(request)))
-        .andExpect(status().isBadRequest());
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").exists());
 
 
   }
 
+
+  @Test
+  @DisplayName("이메일이 중복되면 409로 응답한다.")
+  void 이메일_중복시_409를_반환한다() throws Exception {
+    // given
+    UserCreateRequest request = new UserCreateRequest(
+        "duplicate@email.com",
+        "닉네임",
+        "PassWord123!"
+    );
+    when(userService.signUp(request))
+        .thenThrow(new DuplicateEmailException(request.email()));
+
+
+    // when & then
+    mockMvc.perform(post("/api/users")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content(objectMapper.writeValueAsString(request)))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").exists());
+
+
+  }
 
 }
