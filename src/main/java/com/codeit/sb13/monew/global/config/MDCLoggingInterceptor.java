@@ -37,4 +37,3 @@ public class MDCLoggingInterceptor implements HandlerInterceptor {
         MDC.clear();
     }
 }
-
