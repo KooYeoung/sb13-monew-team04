@@ -1,21 +1,26 @@
 package com.codeit.sb13.monew.user.service.impl;
 
 import com.codeit.sb13.monew.user.controller.dto.UserCreateRequest;
+import com.codeit.sb13.monew.user.controller.dto.UserCreateResponse;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
+import com.codeit.sb13.monew.user.mapper.UserMapper;
 import com.codeit.sb13.monew.user.repository.UserRepository;
 import com.codeit.sb13.monew.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
 
 @RequiredArgsConstructor
+@Service
 public class UserServiceImpl implements UserService {
 
   private final UserRepository userRepository;
   private final PasswordEncoder passwordEncoder;
+  private final UserMapper userMapper;
 
 
-  public void signUp(UserCreateRequest request) {
+  public UserCreateResponse signUp(UserCreateRequest request) {
     boolean emailExists = userRepository.existsByEmail(request.email());
 
     if (emailExists) {
@@ -31,5 +36,9 @@ public class UserServiceImpl implements UserService {
         .build();
 
     userRepository.save(user);
+
+    UserCreateResponse response = userMapper.toResponse(user);
+
+    return response;
   }
 }

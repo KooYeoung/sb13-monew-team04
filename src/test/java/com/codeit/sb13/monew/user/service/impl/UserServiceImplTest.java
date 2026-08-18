@@ -1,9 +1,12 @@
 package com.codeit.sb13.monew.user.service.impl;
 
 import com.codeit.sb13.monew.user.controller.dto.UserCreateRequest;
+import com.codeit.sb13.monew.user.controller.dto.UserCreateResponse;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
+import com.codeit.sb13.monew.user.mapper.UserMapper;
 import com.codeit.sb13.monew.user.repository.UserRepository;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,6 +27,8 @@ public class UserServiceImplTest {
   UserRepository userRepository;
   @Mock
   PasswordEncoder passwordEncoder;
+  @Mock
+  UserMapper userMapper;
 
   @InjectMocks
   UserServiceImpl basicUserService;
@@ -58,6 +63,10 @@ public class UserServiceImplTest {
         .thenReturn(false);
     when(passwordEncoder.encode(request.password()))
         .thenReturn("encodedPassword123");
+    when(userMapper.toResponse(any(User.class)))
+        .thenReturn(new UserCreateResponse(
+            UUID.randomUUID(), "email@example.com",
+            "닉네임", null));
 
     // when
     basicUserService.signUp(request);
@@ -65,8 +74,6 @@ public class UserServiceImplTest {
     // then
     verify(userRepository).save(any(User.class));
 
-
   }
-  
 
 }
