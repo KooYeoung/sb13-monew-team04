@@ -74,6 +74,8 @@ public class UserServiceImplTest {
         .thenReturn(false);
     when(passwordEncoder.encode(request.password()))
         .thenReturn("encodedPassword123");
+    when(userRepository.save(any(User.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
     when(userMapper.toResponse(any(User.class)))
         .thenReturn(expectedResponse);
 

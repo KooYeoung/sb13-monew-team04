@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @RequiredArgsConstructor
 @Service
@@ -20,7 +21,7 @@ public class UserServiceImpl implements UserService {
   private final PasswordEncoder passwordEncoder;
   private final UserMapper userMapper;
 
-
+  @Transactional
   public UserCreateResponse signUp(UserCreateRequest request) {
     boolean emailExists = userRepository.existsByEmail(request.email());
 
@@ -37,17 +38,15 @@ public class UserServiceImpl implements UserService {
         .build();
 
     try {
-      userRepository.save(user);
+      User saveUser = userRepository.save(user);
+      UserCreateResponse response = userMapper.toResponse(saveUser);
+      return response;
     } catch (DataIntegrityViolationException e) {
       if (isEmailUniqueViolation(e)) {
         throw new DuplicateEmailException(request.email());
       }
       throw e;
     }
-
-    UserCreateResponse response = userMapper.toResponse(user);
-
-    return response;
   }
 
   private boolean isEmailUniqueViolation(DataIntegrityViolationException e) {
