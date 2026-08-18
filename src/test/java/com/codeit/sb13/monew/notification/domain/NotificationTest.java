@@ -1,5 +1,6 @@
 package com.codeit.sb13.monew.notification.domain;
 
+import com.codeit.sb13.monew.user.domain.User;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
