@@ -8,6 +8,7 @@ import com.codeit.sb13.monew.user.mapper.UserMapper;
 import com.codeit.sb13.monew.user.repository.UserRepository;
 import com.codeit.sb13.monew.user.service.UserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -35,7 +36,11 @@ public class UserServiceImpl implements UserService {
         .password(encode)
         .build();
 
-    userRepository.save(user);
+    try {
+      userRepository.save(user);
+    } catch (DataIntegrityViolationException e) {
+      throw new DuplicateEmailException(request.email());
+    }
 
     UserCreateResponse response = userMapper.toResponse(user);
 

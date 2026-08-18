@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.any;
@@ -31,7 +32,7 @@ public class UserServiceImplTest {
   UserMapper userMapper;
 
   @InjectMocks
-  UserServiceImpl basicUserService;
+  UserServiceImpl userServiceImpl;
 
   @Test
   @DisplayName("이메일 중복된 경우, 회원가입 시 DuplicateEmailException을 던진다")
@@ -46,7 +47,7 @@ public class UserServiceImplTest {
         .thenReturn(true);
 
     // when & then
-    assertThatThrownBy(() -> basicUserService.signUp(request))
+    assertThatThrownBy(() -> userServiceImpl.signUp(request))
         .isInstanceOf(DuplicateEmailException.class);
   }
 
@@ -69,10 +70,35 @@ public class UserServiceImplTest {
             "닉네임", null));
 
     // when
-    basicUserService.signUp(request);
+    userServiceImpl.signUp(request);
 
     // then
     verify(userRepository).save(any(User.class));
+
+  }
+
+  @Test
+  @DisplayName("이메일 중복 검사를 통과했지만 저장 시점에 DB 제약 위반이 발생하면 DuplicateEmailException을 던진다")
+  void 저장_시점에_이메일_중복이_감지되면_예외를_던진다() {
+    // given
+    UserCreateRequest request = new UserCreateRequest(
+        "email@email",
+        "닉네임",
+        "PassWord123!"
+    );
+    when(userRepository.existsByEmail(request.email()))
+    .thenReturn(false);
+    when(passwordEncoder.encode(request.password()))
+        .thenReturn("encodedPassword123");
+    when(userRepository.save(any(User.class)))
+        .thenThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint"));
+
+    // when & then
+     assertThatThrownBy(() -> userServiceImpl.signUp(request))
+         .isInstanceOf(DuplicateEmailException.class);
+
+
+
 
   }
 
