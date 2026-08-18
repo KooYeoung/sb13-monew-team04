@@ -10,6 +10,8 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -55,15 +57,16 @@ class UserControllerTest {
         .andExpect(status().isCreated());
   }
 
-  @Test
-  @DisplayName("이메일 검증 실패 시 400으로 응답한다.")
-  void 이메일_검증_실패시_400을_반환한다() throws Exception{
+  @ParameterizedTest
+  @DisplayName("필드 형식이 유효하지 않으면 400으로 응답한다")
+  @CsvSource({
+      "email,          닉네임, PassWord123!",
+      "email@email.com, '',   PassWord123!",
+      "email@email.com, 닉네임, ''"
+  })
+  void 형식_검증_실패시_400을_반환한다(String email, String nickname, String password) throws Exception{
     // given
-    UserCreateRequest request = new UserCreateRequest(
-        "email",
-        "닉네임",
-        "PassWord123!"
-    );
+    UserCreateRequest request = new UserCreateRequest(email, nickname, password);
 
     // when & then
     mockMvc.perform(post("/api/users")
