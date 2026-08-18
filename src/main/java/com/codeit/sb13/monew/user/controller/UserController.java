@@ -3,6 +3,7 @@ package com.codeit.sb13.monew.user.controller;
 import com.codeit.sb13.monew.user.controller.dto.UserCreateRequest;
 import com.codeit.sb13.monew.user.controller.dto.UserCreateResponse;
 import com.codeit.sb13.monew.user.service.UserService;
+import com.codeit.sb13.monew.user.service.dto.UserCreateCommand;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -22,7 +23,11 @@ public class UserController {
   @PostMapping
   public ResponseEntity<UserCreateResponse> signUp(
       @Valid @RequestBody UserCreateRequest request) {
-    UserCreateResponse response = userService.signUp(request);
+    UserCreateCommand command = new UserCreateCommand(
+        request.email(),
+        request.nickname(),
+        request.password());
+    UserCreateResponse response = userService.signUp(command);
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 

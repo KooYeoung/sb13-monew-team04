@@ -1,11 +1,11 @@
 package com.codeit.sb13.monew.user.service.impl;
 
-import com.codeit.sb13.monew.user.controller.dto.UserCreateRequest;
 import com.codeit.sb13.monew.user.controller.dto.UserCreateResponse;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
 import com.codeit.sb13.monew.user.mapper.UserMapper;
 import com.codeit.sb13.monew.user.repository.UserRepository;
+import com.codeit.sb13.monew.user.service.dto.UserCreateCommand;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -44,16 +44,16 @@ public class UserServiceImplTest {
   @DisplayName("이메일 중복된 경우, 회원가입 시 DuplicateEmailException을 던진다")
   void 회원가입_시_중복된_이메일이면_예외를_던진다() {
     // given
-    UserCreateRequest request = new UserCreateRequest(
+    UserCreateCommand command = new UserCreateCommand(
         "duplicate@example.com",
         "닉네임",
         "PassWord123!"
     );
-    when(userRepository.existsByEmail(request.email()))
+    when(userRepository.existsByEmail(command.email()))
         .thenReturn(true);
 
     // when & then
-    assertThatThrownBy(() -> userServiceImpl.signUp(request))
+    assertThatThrownBy(() -> userServiceImpl.signUp(command))
         .isInstanceOf(DuplicateEmailException.class);
   }
 
@@ -61,7 +61,7 @@ public class UserServiceImplTest {
   @DisplayName("정상적인 요청 시에 사용자가 생성된다.")
   void 정상_값으로_요청_시_사용자가_생성된다() {
     // given
-    UserCreateRequest request = new UserCreateRequest(
+    UserCreateCommand command = new UserCreateCommand(
         "email@example.com",
         "닉네임",
         "PassWord123!"
@@ -70,9 +70,9 @@ public class UserServiceImplTest {
         UUID.randomUUID(), "email@example.com",
         "닉네임", null);
 
-    when(userRepository.existsByEmail(request.email()))
+    when(userRepository.existsByEmail(command.email()))
         .thenReturn(false);
-    when(passwordEncoder.encode(request.password()))
+    when(passwordEncoder.encode(command.password()))
         .thenReturn("encodedPassword123");
     when(userRepository.save(any(User.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
@@ -80,13 +80,13 @@ public class UserServiceImplTest {
         .thenReturn(expectedResponse);
 
     // when
-    UserCreateResponse actualResponse = userServiceImpl.signUp(request);
+    UserCreateResponse actualResponse = userServiceImpl.signUp(command);
 
     // then
     verify(userRepository).save(userCaptor.capture());
     User capturedUser = userCaptor.getValue();
     assertThat(capturedUser.getPassword()).isEqualTo("encodedPassword123");
-    assertThat(capturedUser.getPassword()).isNotEqualTo(request.password());
+    assertThat(capturedUser.getPassword()).isNotEqualTo(command.password());
     assertThat(actualResponse).isEqualTo(expectedResponse);
   }
 
@@ -94,22 +94,22 @@ public class UserServiceImplTest {
   @DisplayName("이메일 중복 검사를 통과했지만 저장 시점에 DB 제약 위반이 발생하면 DuplicateEmailException을 던진다")
   void 저장_시점에_이메일_중복이_감지되면_예외를_던진다() {
     // given
-    UserCreateRequest request = new UserCreateRequest(
+    UserCreateCommand command = new UserCreateCommand(
         "email@email",
         "닉네임",
         "PassWord123!"
     );
-    when(userRepository.existsByEmail(request.email()))
+    when(userRepository.existsByEmail(command.email()))
     .thenReturn(false);
-    when(passwordEncoder.encode(request.password()))
+    when(passwordEncoder.encode(command.password()))
         .thenReturn("encodedPassword123");
     when(userRepository.save(any(User.class)))
         .thenThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint \"uk_users_email\""));
 
     // when & then
-     assertThatThrownBy(() -> userServiceImpl.signUp(request))
+     assertThatThrownBy(() -> userServiceImpl.signUp(command))
          .isInstanceOf(DuplicateEmailException.class);
-     verify(userRepository).existsByEmail(request.email());
+     verify(userRepository).existsByEmail(command.email());
 
 
 

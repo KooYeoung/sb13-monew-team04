@@ -7,6 +7,7 @@ import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
 import com.codeit.sb13.monew.user.mapper.UserMapper;
 import com.codeit.sb13.monew.user.repository.UserRepository;
 import com.codeit.sb13.monew.user.service.UserService;
+import com.codeit.sb13.monew.user.service.dto.UserCreateCommand;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -22,18 +23,18 @@ public class UserServiceImpl implements UserService {
   private final UserMapper userMapper;
 
   @Transactional
-  public UserCreateResponse signUp(UserCreateRequest request) {
-    boolean emailExists = userRepository.existsByEmail(request.email());
+  public UserCreateResponse signUp(UserCreateCommand command) {
+    boolean emailExists = userRepository.existsByEmail(command.email());
 
     if (emailExists) {
-      throw new DuplicateEmailException(request.email());
+      throw new DuplicateEmailException(command.email());
     }
 
-    String encode = passwordEncoder.encode(request.password());
+    String encode = passwordEncoder.encode(command.password());
 
     User user = User.builder()
-        .email(request.email())
-        .nickname(request.nickname())
+        .email(command.email())
+        .nickname(command.nickname())
         .password(encode)
         .build();
 
@@ -43,7 +44,7 @@ public class UserServiceImpl implements UserService {
       return response;
     } catch (DataIntegrityViolationException e) {
       if (isEmailUniqueViolation(e)) {
-        throw new DuplicateEmailException(request.email());
+        throw new DuplicateEmailException(command.email());
       }
       throw e;
     }
