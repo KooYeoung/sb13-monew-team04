@@ -1,11 +1,11 @@
 package com.codeit.sb13.monew.user.service.impl;
 
-import com.codeit.sb13.monew.user.controller.dto.UserCreateResponse;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
 import com.codeit.sb13.monew.user.mapper.UserMapper;
 import com.codeit.sb13.monew.user.repository.UserRepository;
 import com.codeit.sb13.monew.user.service.dto.UserCreateCommand;
+import com.codeit.sb13.monew.user.service.dto.UserCreateResult;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -66,7 +66,7 @@ public class UserServiceImplTest {
         "닉네임",
         "PassWord123!"
     );
-    UserCreateResponse expectedResponse = new UserCreateResponse(
+    UserCreateResult expectedResponse = new UserCreateResult(
         UUID.randomUUID(), "email@example.com",
         "닉네임", null);
 
@@ -76,18 +76,18 @@ public class UserServiceImplTest {
         .thenReturn("encodedPassword123");
     when(userRepository.saveAndFlush(any(User.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
-    when(userMapper.toResponse(any(User.class)))
+    when(userMapper.toResult(any(User.class)))
         .thenReturn(expectedResponse);
 
     // when
-    UserCreateResponse actualResponse = userServiceImpl.signUp(command);
+    UserCreateResult actualResult = userServiceImpl.signUp(command);
 
     // then
     verify(userRepository).saveAndFlush(userCaptor.capture());
     User capturedUser = userCaptor.getValue();
     assertThat(capturedUser.getPassword()).isEqualTo("encodedPassword123");
     assertThat(capturedUser.getPassword()).isNotEqualTo(command.password());
-    assertThat(actualResponse).isEqualTo(expectedResponse);
+    assertThat(actualResult).isEqualTo(expectedResponse);
   }
 
   @Test
@@ -110,10 +110,29 @@ public class UserServiceImplTest {
      assertThatThrownBy(() -> userServiceImpl.signUp(command))
          .isInstanceOf(DuplicateEmailException.class);
      verify(userRepository).existsByEmail(command.email());
+  }
 
+  @Test
+  @DisplayName("이메일과 무관한 DB 제약 위반이면 원래 예외를 그대로 던진다")
+  void 이메일과_무관한_제약_위반이면_원래_예외를_던진다() {
+    // given
+    UserCreateCommand command = new UserCreateCommand(
+        "email@example.com",
+        "닉네임",
+        "PassWord123!"
+    );
+    when(userRepository.existsByEmail(command.email()))
+        .thenReturn(false);
+    when(passwordEncoder.encode(command.password()))
+        .thenReturn("encodedPassword123");
+    when(userRepository.saveAndFlush(any(User.class)))
+        .thenThrow(new DataIntegrityViolationException(
+            "null value in column \"nickname\" violates not-null constraint"));
 
-
-
+    // when & then
+    assertThatThrownBy(() -> userServiceImpl.signUp(command))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .isNotInstanceOf(DuplicateEmailException.class);
   }
 
 }

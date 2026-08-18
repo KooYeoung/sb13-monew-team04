@@ -10,6 +10,7 @@ import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
 import com.codeit.sb13.monew.user.service.UserService;
 import com.codeit.sb13.monew.user.service.dto.UserCreateCommand;
+import com.codeit.sb13.monew.user.service.dto.UserCreateResult;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -49,14 +50,14 @@ class UserControllerTest {
         "PassWord123!"
     );
 
-    UserCreateResponse response = new UserCreateResponse(
+    UserCreateResult result = new UserCreateResult(
         UUID.randomUUID(),
         "email@email.com",
         "닉네임",
         LocalDateTime.now()
     );
     when(userService.signUp(any(UserCreateCommand.class)))
-        .thenReturn(response);
+        .thenReturn(result);
 
     // when & then
     mockMvc.perform(post("/api/users")

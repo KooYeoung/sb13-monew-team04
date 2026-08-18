@@ -4,6 +4,7 @@ import com.codeit.sb13.monew.user.controller.dto.UserCreateRequest;
 import com.codeit.sb13.monew.user.controller.dto.UserCreateResponse;
 import com.codeit.sb13.monew.user.service.UserService;
 import com.codeit.sb13.monew.user.service.dto.UserCreateCommand;
+import com.codeit.sb13.monew.user.service.dto.UserCreateResult;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -27,7 +28,12 @@ public class UserController {
         request.email(),
         request.nickname(),
         request.password());
-    UserCreateResponse response = userService.signUp(command);
+    UserCreateResult result = userService.signUp(command);
+    UserCreateResponse response = new UserCreateResponse(
+        result.userId(),
+        result.email(),
+        result.nickname(),
+        result.createdAt());
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 
