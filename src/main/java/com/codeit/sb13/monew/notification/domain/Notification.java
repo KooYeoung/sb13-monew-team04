@@ -1,6 +1,7 @@
 package com.codeit.sb13.monew.notification.domain;
 
 import com.codeit.sb13.monew.global.domain.UpdatedAtEntity;
+import com.codeit.sb13.monew.user.domain.User;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
