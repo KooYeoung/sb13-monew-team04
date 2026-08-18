@@ -19,6 +19,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.any;
 
@@ -55,6 +56,9 @@ public class UserServiceImplTest {
     // when & then
     assertThatThrownBy(() -> userServiceImpl.signUp(command))
         .isInstanceOf(DuplicateEmailException.class);
+
+    verify(passwordEncoder, never()).encode(any());
+    verify(userRepository, never()).saveAndFlush(any());
   }
 
   @Test

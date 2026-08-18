@@ -1,12 +1,11 @@
 package com.codeit.sb13.monew.user.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.codeit.sb13.monew.user.controller.dto.UserCreateRequest;
-import com.codeit.sb13.monew.user.controller.dto.UserCreateResponse;
-import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
 import com.codeit.sb13.monew.user.service.UserService;
 import com.codeit.sb13.monew.user.service.dto.UserCreateCommand;
@@ -18,13 +17,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -61,12 +60,20 @@ class UserControllerTest {
 
     // when & then
     mockMvc.perform(post("/api/users")
-        .contentType(MediaType.APPLICATION_JSON)
+            .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.userId").exists())
         .andExpect(jsonPath("$.email").value(request.email()))
         .andExpect(jsonPath("$.nickname").value(request.nickname()));
+
+    // Command 변환값 검증 추가
+    ArgumentCaptor<UserCreateCommand> commandCaptor = ArgumentCaptor.forClass(UserCreateCommand.class);
+    verify(userService).signUp(commandCaptor.capture());
+    UserCreateCommand capturedCommand = commandCaptor.getValue();
+    assertThat(capturedCommand.email()).isEqualTo(request.email());
+    assertThat(capturedCommand.nickname()).isEqualTo(request.nickname());
+    assertThat(capturedCommand.password()).isEqualTo(request.password());
   }
 
   @ParameterizedTest
