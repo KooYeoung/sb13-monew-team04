@@ -39,11 +39,19 @@ public class UserServiceImpl implements UserService {
     try {
       userRepository.save(user);
     } catch (DataIntegrityViolationException e) {
-      throw new DuplicateEmailException(request.email());
+      if (isEmailUniqueViolation(e)) {
+        throw new DuplicateEmailException(request.email());
+      }
+      throw e;
     }
 
     UserCreateResponse response = userMapper.toResponse(user);
 
     return response;
+  }
+
+  private boolean isEmailUniqueViolation(DataIntegrityViolationException e) {
+    String message = e.getMostSpecificCause().getMessage();
+    return message != null && message.contains("uk_users_email");
   }
 }

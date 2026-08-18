@@ -58,7 +58,7 @@ public class UserServiceImplTest {
   }
 
   @Test
-  @DisplayName("정상적인 요철시에 사용자가 생성된다.")
+  @DisplayName("정상적인 요청 시에 사용자가 생성된다.")
   void 정상_값으로_요청_시_사용자가_생성된다() {
     // given
     UserCreateRequest request = new UserCreateRequest(
@@ -66,24 +66,26 @@ public class UserServiceImplTest {
         "닉네임",
         "PassWord123!"
     );
+    UserCreateResponse expectedResponse = new UserCreateResponse(
+        UUID.randomUUID(), "email@example.com",
+        "닉네임", null);
+
     when(userRepository.existsByEmail(request.email()))
         .thenReturn(false);
     when(passwordEncoder.encode(request.password()))
         .thenReturn("encodedPassword123");
     when(userMapper.toResponse(any(User.class)))
-        .thenReturn(new UserCreateResponse(
-            UUID.randomUUID(), "email@example.com",
-            "닉네임", null));
+        .thenReturn(expectedResponse);
 
     // when
-    userServiceImpl.signUp(request);
+    UserCreateResponse actualResponse = userServiceImpl.signUp(request);
 
     // then
     verify(userRepository).save(userCaptor.capture());
     User capturedUser = userCaptor.getValue();
     assertThat(capturedUser.getPassword()).isEqualTo("encodedPassword123");
     assertThat(capturedUser.getPassword()).isNotEqualTo(request.password());
-
+    assertThat(actualResponse).isEqualTo(expectedResponse);
   }
 
   @Test
@@ -100,11 +102,12 @@ public class UserServiceImplTest {
     when(passwordEncoder.encode(request.password()))
         .thenReturn("encodedPassword123");
     when(userRepository.save(any(User.class)))
-        .thenThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint"));
+        .thenThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint \"uk_users_email\""));
 
     // when & then
      assertThatThrownBy(() -> userServiceImpl.signUp(request))
          .isInstanceOf(DuplicateEmailException.class);
+     verify(userRepository).existsByEmail(request.email());
 
 
 
