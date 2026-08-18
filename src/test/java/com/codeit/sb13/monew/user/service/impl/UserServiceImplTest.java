@@ -10,11 +10,15 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
+
+import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.any;
 
@@ -30,6 +34,8 @@ public class UserServiceImplTest {
   PasswordEncoder passwordEncoder;
   @Mock
   UserMapper userMapper;
+  @Captor
+  ArgumentCaptor<User> userCaptor;
 
   @InjectMocks
   UserServiceImpl userServiceImpl;
@@ -73,7 +79,10 @@ public class UserServiceImplTest {
     userServiceImpl.signUp(request);
 
     // then
-    verify(userRepository).save(any(User.class));
+    verify(userRepository).save(userCaptor.capture());
+    User capturedUser = userCaptor.getValue();
+    assertThat(capturedUser.getPassword()).isEqualTo("encodedPassword123");
+    assertThat(capturedUser.getPassword()).isNotEqualTo(request.password());
 
   }
 

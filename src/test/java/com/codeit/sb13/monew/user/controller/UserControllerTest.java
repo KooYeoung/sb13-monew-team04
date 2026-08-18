@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.codeit.sb13.monew.user.controller.dto.UserCreateRequest;
 import com.codeit.sb13.monew.user.controller.dto.UserCreateResponse;
+import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
 import com.codeit.sb13.monew.user.service.UserService;
 import java.time.LocalDateTime;
@@ -13,6 +14,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -57,7 +60,10 @@ class UserControllerTest {
     mockMvc.perform(post("/api/users")
         .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(request)))
-        .andExpect(status().isCreated());
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.userId").exists())
+        .andExpect(jsonPath("$.email").value(request.email()))
+        .andExpect(jsonPath("$.nickname").value(request.nickname()));
   }
 
   @ParameterizedTest
