@@ -28,3 +28,8 @@ logging:
     org.hibernate.SQL: warn
     org.hibernate.orm.jdbc.batch: warn
     org.hibernate.orm.jdbc.bind: warn
+
+monew:
+  openapi:
+    server-url: ${MONEW_OPENAPI_SERVER_URL}
+    server-description: 운영 배포 서버

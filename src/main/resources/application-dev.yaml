@@ -32,3 +32,8 @@ logging:
     org.hibernate.SQL: debug
     org.hibernate.orm.jdbc.batch: trace
     org.hibernate.orm.jdbc.bind: off
+
+monew:
+  openapi:
+    server-url: http://localhost:${server.port:8080}
+    server-description: 로컬 개발 서버
