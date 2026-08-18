@@ -32,4 +32,8 @@ public class Keyword extends BaseEntity {
     public void changeKeyword(String keyword) {
         this.keyword = keyword;
     }
+
+    void detachInterest() {
+        this.interest = null;
+    }
 }

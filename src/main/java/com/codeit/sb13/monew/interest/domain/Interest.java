@@ -1,6 +1,7 @@
 package com.codeit.sb13.monew.interest.domain;
 
 import com.codeit.sb13.monew.global.domain.UpdatedAtEntity;
+import com.codeit.sb13.monew.global.exception.interest.InterestKeywordRequiredException;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -43,7 +44,14 @@ public class Interest extends UpdatedAtEntity {
     }
 
     public void removeKeyword(Keyword keyword) {
-        this.keywords.remove(keyword);
+        if (this.keywords.size() <= 1 && this.keywords.contains(keyword)) {
+            throw new InterestKeywordRequiredException(this.getId());
+        }
+
+        boolean removed = this.keywords.remove(keyword);
+        if (removed) {
+            keyword.detachInterest();
+        }
     }
 
     public void changeName(String name) {
