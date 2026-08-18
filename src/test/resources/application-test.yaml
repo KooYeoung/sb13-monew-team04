@@ -19,3 +19,12 @@ spring:
   h2:
     console:
       enabled: false
+
+logging:
+  level:
+    root: info
+    com.codeit.sb13.monew: debug
+
+    org.hibernate.SQL: debug
+    org.hibernate.orm.jdbc.batch: trace
+    org.hibernate.orm.jdbc.bind: off
