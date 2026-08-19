@@ -65,7 +65,8 @@ class UserControllerTest {
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.userId").exists())
         .andExpect(jsonPath("$.email").value(request.email()))
-        .andExpect(jsonPath("$.nickname").value(request.nickname()));
+        .andExpect(jsonPath("$.nickname").value(request.nickname()))
+        .andExpect(jsonPath("$.createdAt").exists());
 
     // Command 변환값 검증 추가
     ArgumentCaptor<UserCreateCommand> commandCaptor = ArgumentCaptor.forClass(UserCreateCommand.class);
