@@ -33,7 +33,7 @@ public class ArticleView extends CreatedAtEntity {
     @Column(nullable = false, columnDefinition = "UUID")
     private UUID userId;
 
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false, updatable = true)
     private LocalDateTime viewedAt;
 
     @PrePersist
@@ -41,5 +41,10 @@ public class ArticleView extends CreatedAtEntity {
         if (this.viewedAt == null) {
             this.viewedAt = LocalDateTime.now();
         }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        this.viewedAt = LocalDateTime.now();
     }
 }

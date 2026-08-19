@@ -47,20 +47,35 @@ create table articles (
     link varchar(1000) not null,
     date timestamp not null,
     source varchar(50) not null,
+    view_count integer not null default 0,
+    comment_count integer not null default 0,
     created_at timestamp default current_timestamp null,
     updated_at timestamp default current_timestamp null,
-    constraint pk_articles primary key (id)
+    deleted_at timestamp null,
+    constraint pk_articles primary key (id),
+    constraint uk_articles_link unique (link)
 );
+
+-- articles 인덱스
+create index idx_articles_source on articles (source);
+create index idx_articles_date on articles (date desc);
+create index idx_articles_source_date on articles (source, date desc);
 
 create table article_views (
     id uuid default gen_random_uuid() not null,
     article_id uuid not null,
     user_id uuid not null,
-    viewed_at timestamp default current_timestamp null,
+    viewed_at timestamp not null,
+    created_at timestamp default current_timestamp not null,
     constraint pk_article_views primary key (id),
     constraint fk_article_views_article_id foreign key (article_id) references articles (id),
-    constraint fk_article_views_user_id foreign key (user_id) references users (id)
+    constraint fk_article_views_user_id foreign key (user_id) references users (id),
+    constraint uk_article_views_article_user unique (article_id, user_id)
 );
+
+-- article_views 인덱스
+create index idx_article_views_user_id on article_views (user_id);
+create index idx_article_views_viewed_at on article_views (viewed_at desc);
 
 -- 댓글 도메인: 댓글과 댓글 좋아요
 create table comments (
