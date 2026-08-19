@@ -9,6 +9,7 @@
 - 한 번 공유되었거나 DB에 적용된 마이그레이션 파일은 수정하지 않습니다.
 - 이후 변경 사항은 항상 새로운 마이그레이션 파일로 추가합니다.
 - `dev`, `prod` 환경에서는 Hibernate `ddl-auto: validate`로 엔티티와 DB 스키마 일치 여부를 확인합니다.
+- 엔티티의 테이블, 컬럼, 인덱스, 제약조건 변경은 Flyway 마이그레이션과 함께 작성합니다.
 
 ## 파일 위치
 
@@ -133,6 +134,49 @@ notifications.user_id -> users.id
 
 `notifications.resource_id`는 `resource_type`에 따라 article, comment 등 여러 리소스를 가리킬 수 있습니다. 하나의 테이블로 참조 대상이 고정되지 않기 때문에 초기 스키마에서는 FK를 걸지 않습니다.
 
+## 인덱스와 UNIQUE 제약 기준
+
+엔티티에 인덱스나 UNIQUE 제약을 선언할 때는 DB에 생성될 이름을 명시합니다.
+
+```java
+@Table(
+    name = "article_views",
+    uniqueConstraints = {
+        @UniqueConstraint(
+            name = "uk_article_views_article_user",
+            columnNames = {"article_id", "user_id"}
+        )
+    },
+    indexes = {
+        @Index(name = "idx_article_views_user_viewed", columnList = "user_id, viewed_at DESC")
+    }
+)
+```
+
+`@Column(unique = true)`는 제약 이름을 명확히 남기기 어렵기 때문에 사용하지 않습니다.
+
+좋은 예:
+
+```java
+@Table(
+    name = "users",
+    uniqueConstraints = {
+        @UniqueConstraint(name = "uk_users_email", columnNames = "email")
+    }
+)
+```
+
+피해야 할 예:
+
+```java
+@Column(unique = true)
+private String email;
+```
+
+엔티티에 선언한 제약 이름과 Flyway SQL에 작성한 제약 이름은 같아야 합니다.
+
+UNIQUE 제약, 인덱스, FK 변경은 자동 테스트만으로 누락 여부를 보장하기 어렵습니다. PR 리뷰에서 엔티티 변경과 Flyway SQL 변경이 함께 들어갔는지 확인합니다.
+
 ## 변경 작업 흐름
 
 스키마 변경이 필요하면 기존 파일을 수정하지 않고 새 파일을 추가합니다.
@@ -183,7 +227,7 @@ spring:
 .\gradlew.bat test
 ```
 
-Flyway 자체 동작 검증이 필요해지면 별도 테스트 클래스를 추가합니다.
+Flyway 자체 동작이나 DB catalog 기반 제약 검증이 필요해지면 별도 Jira 티켓으로 분리해 검증 범위를 먼저 정합니다.
 
 ## .gitkeep 사용 기준
 

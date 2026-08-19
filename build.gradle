@@ -74,8 +74,24 @@ dependencies {
 }
 
 tasks.named('test') {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags 'migration'
+    }
     finalizedBy tasks.named('jacocoTestReport')
+}
+
+tasks.register('migrationTest', Test) {
+    description = 'Runs Flyway migration tests against PostgreSQL.'
+    group = 'verification'
+
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+
+    useJUnitPlatform {
+        includeTags 'migration'
+    }
+
+    shouldRunAfter tasks.named('test')
 }
 
 jacocoTestReport {

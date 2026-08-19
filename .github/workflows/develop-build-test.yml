@@ -21,6 +21,20 @@ jobs:
   develop-build-test:
     name: develop-build-test
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: monew
+          POSTGRES_USER: monew
+          POSTGRES_PASSWORD: change-me
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U monew -d monew"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Reject main to develop PR
         env:
@@ -53,6 +67,13 @@ jobs:
 
       - name: Build, test, and generate coverage report
         run: ./gradlew clean build jacocoTestReport
+
+      - name: Run Flyway migration test
+        env:
+          MONEW_MIGRATION_DB_URL: jdbc:postgresql://localhost:5432/monew
+          MONEW_MIGRATION_DB_USERNAME: monew
+          MONEW_MIGRATION_DB_PASSWORD: change-me
+        run: ./gradlew migrationTest
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
