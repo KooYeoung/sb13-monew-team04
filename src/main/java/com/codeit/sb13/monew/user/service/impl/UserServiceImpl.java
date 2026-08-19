@@ -2,11 +2,15 @@ package com.codeit.sb13.monew.user.service.impl;
 
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
+import com.codeit.sb13.monew.user.exception.InvalidPasswordException;
+import com.codeit.sb13.monew.user.exception.LoginUserNotFoundException;
 import com.codeit.sb13.monew.user.mapper.UserMapper;
 import com.codeit.sb13.monew.user.repository.UserRepository;
 import com.codeit.sb13.monew.user.service.UserService;
 import com.codeit.sb13.monew.user.service.dto.UserCreateCommand;
 import com.codeit.sb13.monew.user.service.dto.UserCreateResult;
+import com.codeit.sb13.monew.user.service.dto.UserLoginCommand;
+import com.codeit.sb13.monew.user.service.dto.UserLoginResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -49,8 +53,23 @@ public class UserServiceImpl implements UserService {
     }
   }
 
+  @Override
+  @Transactional(readOnly = true)
+  public UserLoginResult login(UserLoginCommand command) {
+    User user = userRepository.findByEmail(command.email())
+        .orElseThrow(() -> new LoginUserNotFoundException(command.email()));
+    String password = user.getPassword();
+
+    boolean matches = passwordEncoder.matches(command.password(), password);
+    if (!matches) {
+      throw new InvalidPasswordException(command.email());
+    }
+    return userMapper.toLoginResult(user);
+  }
+
   private boolean isEmailUniqueViolation(DataIntegrityViolationException e) {
     String message = e.getMostSpecificCause().getMessage();
     return message != null && message.contains("uk_users_email");
   }
 }
+

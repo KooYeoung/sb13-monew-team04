@@ -2,9 +2,13 @@ package com.codeit.sb13.monew.user.controller;
 
 import com.codeit.sb13.monew.user.controller.dto.UserCreateRequest;
 import com.codeit.sb13.monew.user.controller.dto.UserCreateResponse;
+import com.codeit.sb13.monew.user.controller.dto.UserLoginRequest;
+import com.codeit.sb13.monew.user.controller.dto.UserLoginResponse;
 import com.codeit.sb13.monew.user.service.UserService;
 import com.codeit.sb13.monew.user.service.dto.UserCreateCommand;
 import com.codeit.sb13.monew.user.service.dto.UserCreateResult;
+import com.codeit.sb13.monew.user.service.dto.UserLoginCommand;
+import com.codeit.sb13.monew.user.service.dto.UserLoginResult;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -20,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserController {
 
   private final UserService userService;
+  private static final String USER_ID_HEADER = "MoNew-Request-User-ID";
 
   @PostMapping
   public ResponseEntity<UserCreateResponse> signUp(
@@ -35,6 +40,24 @@ public class UserController {
         result.nickname(),
         result.createdAt());
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
+  }
+
+  @PostMapping("/login")
+  public ResponseEntity<UserLoginResponse> login(
+     @Valid @RequestBody UserLoginRequest request
+  ) {
+    UserLoginCommand command = new UserLoginCommand(
+        request.email(),
+        request.password());
+    UserLoginResult login = userService.login(command);
+
+    UserLoginResponse response = new UserLoginResponse(
+        login.userId(),
+        login.email(),
+        login.nickname());
+    return ResponseEntity.status(HttpStatus.OK)
+        .header(USER_ID_HEADER, login.userId().toString())
+        .body(response);
   }
 
 }

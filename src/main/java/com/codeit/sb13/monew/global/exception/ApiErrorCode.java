@@ -9,6 +9,7 @@ public enum ApiErrorCode {
     // USER USR
     USER_NOT_FOUND("USR_001", HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
     DUPLICATE_EMAIL("USR_002", HttpStatus.CONFLICT,"이미 사용 중인 이메일입니다."),
+    LOGIN_FAILED("USR_003", HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 일치하지 않습니다."),
 
     // ARTICLE ART
     ARTICLE_NOT_FOUND("ART_001", HttpStatus.NOT_FOUND, "뉴스를 찾을 수 없습니다."),

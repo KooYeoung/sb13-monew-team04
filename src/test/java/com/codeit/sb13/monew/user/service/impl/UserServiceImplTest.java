@@ -2,10 +2,15 @@ package com.codeit.sb13.monew.user.service.impl;
 
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
+import com.codeit.sb13.monew.user.exception.InvalidPasswordException;
+import com.codeit.sb13.monew.user.exception.LoginUserNotFoundException;
 import com.codeit.sb13.monew.user.mapper.UserMapper;
 import com.codeit.sb13.monew.user.repository.UserRepository;
 import com.codeit.sb13.monew.user.service.dto.UserCreateCommand;
 import com.codeit.sb13.monew.user.service.dto.UserCreateResult;
+import com.codeit.sb13.monew.user.service.dto.UserLoginCommand;
+import com.codeit.sb13.monew.user.service.dto.UserLoginResult;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,7 +33,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 public class UserServiceImplTest {
-  
+
   @Mock
   UserRepository userRepository;
   @Mock
@@ -104,16 +109,17 @@ public class UserServiceImplTest {
         "PassWord123!"
     );
     when(userRepository.existsByEmail(command.email()))
-    .thenReturn(false);
+        .thenReturn(false);
     when(passwordEncoder.encode(command.password()))
         .thenReturn("encodedPassword123");
     when(userRepository.saveAndFlush(any(User.class)))
-        .thenThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint \"uk_users_email\""));
+        .thenThrow(new DataIntegrityViolationException(
+            "duplicate key value violates unique constraint \"uk_users_email\""));
 
     // when & then
-     assertThatThrownBy(() -> userServiceImpl.signUp(command))
-         .isInstanceOf(DuplicateEmailException.class);
-     verify(userRepository).existsByEmail(command.email());
+    assertThatThrownBy(() -> userServiceImpl.signUp(command))
+        .isInstanceOf(DuplicateEmailException.class);
+    verify(userRepository).existsByEmail(command.email());
   }
 
   @Test
@@ -137,6 +143,78 @@ public class UserServiceImplTest {
     assertThatThrownBy(() -> userServiceImpl.signUp(command))
         .isInstanceOf(DataIntegrityViolationException.class)
         .isNotInstanceOf(DuplicateEmailException.class);
+  }
+
+  @Test
+  @DisplayName("존재하지 않는 이메일로 로그인하면 LoginUserNotFoundException을 던진다.")
+  void 존재하지_않는_이메일로_로그인시_예외를_던진다() {
+    // given
+    UserLoginCommand command = new UserLoginCommand(
+        "email@email.com",
+        "PassWord123!"
+    );
+    when(userRepository.findByEmail(command.email()))
+        .thenReturn(Optional.empty());
+
+    // when & then
+    assertThatThrownBy(() -> userServiceImpl.login(command))
+        .isInstanceOf(LoginUserNotFoundException.class);
+    verify(passwordEncoder, never()).matches(any(), any());
+    verify(userMapper, never()).toLoginResult(any());
+  }
+
+  @Test
+  @DisplayName("비밀번호가 일치하지 않으면 InvalidPasswordException을 던진다.")
+  void 비밀번호가_일치하지_않으면_예외를_던진다() {
+    // given
+    UserLoginCommand command = new UserLoginCommand(
+        "email@email.com",
+        "PassWord123!"
+    );
+    User user = User.builder()
+        .email("email@email.com")
+        .nickname("닉네임")
+        .password("encodedPassword123")
+        .build();
+    when(userRepository.findByEmail(command.email()))
+        .thenReturn(Optional.of(user));
+    when(passwordEncoder.matches(command.password(), user.getPassword()))
+        .thenReturn(false);
+
+    // when & then
+    assertThatThrownBy(() -> userServiceImpl.login(command))
+        .isInstanceOf(InvalidPasswordException.class);
+    verify(userMapper, never()).toLoginResult(any());
+  }
+
+  @Test
+  @DisplayName("이메일/비밀번호가 올바르면 로그인에 성공한다.")
+  void 올바른_이메일과_비밀번호라면_로그인_성공() {
+    // given
+    UserLoginCommand command = new UserLoginCommand(
+        "email@email.com",
+        "PassWord123!"
+    );
+    User user = User.builder()
+        .email("email@email.com")
+        .nickname("닉네임")
+        .password("encodedPassword123")
+        .build();
+    UserLoginResult expectedResult = new UserLoginResult(
+        UUID.randomUUID(), "email@email.com", "닉네임"
+    );
+    when(userMapper.toLoginResult(user))
+        .thenReturn(expectedResult);
+    when(userRepository.findByEmail(command.email()))
+        .thenReturn(Optional.of(user));
+    when(passwordEncoder.matches(command.password(), user.getPassword()))
+        .thenReturn(true);
+
+    // when
+    UserLoginResult actualResult = userServiceImpl.login(command);
+
+    // then
+    assertThat(actualResult).isEqualTo(expectedResult);
   }
 
 }
