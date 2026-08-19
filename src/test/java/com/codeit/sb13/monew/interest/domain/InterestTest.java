@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 
+import com.codeit.sb13.monew.global.exception.interest.InterestKeywordInvalidException;
 import com.codeit.sb13.monew.global.exception.interest.InterestKeywordRequiredException;
+import com.codeit.sb13.monew.global.exception.interest.InterestNameInvalidException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -25,6 +27,40 @@ class InterestTest {
             // then
             assertThat(interest.getName()).isEqualTo("스포츠");
             assertThat(interest.getKeywords()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("이름이 null이면 예외가 발생한다")
+        void create_nullName_throwsException() {
+            // when & then
+            assertThatThrownBy(() -> Interest.create(null))
+                    .isInstanceOf(InterestNameInvalidException.class);
+        }
+
+        @Test
+        @DisplayName("이름이 비어 있거나 공백이면 예외가 발생한다")
+        void create_blankName_throwsException() {
+            // when & then
+            assertThatThrownBy(() -> Interest.create(""))
+                    .isInstanceOf(InterestNameInvalidException.class);
+            assertThatThrownBy(() -> Interest.create("   "))
+                    .isInstanceOf(InterestNameInvalidException.class);
+        }
+
+        @Test
+        @DisplayName("이름이 50자면 생성되고 51자를 넘으면 예외가 발생한다")
+        void create_nameLengthBoundary() {
+            // given
+            String maxLength = "가".repeat(50);
+            String tooLong = "가".repeat(51);
+
+            // when
+            Interest interest = Interest.create(maxLength);
+
+            // then
+            assertThat(interest.getName()).isEqualTo(maxLength);
+            assertThatThrownBy(() -> Interest.create(tooLong))
+                    .isInstanceOf(InterestNameInvalidException.class);
         }
     }
 
@@ -78,6 +114,50 @@ class InterestTest {
                     .toList();
 
             assertThat(keywordTexts).containsExactly("축구", "야구", "농구");
+        }
+
+        @Test
+        @DisplayName("키워드가 null이면 예외가 발생하고 목록은 그대로 유지된다")
+        void addKeyword_null_throwsException() {
+            // given
+            Interest interest = Interest.create("스포츠");
+
+            // when & then
+            assertThatThrownBy(() -> interest.addKeyword(null))
+                    .isInstanceOf(InterestKeywordInvalidException.class);
+            assertThat(interest.getKeywords()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("키워드가 비어 있거나 공백이면 예외가 발생한다")
+        void addKeyword_blank_throwsException() {
+            // given
+            Interest interest = Interest.create("스포츠");
+
+            // when & then
+            assertThatThrownBy(() -> interest.addKeyword(""))
+                    .isInstanceOf(InterestKeywordInvalidException.class);
+            assertThatThrownBy(() -> interest.addKeyword("   "))
+                    .isInstanceOf(InterestKeywordInvalidException.class);
+            assertThat(interest.getKeywords()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("키워드가 50자면 추가되고 51자를 넘으면 예외가 발생한다")
+        void addKeyword_lengthBoundary() {
+            // given
+            Interest interest = Interest.create("스포츠");
+            String maxLength = "가".repeat(50);
+            String tooLong = "가".repeat(51);
+
+            // when
+            Keyword keyword = interest.addKeyword(maxLength);
+
+            // then
+            assertThat(keyword.getKeyword()).isEqualTo(maxLength);
+            assertThatThrownBy(() -> interest.addKeyword(tooLong))
+                    .isInstanceOf(InterestKeywordInvalidException.class);
+            assertThat(interest.getKeywords()).hasSize(1);
         }
     }
 
@@ -179,6 +259,49 @@ class InterestTest {
 
             // then
             assertThat(interest.getName()).isEqualTo("야구");
+        }
+
+        @Test
+        @DisplayName("null로 변경하려 하면 예외가 발생하고 기존 이름은 유지된다")
+        void changeName_null_throwsException() {
+            // given
+            Interest interest = Interest.create("스포츠");
+
+            // when & then
+            assertThatThrownBy(() -> interest.changeName(null))
+                    .isInstanceOf(InterestNameInvalidException.class);
+            assertThat(interest.getName()).isEqualTo("스포츠");
+        }
+
+        @Test
+        @DisplayName("빈 문자열이나 공백 문자열로 변경하려 하면 예외가 발생한다")
+        void changeName_blank_throwsException() {
+            // given
+            Interest interest = Interest.create("스포츠");
+
+            // when & then
+            assertThatThrownBy(() -> interest.changeName(""))
+                    .isInstanceOf(InterestNameInvalidException.class);
+            assertThatThrownBy(() -> interest.changeName("   "))
+                    .isInstanceOf(InterestNameInvalidException.class);
+            assertThat(interest.getName()).isEqualTo("스포츠");
+        }
+
+        @Test
+        @DisplayName("50자는 허용되지만 51자를 넘으면 예외가 발생한다")
+        void changeName_lengthBoundary() {
+            // given
+            Interest interest = Interest.create("스포츠");
+            String maxLength = "가".repeat(50);
+            String tooLong = "가".repeat(51);
+
+            // when
+            interest.changeName(maxLength);
+
+            // then
+            assertThat(interest.getName()).isEqualTo(maxLength);
+            assertThatThrownBy(() -> interest.changeName(tooLong))
+                    .isInstanceOf(InterestNameInvalidException.class);
         }
     }
 }
