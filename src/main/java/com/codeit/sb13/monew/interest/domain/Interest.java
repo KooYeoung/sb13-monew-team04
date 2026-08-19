@@ -2,6 +2,7 @@ package com.codeit.sb13.monew.interest.domain;
 
 import com.codeit.sb13.monew.global.domain.UpdatedAtEntity;
 import com.codeit.sb13.monew.global.exception.interest.InterestKeywordRequiredException;
+import com.codeit.sb13.monew.global.exception.interest.InterestNameInvalidException;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -13,6 +14,7 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.util.StringUtils;
 
 /**
  * 관심사(Interest) 애그리거트 루트.
@@ -36,7 +38,7 @@ public class Interest extends UpdatedAtEntity {
 
     @Builder
     private Interest(String name) {
-        this.name = name;
+        this.name = validateName(name);
     }
 
     /**
@@ -100,6 +102,17 @@ public class Interest extends UpdatedAtEntity {
      * @param name 변경할 새 이름
      */
     public void changeName(String name) {
-        this.name = name;
+        this.name = validateName(name);
+    }
+
+    private static String validateName(String name) {
+        if (!StringUtils.hasText(name)) {
+            throw new InterestNameInvalidException(name);
+        }
+        if (name.length() > 50) {
+            throw new InterestNameInvalidException(name);
+        }
+
+        return name;
     }
 }

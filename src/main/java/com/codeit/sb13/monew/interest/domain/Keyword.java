@@ -1,6 +1,7 @@
 package com.codeit.sb13.monew.interest.domain;
 
 import com.codeit.sb13.monew.global.domain.BaseEntity;
+import com.codeit.sb13.monew.global.exception.interest.InterestKeywordInvalidException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -11,6 +12,7 @@ import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.util.StringUtils;
 
 /**
  * 관심사({@link Interest})에 속한 키워드 엔티티.
@@ -53,7 +55,7 @@ public class Keyword extends BaseEntity {
      */
     Keyword(Interest interest, String keyword) {
         this.interest = interest;
-        this.keyword = keyword;
+        this.keyword = validateKeyword(keyword);
     }
 
     /**
@@ -62,7 +64,7 @@ public class Keyword extends BaseEntity {
      * @param keyword 변경할 새 키워드 텍스트
      */
     public void changeKeyword(String keyword) {
-        this.keyword = keyword;
+        this.keyword = validateKeyword(keyword);
     }
 
     /**
@@ -75,5 +77,16 @@ public class Keyword extends BaseEntity {
      */
     void detachInterest() {
         this.interest = null;
+    }
+
+    private static String validateKeyword(String keyword) {
+        if (!StringUtils.hasText(keyword)) {
+            throw new InterestKeywordInvalidException(keyword);
+        }
+        if (keyword.length() > 50) {
+            throw new InterestKeywordInvalidException(keyword);
+        }
+
+        return keyword;
     }
 }
