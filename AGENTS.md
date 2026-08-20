@@ -35,6 +35,8 @@ Mac, Linux, Git Bash:
 - 허용 type은 `feat`, `fix`, `refactor`, `test`, `docs`, `chore`이다.
 - commit 메시지는 `<type>: MID4-번호 변경 내용` 형식을 사용한다.
 - PR 제목은 `MID4-번호 작업 요약` 형식을 사용한다.
+- PR 본문은 `.github/PULL_REQUEST_TEMPLATE.md`를 사용하고, 템플릿 섹션을 임의로 누락하지 않는다.
+- PR 본문에는 대표 Jira 번호, 작업 내용, 확인 방법, 확인 사항을 실제 작업 기준으로 작성한다.
 - PR 본문에는 아래 Jira 필드를 유지하고 실제 티켓 번호를 입력한다.
 
 ```text
