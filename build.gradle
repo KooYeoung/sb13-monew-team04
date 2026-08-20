@@ -56,6 +56,9 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok-mapstruct-binding:0.2.0'
     annotationProcessor 'org.mapstruct:mapstruct-processor:1.6.3'
 
+    // LevenshteinDistance
+    implementation 'org.apache.commons:commons-text:1.11.0'
+
     // Docker Compose
     developmentOnly 'org.springframework.boot:spring-boot-docker-compose'
 

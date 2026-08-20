@@ -19,6 +19,7 @@ public enum ApiErrorCode {
     INTEREST_NAME_INVALID("INT_002", HttpStatus.BAD_REQUEST, "이름은 비어있을 수 없고 50자를 넘을 수 없습니다."),
     INTEREST_KEYWORD_REQUIRED("INT_003", HttpStatus.BAD_REQUEST, "관심사에는 최소 1개의 키워드가 있어야 합니다."),
     INTEREST_KEYWORD_INVALID("INT_004", HttpStatus.BAD_REQUEST, "키워드는 비어있을 수 없고 50자를 넘을 수 없습니다."),
+    INTEREST_NAME_DUPLICATED("INT_005", HttpStatus.CONFLICT, "이미 존재하는 관심사입니다."),
 
     // NOTIFICATION NTF
     NOTIFICATION_NOT_FOUND("NTF_001", HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다."),

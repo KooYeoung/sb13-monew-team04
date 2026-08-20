@@ -1,0 +1,268 @@
+package com.codeit.sb13.monew.interest.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.codeit.sb13.monew.global.exception.interest.InterestNameDuplicatedException;
+import com.codeit.sb13.monew.interest.controller.dto.InterestResponse;
+import com.codeit.sb13.monew.interest.domain.Interest;
+import com.codeit.sb13.monew.interest.repository.InterestRepository;
+import com.codeit.sb13.monew.interest.repository.SubscribeRepository;
+import com.codeit.sb13.monew.interest.service.dto.InterestCreateCommand;
+import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.parallel.Isolated;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.util.ReflectionTestUtils;
+
+/**
+ * {@code create_uniqueViolationUnderTurkishDefaultLocale_throwsException}가
+ * {@link Locale#setDefault}로 JVM 전역 상태를 일시적으로 바꾸므로,
+ * 지금은 JUnit 병렬 실행이 꺼져 있어 문제가 없지만 나중에 켜지더라도
+ * 다른 테스트 클래스와 동시에 실행되지 않도록 {@link Isolated}를 붙여둔다.
+ */
+@Isolated
+@ExtendWith(MockitoExtension.class)
+class InterestServiceTest {
+
+    @Mock
+    InterestRepository interestRepository;
+
+    @Mock
+    SubscribeRepository subscribeRepository;
+
+    @Captor
+    ArgumentCaptor<Interest> interestCaptor;
+
+    @InjectMocks
+    InterestServiceImpl interestServiceImpl;
+
+    @Test
+    @DisplayName("사전 검사에서 이름이 이미 존재하면 InterestNameDuplicatedException을 던지고 저장하지 않는다")
+    void create_duplicateName_throwsException() {
+        // given
+        InterestCreateCommand command = new InterestCreateCommand("스포츠", List.of("축구"));
+        when(interestRepository.existsByName(command.name())).thenReturn(true);
+
+        // when & then
+        assertThatThrownBy(() -> interestServiceImpl.create(command))
+                .isInstanceOf(InterestNameDuplicatedException.class);
+
+        verify(interestRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("기존 이름과 80% 이상 유사한 이름이면 InterestNameDuplicatedException을 던지고 저장하지 않는다")
+    void create_nameTooSimilarToExisting_throwsException() {
+        // given
+        InterestCreateCommand command = new InterestCreateCommand("스포츠뉴스판", List.of("축구"));
+
+        when(interestRepository.existsByName(command.name())).thenReturn(false);
+        // "스포츠뉴스"(5자)와 "스포츠뉴스판"(6자)은 편집 거리 1로 유사도 1 - 1/6 ≈ 0.833(83.3%).
+        // 새 이름 길이 6이면 후보 길이 범위는 [5, 7]이라 길이 5인 "스포츠뉴스"가 후보에 포함된다.
+        when(interestRepository.findNamesByLengthBetween(5, 7)).thenReturn(List.of("스포츠뉴스"));
+
+        // when & then
+        assertThatThrownBy(() -> interestServiceImpl.create(command))
+                .isInstanceOf(InterestNameDuplicatedException.class);
+
+        verify(interestRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("기존 이름과 유사도가 정확히 80%(임계값)인 이름이면 InterestNameDuplicatedException을 던지고 저장하지 않는다")
+    void create_nameExactlyAtSimilarityThreshold_throwsException() {
+        // given
+        InterestCreateCommand command = new InterestCreateCommand("게임소식판", List.of("게임"));
+
+        when(interestRepository.existsByName(command.name())).thenReturn(false);
+        // "게임소식란"과 "게임소식판"은 둘 다 길이 5, 마지막 글자 하나만 달라 편집 거리 1이고,
+        // 유사도는 1 - 1/5 = 0.8로 임계값과 정확히 같다. >= 비교가 > 로 바뀌는 회귀를 잡기 위한 경계값 테스트.
+        // 새 이름 길이 5이면 후보 길이 범위는 [4, 6]이라 길이 5인 "게임소식란"이 후보에 포함된다.
+        when(interestRepository.findNamesByLengthBetween(4, 6)).thenReturn(List.of("게임소식란"));
+
+        // when & then
+        assertThatThrownBy(() -> interestServiceImpl.create(command))
+                .isInstanceOf(InterestNameDuplicatedException.class);
+
+        verify(interestRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("기존 이름들과 유사도가 80% 미만이면 정상적으로 등록된다")
+    void create_nameNotSimilarEnough_savesSuccessfully() {
+        // given
+        InterestCreateCommand command = new InterestCreateCommand("스포츠", List.of("축구", "야구"));
+        UUID generatedId = UUID.randomUUID();
+
+        when(interestRepository.existsByName(command.name())).thenReturn(false);
+        // "스포츠"(길이 3)의 후보 길이 범위는 [3, 3]이다. "가나다"는 길이는 같지만 모든 글자가
+        // 달라 편집 거리 3, 유사도 0이라 후보로 조회되더라도 임계값 미만으로 걸러진다.
+        when(interestRepository.findNamesByLengthBetween(3, 3)).thenReturn(List.of("가나다"));
+        when(interestRepository.saveAndFlush(any(Interest.class))).thenAnswer(invocation -> {
+            Interest saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", generatedId);
+            return saved;
+        });
+
+        // when
+        InterestResponse response = interestServiceImpl.create(command);
+
+        // then
+        assertThat(response.id()).isEqualTo(generatedId);
+        verify(interestRepository).saveAndFlush(any(Interest.class));
+    }
+
+    @Test
+    @DisplayName("정상 요청이면 관심사와 키워드를 저장하고, 구독자 0명/미구독 상태로 응답한다")
+    void create_validRequest_savesAndReturnsResponse() {
+        // given
+        InterestCreateCommand command = new InterestCreateCommand("스포츠", List.of("축구", "야구"));
+        UUID generatedId = UUID.randomUUID();
+
+        when(interestRepository.existsByName(command.name())).thenReturn(false);
+        when(interestRepository.findNamesByLengthBetween(anyInt(), anyInt())).thenReturn(List.of());
+        when(interestRepository.saveAndFlush(any(Interest.class))).thenAnswer(invocation -> {
+            Interest saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", generatedId);
+            return saved;
+        });
+
+        // when
+        InterestResponse response = interestServiceImpl.create(command);
+
+        // then
+        assertThat(response.id()).isEqualTo(generatedId);
+        assertThat(response.name()).isEqualTo("스포츠");
+        assertThat(response.keywords()).containsExactly("축구", "야구");
+        assertThat(response.subscriberCount()).isEqualTo(0L);
+        assertThat(response.subscribedByMe()).isFalse();
+
+        verify(interestRepository).saveAndFlush(interestCaptor.capture());
+        Interest captured = interestCaptor.getValue();
+        assertThat(captured.getName()).isEqualTo("스포츠");
+        assertThat(captured.getKeywords()).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("사전 검사를 통과했지만 저장 시점에 이름 중복 제약 위반이 발생하면 InterestNameDuplicatedException을 던진다")
+    void create_uniqueViolationDetectedAtSaveTime_throwsException() {
+        // given
+        InterestCreateCommand command = new InterestCreateCommand("스포츠", List.of("축구"));
+
+        DataIntegrityViolationException original = new DataIntegrityViolationException(
+                "duplicate key value violates unique constraint \"uk_interests_name\"");
+
+        when(interestRepository.existsByName(command.name())).thenReturn(false);
+        when(interestRepository.findNamesByLengthBetween(anyInt(), anyInt())).thenReturn(List.of());
+        when(interestRepository.saveAndFlush(any(Interest.class))).thenThrow(original);
+
+        // when & then
+        assertThatThrownBy(() -> interestServiceImpl.create(command))
+                .isInstanceOf(InterestNameDuplicatedException.class)
+                .hasCause(original);
+
+        verify(interestRepository).existsByName(command.name());
+    }
+
+    @Test
+    @DisplayName("H2처럼 제약 이름을 대문자로 돌려주는 DB에서도 이름 중복으로 판별한다")
+    void create_uniqueViolationWithUppercaseConstraintName_throwsException() {
+        // given
+        InterestCreateCommand command = new InterestCreateCommand("스포츠", List.of("축구"));
+
+        // 실제 H2(test 프로파일)가 던지는 메시지 형태를 그대로 옮긴 것
+        DataIntegrityViolationException original = new DataIntegrityViolationException(
+                "Unique index or primary key violation: "
+                        + "\"PUBLIC.UK_INTERESTS_NAME INDEX PUBLIC.UK_INTERESTS_NAME_INDEX_C "
+                        + "ON PUBLIC.INTERESTS(NAME NULLS FIRST) VALUES ( /* 1 */ '스포츠' )\"");
+
+        when(interestRepository.existsByName(command.name())).thenReturn(false);
+        when(interestRepository.findNamesByLengthBetween(anyInt(), anyInt())).thenReturn(List.of());
+        when(interestRepository.saveAndFlush(any(Interest.class))).thenThrow(original);
+
+        // when & then
+        assertThatThrownBy(() -> interestServiceImpl.create(command))
+                .isInstanceOf(InterestNameDuplicatedException.class)
+                .hasCause(original);
+    }
+
+    @Test
+    @DisplayName("JVM 기본 로케일이 튀르키예어여도 대문자 I가 포함된 제약 이름을 이름 중복으로 판별한다")
+    void create_uniqueViolationUnderTurkishDefaultLocale_throwsException() {
+        Locale originalDefault = Locale.getDefault();
+        try {
+            // given: toLowerCase()를 로케일 없이 쓰면 튀르키예어 로케일에서
+            // "INTERESTS"의 I가 점 없는 ı로 바뀌어 매칭에 실패할 수 있다.
+            Locale.setDefault(new Locale("tr", "TR"));
+
+            InterestCreateCommand command = new InterestCreateCommand("스포츠", List.of("축구"));
+
+            DataIntegrityViolationException original = new DataIntegrityViolationException(
+                    "Unique index or primary key violation: "
+                            + "\"PUBLIC.UK_INTERESTS_NAME INDEX PUBLIC.UK_INTERESTS_NAME_INDEX_C "
+                            + "ON PUBLIC.INTERESTS(NAME NULLS FIRST) VALUES ( /* 1 */ '스포츠' )\"");
+
+            when(interestRepository.existsByName(command.name())).thenReturn(false);
+            when(interestRepository.findNamesByLengthBetween(anyInt(), anyInt())).thenReturn(List.of());
+            when(interestRepository.saveAndFlush(any(Interest.class))).thenThrow(original);
+
+            // when & then
+            assertThatThrownBy(() -> interestServiceImpl.create(command))
+                    .isInstanceOf(InterestNameDuplicatedException.class)
+                    .hasCause(original);
+        } finally {
+            Locale.setDefault(originalDefault);
+        }
+    }
+
+    @Test
+    @DisplayName("이름과 무관한 제약 위반이면 원래 예외를 그대로 던진다")
+    void create_unrelatedConstraintViolation_rethrowsOriginalException() {
+        // given
+        InterestCreateCommand command = new InterestCreateCommand("스포츠", List.of("축구"));
+
+        when(interestRepository.existsByName(command.name())).thenReturn(false);
+        when(interestRepository.findNamesByLengthBetween(anyInt(), anyInt())).thenReturn(List.of());
+        when(interestRepository.saveAndFlush(any(Interest.class)))
+                .thenThrow(new DataIntegrityViolationException(
+                        "null value in column \"name\" violates not-null constraint"));
+
+        // when & then
+        assertThatThrownBy(() -> interestServiceImpl.create(command))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .isNotInstanceOf(InterestNameDuplicatedException.class);
+    }
+
+    @Test
+    @DisplayName("원인 예외 메시지가 null이면 이름 중복이 아닌 것으로 판별해 원래 예외를 그대로 던진다")
+    void create_uniqueViolationWithNullMessage_rethrowsOriginalException() {
+        // given
+        InterestCreateCommand command = new InterestCreateCommand("스포츠", List.of("축구"));
+
+        DataIntegrityViolationException original = new DataIntegrityViolationException(null);
+
+        when(interestRepository.existsByName(command.name())).thenReturn(false);
+        when(interestRepository.findNamesByLengthBetween(anyInt(), anyInt())).thenReturn(List.of());
+        when(interestRepository.saveAndFlush(any(Interest.class))).thenThrow(original);
+
+        // when & then
+        assertThatThrownBy(() -> interestServiceImpl.create(command))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .isNotInstanceOf(InterestNameDuplicatedException.class);
+    }
+}

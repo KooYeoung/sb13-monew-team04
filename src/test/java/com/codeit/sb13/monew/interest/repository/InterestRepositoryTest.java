@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.*;
@@ -80,5 +81,19 @@ class InterestRepositoryTest {
                     .extracting(Keyword::getKeyword)
                     .containsExactly("야구");
         }
+    }
+
+    @Test
+    @DisplayName("이름이 같은 관심사를 두 번 저장하면 실제로 유니크 제약 위반 예외가 발생한다")
+    void save_duplicateName_violatesUniqueConstraint() {
+        interestRepository.saveAndFlush(Interest.create("스포츠"));
+
+        DataIntegrityViolationException e = catchThrowableOfType(
+                () -> interestRepository.saveAndFlush(Interest.create("스포츠")),
+                DataIntegrityViolationException.class
+        );
+
+        System.out.println("실제 H2 메시지: " + e.getMostSpecificCause().getMessage());
+        assertThat(e.getMostSpecificCause().getMessage()).containsIgnoringCase("uk_interests_name");
     }
 }
