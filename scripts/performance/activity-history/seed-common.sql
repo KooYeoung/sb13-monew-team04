@@ -179,12 +179,11 @@ BEGIN
         'Performance seed summary for article ' || g,
         'https://example.com/performance/articles/' || g,
         article_date,
-        CASE g % 5
+        CASE g % 4
             WHEN 0 THEN 'NAVER'
-            WHEN 1 THEN 'DAUM'
-            WHEN 2 THEN 'GOOGLE'
-            WHEN 3 THEN 'BBC'
-            ELSE 'REUTERS'
+            WHEN 1 THEN 'HANKYUNG'
+            WHEN 2 THEN 'CHOSUN'
+            ELSE 'YEONHAP'
         END,
         article_date - interval '1 hour',
         article_date + interval '10 minutes',
