@@ -51,4 +51,7 @@ public class Notification extends UpdatedAtEntity {
                 .build();
     }
 
+    public void confirm() {
+        this.confirmed = true;
+    }
 }
