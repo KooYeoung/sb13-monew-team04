@@ -1,6 +1,7 @@
 package com.codeit.sb13.monew.article.service;
 
 import com.codeit.sb13.monew.article.domain.Article;
+import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.domain.ArticleView;
 import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
 import com.codeit.sb13.monew.article.service.impl.ArticleViewServiceImpl;
@@ -58,7 +59,7 @@ class ArticleViewServiceTest {
                 "Test Summary",
                 "https://example.com/article",
                 LocalDateTime.now(),
-                "NAVER"
+                ArticleSource.NAVER
         );
 
         testUser = User.builder()

@@ -34,10 +34,12 @@ public class Article extends DeletedAtEntity {
     @Column(nullable = false)
     private LocalDateTime date;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
-    private String source;
+    private ArticleSource source;
 
-    private Article(String title, String summary, String link, LocalDateTime date, String source) {
+    private Article(String title, String summary, String link,
+                    LocalDateTime date, ArticleSource source) {
         this.title = title;
         this.summary = summary;
         this.link = link;
@@ -56,7 +58,7 @@ public class Article extends DeletedAtEntity {
      * @return 생성된 기사
      */
     public static Article create(String title, String summary, String link,
-                                 LocalDateTime date, String source) {
+                                 LocalDateTime date, ArticleSource source) {
         return new Article(title, summary, link, date, source);
     }
 

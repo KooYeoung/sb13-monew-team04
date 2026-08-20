@@ -1,6 +1,7 @@
 package com.codeit.sb13.monew.article.service;
 
 import com.codeit.sb13.monew.article.domain.Article;
+import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.repository.ArticleRepository;
 import com.codeit.sb13.monew.article.service.dto.ArticleRequest;
 import com.codeit.sb13.monew.article.service.impl.ArticleServiceImpl;
@@ -46,7 +47,7 @@ class ArticleServiceTest {
                 "Test Summary",
                 "https://example.com/article",
                 LocalDateTime.now(),
-                "NAVER"
+                ArticleSource.NAVER
         );
 
         articleRequest = new ArticleRequest(
@@ -54,7 +55,7 @@ class ArticleServiceTest {
                 "New Summary",
                 "https://example.com/new",
                 LocalDateTime.now(),
-                "HANKYUNG"
+                ArticleSource.HANKYUNG
         );
     }
 
@@ -63,8 +64,8 @@ class ArticleServiceTest {
     void testFindAll() {
         // given
         List<Article> articles = Arrays.asList(
-                Article.create("title 1", "summary 1", "link1", LocalDateTime.now(), "source1"),
-                Article.create("title 2", "summary 2", "link2", LocalDateTime.now(), "source2")
+                Article.create("title 1", "summary 1", "link1", LocalDateTime.now(), ArticleSource.NAVER),
+                Article.create("title 2", "summary 2", "link2", LocalDateTime.now(), ArticleSource.CHOSUN)
         );
         when(articleRepository.findAllByDeletedAtIsNullOrderByDateDesc())
                 .thenReturn(articles);
