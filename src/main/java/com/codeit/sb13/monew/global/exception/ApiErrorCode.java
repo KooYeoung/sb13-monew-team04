@@ -13,6 +13,7 @@ public enum ApiErrorCode {
 
     // ARTICLE ART
     ARTICLE_NOT_FOUND("ART_001", HttpStatus.NOT_FOUND, "뉴스를 찾을 수 없습니다."),
+    ARTICLE_DUPLICATE("ART_002", HttpStatus.CONFLICT, "이미 등록된 기사입니다."),
 
     // INTEREST INT
     INTEREST_NOT_FOUND("INT_001", HttpStatus.NOT_FOUND, "관심사를 찾을 수 없습니다."),

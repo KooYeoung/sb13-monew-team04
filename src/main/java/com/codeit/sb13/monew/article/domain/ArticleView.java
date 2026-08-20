@@ -1,12 +1,12 @@
 package com.codeit.sb13.monew.article.domain;
 
 import com.codeit.sb13.monew.global.domain.CreatedAtEntity;
+import com.codeit.sb13.monew.user.domain.User;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
 @Table(
@@ -23,18 +23,30 @@ import java.util.UUID;
         }
 )
 @Getter
-@NoArgsConstructor
-@AllArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ArticleView extends CreatedAtEntity {
 
-    @Column(nullable = false, columnDefinition = "UUID")
-    private UUID articleId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "article_id", nullable = false)
+    private Article article;
 
-    @Column(nullable = false, columnDefinition = "UUID")
-    private UUID userId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
     @Column(nullable = false, updatable = true)
     private LocalDateTime viewedAt;
+
+    private ArticleView(Article article, User user, LocalDateTime viewedAt) {
+        this.article = article;
+        this.user = user;
+        this.viewedAt = viewedAt;
+    }
+
+    // 조회 기록 생성 팩토리 메서드
+    public static ArticleView create(Article article, User user, LocalDateTime viewedAt) {
+        return new ArticleView(article, user, viewedAt);
+    }
 
     @PrePersist
     protected void onCreate() {
@@ -43,8 +55,8 @@ public class ArticleView extends CreatedAtEntity {
         }
     }
 
-    @PreUpdate
-    protected void onUpdate() {
-        this.viewedAt = LocalDateTime.now();
+    // 조회 시간 업데이트
+    public void updateViewedAt(LocalDateTime viewedAt) {
+        this.viewedAt = viewedAt;
     }
 }
