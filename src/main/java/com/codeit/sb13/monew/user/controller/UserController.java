@@ -4,15 +4,23 @@ import com.codeit.sb13.monew.user.controller.dto.UserCreateRequest;
 import com.codeit.sb13.monew.user.controller.dto.UserCreateResponse;
 import com.codeit.sb13.monew.user.controller.dto.UserLoginRequest;
 import com.codeit.sb13.monew.user.controller.dto.UserLoginResponse;
+import com.codeit.sb13.monew.user.controller.dto.UserNicknameUpdateRequest;
+import com.codeit.sb13.monew.user.controller.dto.UserUpdateNicknameResponse;
 import com.codeit.sb13.monew.user.service.UserService;
 import com.codeit.sb13.monew.user.service.dto.UserCreateCommand;
 import com.codeit.sb13.monew.user.service.dto.UserCreateResult;
 import com.codeit.sb13.monew.user.service.dto.UserLoginCommand;
 import com.codeit.sb13.monew.user.service.dto.UserLoginResult;
+import com.codeit.sb13.monew.user.service.dto.UserUpdateNicknameCommand;
+import com.codeit.sb13.monew.user.service.dto.UserUpdateNicknameResult;
 import jakarta.validation.Valid;
+import java.time.LocalDateTime;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -44,7 +52,7 @@ public class UserController {
 
   @PostMapping("/login")
   public ResponseEntity<UserLoginResponse> login(
-     @Valid @RequestBody UserLoginRequest request
+      @Valid @RequestBody UserLoginRequest request
   ) {
     UserLoginCommand command = new UserLoginCommand(
         request.email(),
@@ -58,6 +66,24 @@ public class UserController {
     return ResponseEntity.status(HttpStatus.OK)
         .header(USER_ID_HEADER, login.userId().toString())
         .body(response);
+  }
+
+  @PatchMapping("/{userId}")
+  public ResponseEntity<UserUpdateNicknameResponse> updateNickname(
+      @PathVariable("userId") UUID userId,
+      @Valid @RequestBody UserNicknameUpdateRequest request
+  ) {
+    UserUpdateNicknameCommand command = new UserUpdateNicknameCommand(
+        userId,
+        request.nickname()
+    );
+    UserUpdateNicknameResult result = userService.updateNickname(command);
+    UserUpdateNicknameResponse response = new UserUpdateNicknameResponse
+        (result.userId(),
+            result.nickname(),
+            result.updatedAt());
+
+    return ResponseEntity.status(HttpStatus.OK).body(response);
   }
 
 }

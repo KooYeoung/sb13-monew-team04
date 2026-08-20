@@ -1,5 +1,6 @@
 package com.codeit.sb13.monew.user.service.impl;
 
+import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
 import com.codeit.sb13.monew.user.exception.InvalidPasswordException;
@@ -10,6 +11,9 @@ import com.codeit.sb13.monew.user.service.dto.UserCreateCommand;
 import com.codeit.sb13.monew.user.service.dto.UserCreateResult;
 import com.codeit.sb13.monew.user.service.dto.UserLoginCommand;
 import com.codeit.sb13.monew.user.service.dto.UserLoginResult;
+import com.codeit.sb13.monew.user.service.dto.UserUpdateNicknameCommand;
+import com.codeit.sb13.monew.user.service.dto.UserUpdateNicknameResult;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -216,5 +220,58 @@ public class UserServiceImplTest {
     // then
     assertThat(actualResult).isEqualTo(expectedResult);
   }
+
+  @Test
+  @DisplayName("존재하지 않는 userId로 요청하면 예외를 던진다.")
+  void 존재하지_않는_id로_요청하면_예외를_던진다() {
+    // given
+    UserUpdateNicknameCommand command = new UserUpdateNicknameCommand(
+        UUID.randomUUID(),
+        "닉네임"
+    );
+    when(userRepository.findById(command.userId()))
+        .thenReturn(Optional.empty());
+
+    // when & then
+    assertThatThrownBy(() -> userServiceImpl.updateNickname(command))
+        .isInstanceOf(UserNotFoundException.class);
+    verify(userMapper, never()).toUpdateNicknameResult(any());
+    verify(userRepository, never()).saveAndFlush(any(User.class));
+
+  }
+
+  @Test
+  @DisplayName("올바른 요청을 보내면 닉네임 변경이 성공한다")
+  void 올바른_요청을_보내면_닉네임_변경이_성공한다() {
+    // given
+    UserUpdateNicknameCommand command = new UserUpdateNicknameCommand(
+        UUID.randomUUID(), "닉네임2");
+
+    UserUpdateNicknameResult expectedResult = new UserUpdateNicknameResult(
+        command.userId(), "닉네임2", LocalDateTime.now());
+
+    User user = User.builder()
+        .email("email@email.cim")
+        .nickname("닉네임")
+        .password("PassWord123!")
+        .build();
+    when(userRepository.findById(command.userId()))
+        .thenReturn(Optional.of(user));
+    when(userRepository.saveAndFlush(user))
+        .thenReturn(user);
+    when(userMapper.toUpdateNicknameResult(user))
+        .thenReturn(expectedResult);
+
+    // when
+    UserUpdateNicknameResult actualResult = userServiceImpl.updateNickname(command);
+
+    // then
+    assertThat(actualResult).isEqualTo(expectedResult);
+    assertThat(user.getNickname()).isEqualTo("닉네임2");
+    verify(userRepository).saveAndFlush(user);
+  }
+
+
+
 
 }

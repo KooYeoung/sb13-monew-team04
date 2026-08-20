@@ -5,11 +5,15 @@ import com.codeit.sb13.monew.user.service.dto.UserCreateCommand;
 import com.codeit.sb13.monew.user.service.dto.UserCreateResult;
 import com.codeit.sb13.monew.user.service.dto.UserLoginCommand;
 import com.codeit.sb13.monew.user.service.dto.UserLoginResult;
+import com.codeit.sb13.monew.user.service.dto.UserUpdateNicknameCommand;
+import com.codeit.sb13.monew.user.service.dto.UserUpdateNicknameResult;
 
 public interface UserService {
 
    UserCreateResult signUp(UserCreateCommand command);
 
    UserLoginResult login(UserLoginCommand command);
+
+   UserUpdateNicknameResult updateNickname(UserUpdateNicknameCommand command);
 
 }
