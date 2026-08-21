@@ -22,4 +22,6 @@ public interface UserService {
 
    void validateExists(UUID userId);
 
+   void deleteUser(UUID userId);
+
 }

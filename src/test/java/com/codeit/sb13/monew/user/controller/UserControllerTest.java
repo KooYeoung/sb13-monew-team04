@@ -1,8 +1,10 @@
 package com.codeit.sb13.monew.user.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
@@ -10,6 +12,7 @@ import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.user.controller.dto.UserCreateRequest;
 import com.codeit.sb13.monew.user.controller.dto.UserLoginRequest;
 import com.codeit.sb13.monew.user.controller.dto.UserNicknameUpdateRequest;
+import com.codeit.sb13.monew.user.exception.AlreadyDeletedUserException;
 import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
 import com.codeit.sb13.monew.user.exception.InvalidPasswordException;
 import com.codeit.sb13.monew.user.exception.LoginUserNotFoundException;
@@ -274,7 +277,7 @@ class UserControllerTest {
     UUID userId = UUID.randomUUID();
 
     when(userService.updateNickname(any(UserUpdateNicknameCommand.class)))
-    .thenThrow(new UserNotFoundException(userId));
+        .thenThrow(new UserNotFoundException(userId));
 
     // when & then
     mockMvc.perform(patch("/api/users/{userId}", userId)
@@ -288,16 +291,54 @@ class UserControllerTest {
   @CsvSource({
       "''", "'a'", "'123456789012345678901'"
   })
-  void 닉네임_형식_검증_실패시_400을_반환한다(String nickname) throws Exception{
+  void 닉네임_형식_검증_실패시_400을_반환한다(String nickname) throws Exception {
     // given
     UserNicknameUpdateRequest request = new UserNicknameUpdateRequest(nickname);
 
     // when & then
     mockMvc.perform(patch("/api/users/{userId}", UUID.randomUUID())
-        .contentType(MediaType.APPLICATION_JSON)
-        .content(objectMapper.writeValueAsString(request)))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isBadRequest());
+  }
 
+  @Test
+  @DisplayName("유효한 id로 deleteUser요청시 200반환")
+  void 유효한_id로_deleteUaer_요청시_200반환() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+    // when & then
+    mockMvc.perform(delete("/api/users/{userId}", userId))
+        .andExpect(status().isOk());
+    verify(userService).deleteUser(userId);
+  }
+
+  @Test
+  @DisplayName("존재하지 않는 id로 deleteUSer요청시 404를 반환한다.. ")
+  void 존재하지_않는_id로_deleteUser요청시_404반환() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+    doThrow(new UserNotFoundException(userId))
+        .when(userService).deleteUser(userId);
+
+    // when & then
+    mockMvc.perform(delete("/api/users/{userId}", userId))
+        .andExpect(status().isNotFound());
+    verify(userService).deleteUser(userId);
+  }
+
+  @Test
+  @DisplayName("이미 삭제된 id로 deleteUser요청시 409반환")
+  void 이미_삭제된_id로_deleteUser요청시_409반환() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+
+    doThrow(new AlreadyDeletedUserException(userId))
+        .when(userService).deleteUser(userId);
+    // when & then
+    mockMvc.perform(delete("/api/users/{userId}", userId))
+        .andExpect(status().isConflict());
+    verify(userService).deleteUser(userId);
 
   }
 }

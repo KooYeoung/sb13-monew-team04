@@ -2,6 +2,7 @@ package com.codeit.sb13.monew.user.service.impl;
 
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.user.domain.User;
+import com.codeit.sb13.monew.user.exception.AlreadyDeletedUserException;
 import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
 import com.codeit.sb13.monew.user.exception.InvalidPasswordException;
 import com.codeit.sb13.monew.user.exception.LoginUserNotFoundException;
@@ -14,6 +15,7 @@ import com.codeit.sb13.monew.user.service.dto.UserLoginCommand;
 import com.codeit.sb13.monew.user.service.dto.UserLoginResult;
 import com.codeit.sb13.monew.user.service.dto.UserUpdateNicknameCommand;
 import com.codeit.sb13.monew.user.service.dto.UserUpdateNicknameResult;
+import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -62,6 +64,11 @@ public class UserServiceImpl implements UserService {
   public UserLoginResult login(UserLoginCommand command) {
     User user = userRepository.findByEmail(command.email())
         .orElseThrow(() -> new LoginUserNotFoundException(command.email()));
+    LocalDateTime deletedAt = user.getDeletedAt();
+    if(deletedAt != null) {
+      throw new LoginUserNotFoundException(command.email());
+    }
+
     String password = user.getPassword();
 
     boolean matches = passwordEncoder.matches(command.password(), password);
@@ -95,6 +102,17 @@ public class UserServiceImpl implements UserService {
       throw new UserNotFoundException(userId);
     }
 
+  }
+
+  @Override
+  @Transactional
+  public void deleteUser(UUID userId) {
+    int updatedCount = userRepository.softDeleteIfNotDeleted(userId, LocalDateTime.now());
+
+    if (updatedCount == 0) {
+      validateExists(userId);
+      throw new AlreadyDeletedUserException(userId);
+    }
   }
 
   private boolean isEmailUniqueViolation(DataIntegrityViolationException e) {

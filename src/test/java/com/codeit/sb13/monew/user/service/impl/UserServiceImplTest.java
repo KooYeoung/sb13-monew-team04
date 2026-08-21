@@ -2,6 +2,7 @@ package com.codeit.sb13.monew.user.service.impl;
 
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.user.domain.User;
+import com.codeit.sb13.monew.user.exception.AlreadyDeletedUserException;
 import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
 import com.codeit.sb13.monew.user.exception.InvalidPasswordException;
 import com.codeit.sb13.monew.user.exception.LoginUserNotFoundException;
@@ -29,6 +30,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.any;
@@ -193,6 +195,30 @@ public class UserServiceImplTest {
   }
 
   @Test
+  @DisplayName("삭제된 사용자가 로그인을 시도하면 LoginUserNotFoundException을 던진다")
+  void 삭제된_사용자가_로그인_시도시_예외를_던진다() {
+    // given
+    User user = User.builder()
+        .email("email@email.com")
+        .nickname("닉네임")
+        .password("PassWord123!")
+        .build();
+    user.softDelete();
+    UserLoginCommand command = new UserLoginCommand(
+        "email@email.com", "PassWord123!"
+    );
+    when(userRepository.findByEmail(command.email()))
+        .thenReturn(Optional.of(user));
+
+    // when & then
+    assertThatThrownBy(() -> userServiceImpl.login(command))
+    .isInstanceOf(LoginUserNotFoundException.class);
+    verify(passwordEncoder, never()).matches(any(), any());
+    verify(userMapper, never()).toLoginResult(any());
+
+  }
+
+  @Test
   @DisplayName("이메일/비밀번호가 올바르면 로그인에 성공한다.")
   void 올바른_이메일과_비밀번호라면_로그인_성공() {
     // given
@@ -332,6 +358,56 @@ public class UserServiceImplTest {
         .doesNotThrowAnyException();
   }
 
+  @Test
+  @DisplayName("존재하지 않는 userId로 deleteUser요청 시 예외를 던진다")
+  void 존재하지_않는_userId로_요청_시_예외를_던진다() {
+    // given
+    UUID userId = UUID.randomUUID();
+
+    when(userRepository.softDeleteIfNotDeleted(eq(userId),
+        any(LocalDateTime.class)))
+        .thenReturn(0);
+    when(userRepository.existsById(userId))
+        .thenReturn(false);
+
+    // when & then
+    assertThatThrownBy(() -> userServiceImpl.deleteUser(userId))
+        .isInstanceOf(UserNotFoundException.class);
+  }
+
+  @Test
+  @DisplayName("정상적인 요청 시 사용자가 논리 삭제된다")
+  void 정상_요청_시_사용자가_논리_살제된다() {
+    // given
+    UUID userId = UUID.randomUUID();
+
+    when(userRepository.softDeleteIfNotDeleted(eq(userId),
+         any(LocalDateTime.class)))
+        .thenReturn(1);
+
+    // when & then
+    assertThatCode(() -> userServiceImpl.deleteUser(userId))
+        .doesNotThrowAnyException();
+    verify(userRepository).softDeleteIfNotDeleted(eq(userId),
+        any(LocalDateTime.class));
+    verify(userRepository, never()).existsById(any());
+  }
+
+  @Test
+  @DisplayName("이미 논리 삭제된 user 조회시 예외를 던진다")
+  void 논리_삭제된_user_조회시_예외를_던진다() {
+    // given
+    UUID userId = UUID.randomUUID();
+    when(userRepository.softDeleteIfNotDeleted(eq(userId),
+        any(LocalDateTime.class)))
+        .thenReturn(0);
+    when(userRepository.existsById(userId))
+        .thenReturn(true);  // 여기가 다름
+
+    // when & then
+    assertThatThrownBy(() -> userServiceImpl.deleteUser(userId))
+        .isInstanceOf(AlreadyDeletedUserException.class);
+  }
 
 
 }
