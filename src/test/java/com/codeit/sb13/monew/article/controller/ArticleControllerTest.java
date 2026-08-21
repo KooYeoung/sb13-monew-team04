@@ -1,9 +1,13 @@
 package com.codeit.sb13.monew.article.controller;
 
+import com.codeit.sb13.monew.article.service.ArticleViewService;
 import com.codeit.sb13.monew.article.service.dto.ArticleDto;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.service.ArticleService;
+import com.codeit.sb13.monew.article.service.dto.ArticleViewDto;
 import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
+import com.codeit.sb13.monew.global.exception.article.ArticleViewConflictException;
+import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,6 +27,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 @WebMvcTest(ArticleController.class)
 @DisplayName("ArticleController 슬라이스 테스트")
@@ -36,9 +41,13 @@ class ArticleControllerTest {
     @MockitoBean
     ArticleService articleService;
 
+    @MockitoBean
+    ArticleViewService articleViewService;
+
     private UUID articleId;
     private UUID userId;
     private ArticleDto articleDto;
+    private ArticleViewDto articleViewDto;
 
     @BeforeEach
     void setUp() {
@@ -55,6 +64,20 @@ class ArticleControllerTest {
                 0L,
                 7L,
                 true
+        );
+
+        articleViewDto = new ArticleViewDto(
+                UUID.randomUUID(),
+                userId,
+                LocalDateTime.of(2026, 8, 21, 9, 0),
+                articleId,
+                ArticleSource.NAVER,
+                "https://example.com/article",
+                "Test Article",
+                LocalDateTime.of(2026, 8, 20, 10, 0),
+                "Test Summary",
+                0L,
+                1L
         );
     }
 
@@ -145,5 +168,81 @@ class ArticleControllerTest {
                 .andExpect(jsonPath("$.code").value("GLB_001"));
 
         verify(articleService, never()).getArticle(any(), any());
+    }
+
+    @Test
+    @DisplayName("뷰 등록 성공 시 200과 ArticleViewDto를 반환한다")
+    void registerArticleViewSuccess() throws Exception {
+        // given
+        when(articleViewService.recordView(articleId, userId)).thenReturn(articleViewDto);
+
+        // when & then
+        mockMvc.perform(post("/api/articles/{articleId}/article-views", articleId)
+                        .header(USER_ID_HEADER, userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.viewedBy").value(userId.toString()))
+                .andExpect(jsonPath("$.articleId").value(articleId.toString()))
+                .andExpect(jsonPath("$.source").value("NAVER"))
+                .andExpect(jsonPath("$.articleTitle").value("Test Article"))
+                .andExpect(jsonPath("$.articleSummary").value("Test Summary"))
+                .andExpect(jsonPath("$.articleViewCount").value(1))
+                .andExpect(jsonPath("$.articleCommentCount").value(0));
+
+        verify(articleViewService).recordView(articleId, userId);
+    }
+
+    @Test
+    @DisplayName("뷰 등록 시 존재하지 않는 기사는 404와 ART_001을 반환한다")
+    void registerArticleViewArticleNotFound() throws Exception {
+        // given
+        when(articleViewService.recordView(articleId, userId))
+                .thenThrow(new ArticleNotFoundException(articleId));
+
+        // when & then
+        mockMvc.perform(post("/api/articles/{articleId}/article-views", articleId)
+                        .header(USER_ID_HEADER, userId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("ART_001"))
+                .andExpect(jsonPath("$.details.articleId").value(articleId.toString()));
+    }
+
+    @Test
+    @DisplayName("뷰 등록 시 존재하지 않는 사용자는 404와 USR_001을 반환한다")
+    void registerArticleViewUserNotFound() throws Exception {
+        // given
+        when(articleViewService.recordView(articleId, userId))
+                .thenThrow(new UserNotFoundException(userId));
+
+        // when & then
+        mockMvc.perform(post("/api/articles/{articleId}/article-views", articleId)
+                        .header(USER_ID_HEADER, userId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USR_001"))
+                .andExpect(jsonPath("$.details.userId").value(userId.toString()));
+    }
+
+    @Test
+    @DisplayName("뷰 등록 시 Monew-Request-User-ID 헤더가 없으면 400을 반환한다")
+    void registerArticleViewWithoutHeader() throws Exception {
+        // when & then
+        mockMvc.perform(post("/api/articles/{articleId}/article-views", articleId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("GLB_001"));
+
+        verify(articleViewService, never()).recordView(any(), any());
+    }
+
+    @Test
+    @DisplayName("뷰 등록 중 동시 요청 충돌 시 409와 ART_006을 반환한다")
+    void registerArticleViewConflict() throws Exception {
+        // given
+        when(articleViewService.recordView(articleId, userId))
+                .thenThrow(new ArticleViewConflictException());
+
+        // when & then
+        mockMvc.perform(post("/api/articles/{articleId}/article-views", articleId)
+                        .header(USER_ID_HEADER, userId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ART_006"));
     }
 }

@@ -3,6 +3,7 @@ package com.codeit.sb13.monew.article.repository;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleView;
 import com.codeit.sb13.monew.user.domain.User;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -15,6 +16,7 @@ import java.util.UUID;
 public interface ArticleViewRepository extends JpaRepository<ArticleView, UUID> {
 
     // 특정 기사와 사용자의 조회 기록 조회
+    @EntityGraph(attributePaths = {"article", "user"})
     Optional<ArticleView> findByArticleAndUser(Article article, User user);
 
     // 특정 기사의 조회 기록 목록 조회 (최신순)
