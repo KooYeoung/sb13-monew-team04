@@ -18,6 +18,14 @@ springdoc:
     tags-sorter: alpha
 
 monew:
+  news:
+    naver:
+      base-url: https://openapi.naver.com
+      path: /v1/search/news.json
+      client-id: ${MONEW_NAVER_CLIENT_ID:}
+      client-secret: ${MONEW_NAVER_CLIENT_SECRET:}
+      connect-timeout: ${MONEW_NAVER_CONNECT_TIMEOUT:3s}
+      read-timeout: ${MONEW_NAVER_READ_TIMEOUT:5s}
   openapi:
     server-url: http://localhost:${server.port:8080}
     server-description: 로컬 개발 서버

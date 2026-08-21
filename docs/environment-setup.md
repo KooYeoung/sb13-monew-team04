@@ -65,3 +65,41 @@ docker compose --env-file .env.dev up -d postgres
 ```powershell
 docker compose down
 ```
+
+## 7. NAVER API 설정
+
+NAVER 뉴스 검색 API를 사용하려면 NAVER Developers에서 애플리케이션을 등록하고 검색 API 사용 권한을 준비합니다.
+
+- 공식 문서: https://developers.naver.com/docs/serviceapi/search/news/news.md
+- 요청 URL: `https://openapi.naver.com/v1/search/news.json`
+- 인증 헤더: `X-Naver-Client-Id`, `X-Naver-Client-Secret`
+- 요청 파라미터: `query`, `display`, `start`, `sort`
+
+발급받은 인증 값은 `.env.dev`에만 입력합니다. `.env.dev`는 개인 로컬 설정 파일이므로 Git에 올리지 않습니다.
+
+```properties
+MONEW_NAVER_CLIENT_ID=발급받은-client-id
+MONEW_NAVER_CLIENT_SECRET=발급받은-client-secret
+MONEW_NAVER_CONNECT_TIMEOUT=3s
+MONEW_NAVER_READ_TIMEOUT=5s
+```
+
+공유 예시 파일인 `.env.example`에는 실제 인증 값을 넣지 않고 빈 값만 유지합니다.
+
+애플리케이션에서는 `application.yaml`의 `monew.news.naver.*` 설정을 통해 아래 값이 바인딩됩니다.
+
+```yaml
+monew:
+  news:
+    naver:
+      base-url: https://openapi.naver.com
+      path: /v1/search/news.json
+      client-id: ${MONEW_NAVER_CLIENT_ID:}
+      client-secret: ${MONEW_NAVER_CLIENT_SECRET:}
+      connect-timeout: ${MONEW_NAVER_CONNECT_TIMEOUT:3s}
+      read-timeout: ${MONEW_NAVER_READ_TIMEOUT:5s}
+```
+
+timeout 값은 선택 설정이며 지정하지 않으면 연결 timeout은 3초, 읽기 timeout은 5초를 사용합니다.
+
+`display`는 최대 100, `start`는 최대 1000까지 사용할 수 있습니다. `sort`는 정확도순 `sim` 또는 날짜순 `date`를 사용합니다.

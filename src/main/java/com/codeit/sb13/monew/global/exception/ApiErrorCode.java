@@ -14,6 +14,9 @@ public enum ApiErrorCode {
     // ARTICLE ART
     ARTICLE_NOT_FOUND("ART_001", HttpStatus.NOT_FOUND, "뉴스를 찾을 수 없습니다."),
     ARTICLE_DUPLICATE("ART_002", HttpStatus.CONFLICT, "이미 등록된 기사입니다."),
+    ARTICLE_FETCH_REQUEST_INVALID("ART_003", HttpStatus.BAD_REQUEST, "기사 수집 요청 값이 올바르지 않습니다."),
+    ARTICLE_FETCH_FAILED("ART_004", HttpStatus.BAD_GATEWAY, "기사 수집 중 외부 API 호출에 실패했습니다."),
+    ARTICLE_FETCH_PARSE_FAILED("ART_005", HttpStatus.BAD_GATEWAY, "기사 수집 응답 파싱에 실패했습니다."),
 
     // INTEREST INT
     INTEREST_NOT_FOUND("INT_001", HttpStatus.NOT_FOUND, "관심사를 찾을 수 없습니다."),
