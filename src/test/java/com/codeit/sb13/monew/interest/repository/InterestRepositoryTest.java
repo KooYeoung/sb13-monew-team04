@@ -1,5 +1,6 @@
 package com.codeit.sb13.monew.interest.repository;
 
+import com.codeit.sb13.monew.global.config.QueryDslConfig;
 import com.codeit.sb13.monew.global.exception.interest.InterestKeywordRequiredException;
 import com.codeit.sb13.monew.interest.domain.Interest;
 import com.codeit.sb13.monew.interest.domain.Keyword;
@@ -9,12 +10,20 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.*;
 
+/**
+ * {@code InterestRepository}가 {@link com.codeit.sb13.monew.interest.repository.InterestRepositoryCustom}을
+ * 상속하면서, 이 리포지토리를 주입받는 모든 {@code @DataJpaTest}는 {@code InterestRepositoryCustomImpl}이
+ * 요구하는 {@code JPAQueryFactory} 빈도 함께 필요해졌다. {@code @DataJpaTest}는 일반
+ * {@code @Configuration}을 자동으로 스캔하지 않으므로 {@link QueryDslConfig}를 명시적으로 임포트한다.
+ */
 @DataJpaTest
+@Import(QueryDslConfig.class)
 @ActiveProfiles("test")
 class InterestRepositoryTest {
 

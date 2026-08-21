@@ -8,12 +8,19 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.interest.InterestNameDuplicatedException;
 import com.codeit.sb13.monew.interest.controller.dto.InterestResponse;
 import com.codeit.sb13.monew.interest.domain.Interest;
 import com.codeit.sb13.monew.interest.repository.InterestRepository;
 import com.codeit.sb13.monew.interest.repository.SubscribeRepository;
+import com.codeit.sb13.monew.interest.repository.dto.InterestSearchCondition;
+import com.codeit.sb13.monew.interest.repository.dto.InterestSearchPage;
+import com.codeit.sb13.monew.interest.repository.dto.InterestSearchRow;
 import com.codeit.sb13.monew.interest.service.dto.InterestCreateCommand;
+import com.codeit.sb13.monew.interest.service.dto.InterestOrderBy;
+import com.codeit.sb13.monew.interest.service.dto.InterestSearchCommand;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -27,6 +34,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Sort;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
@@ -50,6 +58,13 @@ class InterestServiceTest {
 
     @InjectMocks
     InterestServiceImpl interestServiceImpl;
+
+    private Interest interestWithIdAndCreatedAt(String name, LocalDateTime createdAt) {
+        Interest interest = Interest.create(name);
+        ReflectionTestUtils.setField(interest, "id", UUID.randomUUID());
+        ReflectionTestUtils.setField(interest, "createdAt", createdAt);
+        return interest;
+    }
 
     @Test
     @DisplayName("사전 검사에서 이름이 이미 존재하면 InterestNameDuplicatedException을 던지고 저장하지 않는다")
@@ -264,5 +279,116 @@ class InterestServiceTest {
         assertThatThrownBy(() -> interestServiceImpl.create(command))
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .isNotInstanceOf(InterestNameDuplicatedException.class);
+    }
+
+    @Test
+    @DisplayName("정렬 기준이 이름이면 마지막 항목의 이름을 다음 커서로 돌려준다")
+    void search_orderByName_buildsNextCursorFromLastItemName() {
+        // given
+        LocalDateTime now = LocalDateTime.now();
+        Interest first = interestWithIdAndCreatedAt("가나다", now);
+        Interest last = interestWithIdAndCreatedAt("나비", now.plusSeconds(1));
+
+        InterestSearchCommand command =
+                new InterestSearchCommand(null, InterestOrderBy.NAME, Sort.Direction.ASC, null, null, null, 10, null);
+        InterestSearchPage page = new InterestSearchPage(
+                List.of(new InterestSearchRow(first, 0L, false), new InterestSearchRow(last, 0L, false)),
+                true, 2L);
+
+        when(interestRepository.search(new InterestSearchCondition(
+                command.keyword(), command.orderBy(), command.direction(),
+                command.cursor(), command.after(), command.idAfter(), command.limit(), command.requestUserId()
+        ))).thenReturn(page);
+
+        // when
+        CursorPageResponseDto<InterestResponse> response = interestServiceImpl.search(command);
+
+        // then
+        assertThat(response.content()).hasSize(2);
+        assertThat(response.nextCursor()).isEqualTo("나비");
+        assertThat(response.nextAfter()).isEqualTo(now.plusSeconds(1).toString());
+        assertThat(response.nextIdAfter()).isEqualTo(last.getId().toString());
+        assertThat(response.hasNext()).isTrue();
+        assertThat(response.totalElements()).isEqualTo(2L);
+    }
+
+    @Test
+    @DisplayName("정렬 기준이 구독자 수면 마지막 항목의 구독자 수를 다음 커서로 돌려준다")
+    void search_orderBySubscriberCount_buildsNextCursorFromLastItemSubscriberCount() {
+        // given
+        LocalDateTime now = LocalDateTime.now();
+        Interest first = interestWithIdAndCreatedAt("스포츠", now);
+        Interest last = interestWithIdAndCreatedAt("여행", now.plusSeconds(1));
+
+        InterestSearchCommand command = new InterestSearchCommand(
+                null, InterestOrderBy.SUBSCRIBER_COUNT, Sort.Direction.DESC, null, null, null, 10, null);
+        InterestSearchPage page = new InterestSearchPage(
+                List.of(new InterestSearchRow(first, 5L, false), new InterestSearchRow(last, 2L, false)),
+                false,
+                2L
+        );
+
+        when(interestRepository.search(new InterestSearchCondition(
+                command.keyword(), command.orderBy(), command.direction(),
+                command.cursor(), command.after(), command.idAfter(), command.limit(), command.requestUserId()
+        ))).thenReturn(page);
+
+        // when
+        CursorPageResponseDto<InterestResponse> response = interestServiceImpl.search(command);
+
+        // then
+        assertThat(response.content()).extracting(InterestResponse::subscriberCount)
+                .containsExactly(5L, 2L);
+        assertThat(response.nextCursor()).isEqualTo("2");
+        assertThat(response.hasNext()).isFalse();
+    }
+
+    @Test
+    @DisplayName("조회 결과가 비어 있으면 커서는 null, 목록은 빈 상태로 응답한다")
+    void search_emptyPage_returnsNullCursorsAndEmptyContent() {
+        // given
+        InterestSearchCommand command =
+                new InterestSearchCommand("없는검색어", InterestOrderBy.NAME, Sort.Direction.ASC, null, null, null, 10, null);
+        InterestSearchPage page = new InterestSearchPage(List.of(), false, 0L);
+
+        when(interestRepository.search(new InterestSearchCondition(
+                command.keyword(), command.orderBy(), command.direction(),
+                command.cursor(), command.after(), command.idAfter(), command.limit(), command.requestUserId()
+        ))).thenReturn(page);
+
+        // when
+        CursorPageResponseDto<InterestResponse> response = interestServiceImpl.search(command);
+
+        // then
+        assertThat(response.content()).isEmpty();
+        assertThat(response.nextCursor()).isNull();
+        assertThat(response.nextAfter()).isNull();
+        assertThat(response.hasNext()).isFalse();
+        assertThat(response.totalElements()).isEqualTo(0L);
+    }
+
+    @Test
+    @DisplayName("커맨드의 검색 조건을 그대로 리포지토리에 전달한다")
+    void search_passesCommandFieldsToRepository() {
+        // given
+        UUID requestUserId = UUID.randomUUID();
+        UUID idAfter = UUID.randomUUID();
+        InterestSearchCommand command = new InterestSearchCommand(
+                "스포츠", InterestOrderBy.SUBSCRIBER_COUNT, Sort.Direction.DESC,
+                "3", LocalDateTime.now(), idAfter, 20, requestUserId);
+        InterestSearchPage page = new InterestSearchPage(List.of(), false, 0L);
+
+        when(interestRepository.search(new InterestSearchCondition(
+                command.keyword(), command.orderBy(), command.direction(),
+                command.cursor(), command.after(), command.idAfter(), command.limit(), command.requestUserId()
+        ))).thenReturn(page);
+
+        // when
+        interestServiceImpl.search(command);
+
+        // then
+        verify(interestRepository).search(new InterestSearchCondition(
+                "스포츠", InterestOrderBy.SUBSCRIBER_COUNT, Sort.Direction.DESC,
+                "3", command.after(), idAfter, 20, requestUserId));
     }
 }

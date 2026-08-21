@@ -1,11 +1,17 @@
 package com.codeit.sb13.monew.interest.service;
 
+import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.interest.InterestNameDuplicatedException;
 import com.codeit.sb13.monew.interest.controller.dto.InterestResponse;
 import com.codeit.sb13.monew.interest.domain.Interest;
 import com.codeit.sb13.monew.interest.repository.InterestRepository;
 import com.codeit.sb13.monew.interest.repository.SubscribeRepository;
+import com.codeit.sb13.monew.interest.repository.dto.InterestSearchCondition;
+import com.codeit.sb13.monew.interest.repository.dto.InterestSearchPage;
 import com.codeit.sb13.monew.interest.service.dto.InterestCreateCommand;
+import com.codeit.sb13.monew.interest.service.dto.InterestOrderBy;
+import com.codeit.sb13.monew.interest.service.dto.InterestSearchCommand;
+import java.util.List;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.text.similarity.LevenshteinDistance;
@@ -93,6 +99,89 @@ public class InterestServiceImpl implements InterestService{
             }
             throw e;
         }
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>정렬 기준이 이름이면 {@code interests.name}을, 구독자 수면 구독 테이블에 대한
+     * 상관 서브쿼리 결과를 기준으로 정렬한다. 두 경우 모두 생성 시각을 같은 방향의
+     * 보조 정렬 기준으로 두어, 정렬 기준 값이 같은 항목들 사이에서도 커서가 안정적으로
+     * 다음 페이지를 가리키도록 한다. 실제 쿼리 구성은
+     * {@link InterestRepository#search}에 위임한다.</p>
+     *
+     * <p>목록의 각 항목이 가진 {@code subscriberCount}, {@code subscribedByMe}는
+     * {@code InterestRepositoryCustomImpl}이 {@code InterestSearchRow}에 row 단위로
+     * 계산해 담아 돌려준 값을 그대로 {@link InterestResponse#of}에 넘겨 조립한다.</p>
+     */
+    @Override
+    public CursorPageResponseDto<InterestResponse> search(InterestSearchCommand command) {
+        InterestSearchPage page = interestRepository.search(new InterestSearchCondition(
+                command.keyword(),
+                command.orderBy(),
+                command.direction(),
+                command.cursor(),
+                command.after(),
+                command.idAfter(),
+                command.limit(),
+                command.requestUserId()
+        ));
+
+        List<InterestResponse> content = page.rows().stream()
+                .map(row -> InterestResponse.of(row.interest(), row.subscriberCount(), row.subscribedByMe()))
+                .toList();
+
+        return new CursorPageResponseDto<>(
+                content,
+                nextCursor(content, command.orderBy()),
+                nextAfter(content),
+                nextIdAfter(content),
+                content.size(),
+                page.totalElements(),
+                page.hasNext()
+        );
+    }
+
+    /**
+     * 다음 페이지 조회 시 {@code cursor} 파라미터로 그대로 돌려보낼 주 커서 값을 만든다.
+     *
+     * <p>정렬 기준이 이름이면 마지막 항목의 이름을, 구독자 수면 마지막 항목의
+     * 구독자 수를 문자열로 담는다. 이번 페이지가 비어 있으면 다음 페이지도 없다는
+     * 뜻이라 {@code null}을 돌려준다.</p>
+     */
+    private String nextCursor(List<InterestResponse> content, InterestOrderBy orderBy) {
+        if (content.isEmpty()) {
+            return null;
+        }
+
+        InterestResponse last = content.get(content.size() - 1);
+        return orderBy == InterestOrderBy.NAME
+                ? last.name() : String.valueOf(last.subscriberCount());
+    }
+
+    /**
+     * 다음 페이지 조회 시 {@code after} 파라미터로 그대로 돌려보낼 보조 커서(생성 시각) 값을 만든다.
+     */
+    private String nextAfter(List<InterestResponse> content) {
+        if (content.isEmpty()) {
+            return null;
+        }
+
+        return content.get(content.size() - 1).createdAt().toString();
+    }
+
+    /**
+     * 다음 페이지 조회 시 {@code idAfter} 파라미터로 그대로 돌려보낼 3차 커서(마지막 항목의 id) 값을 만든다.
+     *
+     * <p>{@code cursor}와 {@code after}가 모두 같은 항목이 여러 건 있을 때 순서를 확정하는
+     * 타이브레이커로 쓰인다.</p>
+     */
+    private String nextIdAfter(List<InterestResponse> content) {
+        if (content.isEmpty()) {
+            return null;
+        }
+
+        return content.get(content.size() - 1).id().toString();
     }
 
     /**

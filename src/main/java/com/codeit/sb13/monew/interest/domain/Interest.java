@@ -12,6 +12,7 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.BatchSize;
 import org.springframework.util.StringUtils;
 
 /**
@@ -36,6 +37,12 @@ public class Interest extends UpdatedAtEntity {
     @Column(nullable = false, length = 50)
     private String name;
 
+    /**
+     * 목록 조회처럼 관심사를 여러 건 한 번에 불러온 뒤 각각의 키워드를 지연 로딩할 때,
+     * 관심사 하나당 쿼리 한 번씩 날리는 N+1 대신 지금까지 로딩된 관심사들의 id를 묶어
+     * {@code IN} 쿼리 하나로 가져오도록 배치 크기를 지정한다.
+     */
+    @BatchSize(size = 100)
     @OneToMany(mappedBy = "interest", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Keyword> keywords = new ArrayList<>();
 
