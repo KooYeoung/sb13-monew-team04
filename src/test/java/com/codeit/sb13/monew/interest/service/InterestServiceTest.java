@@ -4,12 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.interest.InterestNameDuplicatedException;
+import com.codeit.sb13.monew.global.exception.interest.InterestNotFoundException;
 import com.codeit.sb13.monew.interest.controller.dto.InterestResponse;
 import com.codeit.sb13.monew.interest.domain.Interest;
 import com.codeit.sb13.monew.interest.repository.InterestRepository;
@@ -23,6 +25,7 @@ import com.codeit.sb13.monew.interest.service.dto.InterestSearchCommand;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -30,6 +33,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.parallel.Isolated;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -390,5 +394,37 @@ class InterestServiceTest {
         verify(interestRepository).search(new InterestSearchCondition(
                 "스포츠", InterestOrderBy.SUBSCRIBER_COUNT, Sort.Direction.DESC,
                 "3", command.after(), idAfter, 20, requestUserId));
+    }
+
+    @Test
+    @DisplayName("존재하는 관심사를 삭제하면 구독을 먼저 지운 뒤 관심사를 지운다")
+    void delete_existingInterest_deletesSubscriptionsBeforeInterest() {
+        // given
+        Interest interest = interestWithIdAndCreatedAt("스포츠", LocalDateTime.now());
+        when(interestRepository.findById(interest.getId())).thenReturn(Optional.of(interest));
+
+        // when
+        interestServiceImpl.delete(interest.getId());
+
+        // then: Interest.keywords는 cascade로 함께 지워지지만 구독은 그렇지 않으므로,
+        // FK 제약을 위반하지 않으려면 반드시 구독을 먼저 지운 뒤 관심사를 지워야 한다.
+        InOrder order = inOrder(subscribeRepository, interestRepository);
+        order.verify(subscribeRepository).deleteByInterest_Id(interest.getId());
+        order.verify(interestRepository).delete(interest);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 관심사를 삭제하려 하면 InterestNotFoundException을 던지고 아무것도 지우지 않는다")
+    void delete_nonExistingInterest_throwsExceptionAndDeletesNothing() {
+        // given
+        UUID interestId = UUID.randomUUID();
+        when(interestRepository.findById(interestId)).thenReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> interestServiceImpl.delete(interestId))
+                .isInstanceOf(InterestNotFoundException.class);
+
+        verify(subscribeRepository, never()).deleteByInterest_Id(any());
+        verify(interestRepository, never()).delete(any());
     }
 }

@@ -1,6 +1,7 @@
 package com.codeit.sb13.monew.interest.controller;
 
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
+import com.codeit.sb13.monew.global.exception.interest.InterestNotFoundException;
 import com.codeit.sb13.monew.global.exception.interest.InterestSearchConditionInvalidException;
 import com.codeit.sb13.monew.interest.controller.dto.InterestCreateRequest;
 import com.codeit.sb13.monew.interest.controller.dto.InterestResponse;
@@ -13,8 +14,10 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -97,5 +100,21 @@ public class InterestController {
         );
 
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 관심사를 물리적으로 삭제한다.
+     *
+     * <p>키워드와 구독 정보도 함께 삭제되며, 삭제된 데이터는 복구할 수 없다. 존재하지 않는
+     * {@code interestId}면 {@link InterestNotFoundException}이 발생해 {@code INT_001}(404)로
+     * 응답한다.</p>
+     *
+     * @param interestId 삭제할 관심사 id
+     * @return 204 상태코드
+     */
+    @DeleteMapping("/{interestId}")
+    public ResponseEntity<Void> delete(@PathVariable UUID interestId) {
+        interestService.delete(interestId);
+        return ResponseEntity.noContent().build();
     }
 }

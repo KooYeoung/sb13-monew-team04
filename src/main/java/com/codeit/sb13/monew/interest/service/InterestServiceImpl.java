@@ -2,6 +2,7 @@ package com.codeit.sb13.monew.interest.service;
 
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.interest.InterestNameDuplicatedException;
+import com.codeit.sb13.monew.global.exception.interest.InterestNotFoundException;
 import com.codeit.sb13.monew.interest.controller.dto.InterestResponse;
 import com.codeit.sb13.monew.interest.domain.Interest;
 import com.codeit.sb13.monew.interest.repository.InterestRepository;
@@ -13,6 +14,7 @@ import com.codeit.sb13.monew.interest.service.dto.InterestOrderBy;
 import com.codeit.sb13.monew.interest.service.dto.InterestSearchCommand;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.text.similarity.LevenshteinDistance;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -140,6 +142,26 @@ public class InterestServiceImpl implements InterestService{
                 page.totalElements(),
                 page.hasNext()
         );
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>{@code Interest}는 {@code keywords}를 {@code cascade = CascadeType.ALL,
+     * orphanRemoval = true}로 들고 있어 {@link InterestRepository#delete}만으로
+     * 키워드까지 함께 지워진다. 반면 구독은 {@code Subscribe -> Interest} 단방향
+     * 연관관계라 cascade 대상이 아니고, {@code subscriptions.interest_id} 외래키에도
+     * {@code ON DELETE CASCADE}가 없어 남겨두면 삭제 시점에 제약을 위반한다. 그래서
+     * 관심사를 지우기 전에 {@link SubscribeRepository#deleteByInterest_Id}로 구독을
+     * 먼저 지운다.</p>
+     */
+    @Override
+    public void delete(UUID interestId) {
+        Interest interest = interestRepository.findById(interestId)
+                .orElseThrow(() -> new InterestNotFoundException(interestId));
+
+        subscribeRepository.deleteByInterest_Id(interestId);
+        interestRepository.delete(interest);
     }
 
     /**

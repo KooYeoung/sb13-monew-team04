@@ -4,6 +4,10 @@ import com.codeit.sb13.monew.global.config.QueryDslConfig;
 import com.codeit.sb13.monew.global.exception.interest.InterestKeywordRequiredException;
 import com.codeit.sb13.monew.interest.domain.Interest;
 import com.codeit.sb13.monew.interest.domain.Keyword;
+import com.codeit.sb13.monew.interest.domain.Subscribe;
+import com.codeit.sb13.monew.interest.service.InterestServiceImpl;
+import com.codeit.sb13.monew.user.domain.User;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -31,7 +35,20 @@ class InterestRepositoryTest {
     private InterestRepository interestRepository;
 
     @Autowired
+    private SubscribeRepository subscribeRepository;
+
+    @Autowired
     private TestEntityManager em;
+
+    private UUID persistUser() {
+        User user = User.builder()
+                .email(UUID.randomUUID() + "@test.com")
+                .nickname("테스터")
+                .password("password")
+                .build();
+        em.persist(user);
+        return user.getId();
+    }
 
     @Nested
     @DisplayName("removeKeyword() 이후 영속성 컨텍스트 반영")
@@ -104,5 +121,31 @@ class InterestRepositoryTest {
 
         System.out.println("실제 H2 메시지: " + e.getMostSpecificCause().getMessage());
         assertThat(e.getMostSpecificCause().getMessage()).containsIgnoringCase("uk_interests_name");
+    }
+
+    @Test
+    @DisplayName("구독과 키워드가 있는 관심사를 삭제하면 FK 제약 위반 없이 구독·키워드까지 모두 지워진다")
+    void delete_interestWithKeywordsAndSubscriptions_deletesEverythingWithoutConstraintViolation() {
+        // given: InterestServiceImpl#delete가 실제로 하는 것과 동일한 절차(구독을 먼저 지운
+        // 뒤 관심사를 지우는 것)를 실제 DB 제약 위에서 검증하기 위해, 목이 아니라 이
+        // @DataJpaTest가 제공하는 실제 리포지토리들로 InterestServiceImpl을 직접 구성한다.
+        UUID userId = persistUser();
+
+        Interest interest = Interest.create("스포츠");
+        interest.addKeyword("축구");
+        interestRepository.save(interest);
+        em.persist(Subscribe.of(interest, userId));
+        em.flush();
+        em.clear();
+
+        InterestServiceImpl interestService = new InterestServiceImpl(interestRepository, subscribeRepository);
+
+        // when
+        interestService.delete(interest.getId());
+        em.flush();
+        em.clear();
+
+        // then
+        assertThat(interestRepository.findById(interest.getId())).isEmpty();
     }
 }

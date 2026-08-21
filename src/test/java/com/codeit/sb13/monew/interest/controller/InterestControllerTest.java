@@ -1,8 +1,10 @@
 package com.codeit.sb13.monew.interest.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -11,6 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.interest.InterestNameDuplicatedException;
+import com.codeit.sb13.monew.global.exception.interest.InterestNotFoundException;
 import com.codeit.sb13.monew.global.exception.interest.InterestSearchConditionInvalidException;
 import com.codeit.sb13.monew.interest.controller.dto.InterestCreateRequest;
 import com.codeit.sb13.monew.interest.controller.dto.InterestResponse;
@@ -217,5 +220,35 @@ class InterestControllerTest {
                         .param("limit", "10"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INT_006"));
+    }
+
+    @Test
+    @DisplayName("존재하는 관심사를 삭제하면 204로 응답한다")
+    void delete_existingInterest_returns204() throws Exception {
+        UUID interestId = UUID.randomUUID();
+
+        mockMvc.perform(delete("/api/interests/{interestId}", interestId))
+                .andExpect(status().isNoContent());
+
+        verify(interestService).delete(interestId);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 관심사를 삭제하려 하면 404(INT_001)로 응답한다")
+    void delete_nonExistingInterest_returns404() throws Exception {
+        UUID interestId = UUID.randomUUID();
+        doThrow(new InterestNotFoundException(interestId)).when(interestService).delete(interestId);
+
+        mockMvc.perform(delete("/api/interests/{interestId}", interestId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("INT_001"));
+    }
+
+    @Test
+    @DisplayName("interestId가 UUID 형식이 아니면 400으로 응답한다")
+    void delete_invalidUuidFormat_returns400() throws Exception {
+        mockMvc.perform(delete("/api/interests/{interestId}", "not-a-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").exists());
     }
 }

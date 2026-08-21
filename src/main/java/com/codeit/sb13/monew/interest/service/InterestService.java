@@ -4,6 +4,7 @@ import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.interest.controller.dto.InterestResponse;
 import com.codeit.sb13.monew.interest.service.dto.InterestCreateCommand;
 import com.codeit.sb13.monew.interest.service.dto.InterestSearchCommand;
+import java.util.UUID;
 
 public interface InterestService {
 
@@ -24,4 +25,16 @@ public interface InterestService {
      * @return 조회된 관심사 목록과 다음 페이지를 위한 커서 정보
      */
     CursorPageResponseDto<InterestResponse> search(InterestSearchCommand command);
+
+    /**
+     * 관심사를 물리적으로 삭제한다.
+     *
+     * <p>관심사에 속한 키워드와, 이 관심사를 구독 중인 사용자들의 구독 정보도 함께 삭제된다.
+     * 삭제된 데이터는 복구할 수 없다.</p>
+     *
+     * @param interestId 삭제할 관심사 id
+     * @throws com.codeit.sb13.monew.global.exception.interest.InterestNotFoundException
+     *         해당 id의 관심사가 존재하지 않는 경우
+     */
+    void delete(UUID interestId);
 }
