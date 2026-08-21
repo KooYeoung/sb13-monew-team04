@@ -1,4 +1,4 @@
-package com.codeit.sb13.monew.article.controller.dto;
+package com.codeit.sb13.monew.article.service.dto;
 
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 
@@ -15,7 +15,7 @@ public record ArticleViewDto(
         String articleTitle,
         LocalDateTime articlePublishedDate,
         String articleSummary,
-        Integer articleCommentCount,
-        Integer articleViewCount
+        Long articleCommentCount,
+        Long articleViewCount
 ) {
 }

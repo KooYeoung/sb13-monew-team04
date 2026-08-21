@@ -1,6 +1,8 @@
 package com.codeit.sb13.monew.article.service;
 
+import com.codeit.sb13.monew.article.service.dto.ArticleDto;
 import com.codeit.sb13.monew.article.domain.Article;
+import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.service.dto.ArticleRequest;
 
 import java.util.List;
@@ -22,4 +24,10 @@ public interface ArticleService {
 
     // 기사 삭제 (소프트 딜리트)
     void softDelete(UUID id);
+
+    // 단건 조회 (요청자 기준 viewedByMe 포함)
+    ArticleDto getArticle(UUID articleId, UUID requestUserId);
+
+    // 출처 목록 조회
+    List<ArticleSource> getSources();
 }

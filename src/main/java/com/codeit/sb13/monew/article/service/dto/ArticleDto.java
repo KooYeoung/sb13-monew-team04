@@ -1,4 +1,4 @@
-package com.codeit.sb13.monew.article.controller.dto;
+package com.codeit.sb13.monew.article.service.dto;
 
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 
@@ -12,8 +12,8 @@ public record ArticleDto(
         String title,
         LocalDateTime publishDate,
         String summary,
-        Integer commentCount,
-        Integer viewCount,
+        Long commentCount,
+        Long viewCount,
         boolean viewedByMe
 ) {
 }

@@ -1,7 +1,7 @@
 package com.codeit.sb13.monew.article.mapper;
 
-import com.codeit.sb13.monew.article.controller.dto.ArticleDto;
-import com.codeit.sb13.monew.article.controller.dto.ArticleViewDto;
+import com.codeit.sb13.monew.article.service.dto.ArticleDto;
+import com.codeit.sb13.monew.article.service.dto.ArticleViewDto;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.domain.ArticleView;
@@ -54,7 +54,7 @@ class ArticleMapperTest {
     @DisplayName("Article을 ArticleDto로 변환한다")
     void testToDto() {
         // when
-        ArticleDto result = articleMapper.toDto(article, true, 3, 7);
+        ArticleDto result = articleMapper.toDto(article, true, 3L, 7L);
 
         // then
         assertThat(result.id()).isEqualTo(articleId);
@@ -71,7 +71,7 @@ class ArticleMapperTest {
     @Test
     @DisplayName("viewedByMe는 전달받은 값을 그대로 반영한다")
     void testToDtoViewedByMeFalse() {
-        assertThat(articleMapper.toDto(article, false, 0, 0).viewedByMe()).isFalse();
+        assertThat(articleMapper.toDto(article, false, 0L, 0L).viewedByMe()).isFalse();
     }
 
     @Test
@@ -82,7 +82,7 @@ class ArticleMapperTest {
         ArticleView articleView = ArticleView.create(article, user, viewedAt);
 
         // when
-        ArticleViewDto result = articleMapper.toViewDto(articleView, 5, 11);
+        ArticleViewDto result = articleMapper.toViewDto(articleView, 5L, 11L);
 
         // then
         assertThat(result.viewedBy()).isEqualTo(userId);

@@ -1,7 +1,7 @@
 package com.codeit.sb13.monew.article.mapper;
 
-import com.codeit.sb13.monew.article.controller.dto.ArticleDto;
-import com.codeit.sb13.monew.article.controller.dto.ArticleViewDto;
+import com.codeit.sb13.monew.article.service.dto.ArticleDto;
+import com.codeit.sb13.monew.article.service.dto.ArticleViewDto;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleView;
 import org.mapstruct.Mapper;
@@ -13,7 +13,7 @@ public interface ArticleMapper {
     @Mapping(source = "article.link", target = "sourceUrl")
     @Mapping(source = "article.date", target = "publishDate")
     ArticleDto toDto(Article article, boolean viewedByMe,
-                     Integer commentCount, Integer viewCount);
+                     Long commentCount, Long viewCount);
 
     @Mapping(source = "articleView.user.id", target = "viewedBy")
     @Mapping(source = "articleView.article.id", target = "articleId")
@@ -25,5 +25,5 @@ public interface ArticleMapper {
     @Mapping(source = "commentCount", target = "articleCommentCount")
     @Mapping(source = "viewCount", target = "articleViewCount")
     ArticleViewDto toViewDto(ArticleView articleView,
-                             Integer commentCount, Integer viewCount);
+                             Long commentCount, Long viewCount);
 }

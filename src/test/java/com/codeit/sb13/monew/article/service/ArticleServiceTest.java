@@ -1,12 +1,17 @@
 package com.codeit.sb13.monew.article.service;
 
+import com.codeit.sb13.monew.article.service.dto.ArticleDto;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
+import com.codeit.sb13.monew.article.mapper.ArticleMapper;
 import com.codeit.sb13.monew.article.repository.ArticleRepository;
+import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
 import com.codeit.sb13.monew.article.service.dto.ArticleRequest;
 import com.codeit.sb13.monew.article.service.impl.ArticleServiceImpl;
 import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
 import com.codeit.sb13.monew.global.exception.article.ArticleDuplicateException;
+import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
+import com.codeit.sb13.monew.user.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,12 +37,23 @@ class ArticleServiceTest {
     @Mock
     private ArticleRepository articleRepository;
 
+    @Mock
+    private ArticleViewRepository articleViewRepository;
+
+    @Mock
+    private ArticleMapper articleMapper;
+
+    @Mock
+    private UserService userService;
+
     @InjectMocks
     private ArticleServiceImpl articleService;
 
     private Article testArticle;
     private UUID testArticleId;
     private ArticleRequest articleRequest;
+    private UUID testUserId;
+    private ArticleDto expectedDto;
 
     @BeforeEach
     void setUp() {
@@ -56,6 +72,12 @@ class ArticleServiceTest {
                 "https://example.com/new",
                 LocalDateTime.now(),
                 ArticleSource.HANKYUNG
+        );
+
+        testUserId = UUID.randomUUID();
+        expectedDto = new ArticleDto(
+                testArticleId, ArticleSource.NAVER, "https://example.com/article",
+                "Test Article", LocalDateTime.now(), "Test Summary", 0L, 7L, true
         );
     }
 
@@ -197,4 +219,59 @@ class ArticleServiceTest {
         verify(articleRepository, times(1)).findByIdAndDeletedAtIsNull(testArticleId);
         verify(articleRepository, never()).save(any(Article.class));
     }
+
+    @Test
+    @DisplayName("단건 조회 시 viewedByMe와 viewCount를 계산해 DTO로 변환한다")
+    void testGetArticle() {
+        // given
+        when(articleRepository.findByIdAndDeletedAtIsNull(testArticleId))
+                .thenReturn(Optional.of(testArticle));
+        when(articleViewRepository.existsByArticle_IdAndUser_Id(testArticleId, testUserId))
+                .thenReturn(true);
+        when(articleViewRepository.countByArticle_Id(testArticleId))
+                .thenReturn(7L);
+        when(articleMapper.toDto(testArticle, true, 0L, 7L))
+                .thenReturn(expectedDto);
+
+        // when
+        ArticleDto result = articleService.getArticle(testArticleId, testUserId);
+
+        // then
+        assertThat(result).isEqualTo(expectedDto);
+        verify(articleMapper).toDto(testArticle, true, 0L, 7L);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 기사 단건 조회 시 예외가 발생한다")
+    void testGetArticleNotFound() {
+        when(articleRepository.findByIdAndDeletedAtIsNull(testArticleId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> articleService.getArticle(testArticleId, testUserId))
+                .isInstanceOf(ArticleNotFoundException.class);
+        verify(articleViewRepository, never()).countByArticle_Id(any());
+    }
+
+    @Test
+    @DisplayName("출처 목록은 ArticleSource enum 전체를 반환한다")
+    void testGetSources() {
+        assertThat(articleService.getSources())
+                .containsExactly(ArticleSource.NAVER, ArticleSource.HANKYUNG,
+                        ArticleSource.CHOSUN, ArticleSource.YEONHAP);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 사용자가 단건 조회를 요청하면 예외가 발생한다")
+    void testGetArticleUserNotFound() {
+        // given
+        doThrow(new UserNotFoundException(testUserId))
+                .when(userService).validateExists(testUserId);
+
+        // when & then
+        assertThatThrownBy(() -> articleService.getArticle(testArticleId, testUserId))
+                .isInstanceOf(UserNotFoundException.class);
+        verify(articleRepository, never()).findByIdAndDeletedAtIsNull(any());
+    }
+
+
 }
