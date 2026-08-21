@@ -28,6 +28,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.any;
@@ -271,6 +272,65 @@ public class UserServiceImplTest {
     verify(userRepository).saveAndFlush(user);
   }
 
+  @Test
+  @DisplayName("존재하지 않는 userId로 findById 요청시 예외를 던진다.")
+  void 존재하지_않는_ID에는_예외를_던진다() {
+    // given
+    UUID userId = UUID.randomUUID();
+    when(userRepository.findById(userId))
+        .thenReturn(Optional.empty());
+
+    // when &  then
+    assertThatThrownBy(() -> userServiceImpl.findById(userId))
+        .isInstanceOf(UserNotFoundException.class);
+  }
+
+  @Test
+  @DisplayName("유효한 Id로 findById를 요청하면  user를 라턴한다.")
+  void 유효한_id로_요청시_user_반환() {
+    // given
+    UUID userId = UUID.randomUUID();
+    User user = User.builder()
+        .email("email@email.com")
+        .nickname("닉네임")
+        .password("PassWord123!")
+        .build();
+
+    when(userRepository.findById(userId))
+        .thenReturn(Optional.of(user));
+
+    // when
+    User actualUser = userServiceImpl.findById(userId);
+    // then
+    assertThat(actualUser).isEqualTo(user);
+
+  }
+
+  @Test
+  @DisplayName("존재하지 않는 userId로 validateExists 요청시 예외를 던진다.")
+  void 존재하지_않는_id로_validateExists_요청시_예외를_던진다() {
+    // given
+    UUID userId = UUID.randomUUID();
+    when(userRepository.existsById(userId))
+        .thenReturn(false);
+
+    // when & then
+    assertThatThrownBy(() -> userServiceImpl.validateExists(userId))
+        .isInstanceOf(UserNotFoundException.class);
+  }
+
+  @Test
+  @DisplayName("존재하는 userId로 validateExists 요청시 예외 없이 통과한다.")
+  void 존재하는_id로_validateExists_요청시_정상_통과한다() {
+    // given
+    UUID userId = UUID.randomUUID();
+    when(userRepository.existsById(userId))
+        .thenReturn(true);
+
+    // when & then
+    assertThatCode(() -> userServiceImpl.validateExists(userId))
+        .doesNotThrowAnyException();
+  }
 
 
 

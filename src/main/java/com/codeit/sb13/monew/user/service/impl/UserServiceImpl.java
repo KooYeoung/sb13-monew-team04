@@ -14,6 +14,7 @@ import com.codeit.sb13.monew.user.service.dto.UserLoginCommand;
 import com.codeit.sb13.monew.user.service.dto.UserLoginResult;
 import com.codeit.sb13.monew.user.service.dto.UserUpdateNicknameCommand;
 import com.codeit.sb13.monew.user.service.dto.UserUpdateNicknameResult;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -78,6 +79,22 @@ public class UserServiceImpl implements UserService {
     user.updateNickname(command.nickname());
     User saveUser = userRepository.saveAndFlush(user);
     return userMapper.toUpdateNicknameResult(saveUser);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public User findById(UUID userId) {
+    return userRepository.findById(userId)
+        .orElseThrow(() -> new UserNotFoundException(userId));
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public void validateExists(UUID userId) {
+    if(!userRepository.existsById(userId)) {
+      throw new UserNotFoundException(userId);
+    }
+
   }
 
   private boolean isEmailUniqueViolation(DataIntegrityViolationException e) {
