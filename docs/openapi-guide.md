@@ -38,12 +38,39 @@ OpenAPI 기본 정보는 `OpenApiConfig`에서 관리합니다.
 
 ## API 문서화 기준
 
-API 구현자는 컨트롤러 단위에서 필요한 설명을 최소한으로 추가합니다.
+API 문서화 annotation은 controller 구현체가 아니라 문서화용 interface에 분리합니다. controller 구현체는 요청 처리와 서비스 호출 흐름에 집중하고, Swagger/OpenAPI 설명은 interface에서 관리합니다.
 
 - API 동작 설명이 필요한 경우 `@Operation`을 사용합니다.
 - 응답 상태나 오류 응답을 명확히 해야 하는 경우 `@ApiResponse`를 사용합니다.
 - 요청 파라미터 의미가 코드만으로 명확하지 않은 경우 `@Parameter` 또는 schema 설명을 추가합니다.
 - 공통 오류 응답은 공통 예외 처리 기준과 맞춰 문서화합니다.
+
+## 요청 사용자 헤더 기준
+
+요청 사용자를 식별하는 표준 헤더명은 아래 값을 사용합니다.
+
+```text
+Monew-Request-User-ID
+```
+
+코드에서는 헤더명을 문자열로 직접 작성하지 않고 공통 상수를 사용합니다.
+
+```java
+MonewHttpHeaders.REQUEST_USER_ID
+```
+
+OpenAPI 문서화용 interface에서도 같은 상수를 사용해 실제 요청 처리 기준과 Swagger 문서 기준이 어긋나지 않도록 합니다.
+
+```java
+@Parameter(name = MonewHttpHeaders.REQUEST_USER_ID, description = "요청 사용자 ID")
+```
+
+도메인별 controller의 기존 헤더 문자열 적용 리팩터링은 후속 티켓에서 진행합니다.
+
+- MID4-158: 사용자 도메인
+- MID4-159: 뉴스 도메인
+- MID4-160: 관심사 도메인
+- MID4-161: 알림 도메인
 
 ## 확인 방법
 
