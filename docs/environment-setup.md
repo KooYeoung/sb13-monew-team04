@@ -103,3 +103,25 @@ monew:
 timeout 값은 선택 설정이며 지정하지 않으면 연결 timeout은 3초, 읽기 timeout은 5초를 사용합니다.
 
 `display`는 최대 100, `start`는 최대 1000까지 사용할 수 있습니다. `sort`는 정확도순 `sim` 또는 날짜순 `date`를 사용합니다.
+
+## 8. 외부 호출 smoke 테스트
+
+기본 테스트는 외부 네트워크 호출을 실행하지 않습니다. 외부 호출 검증이 필요한 테스트는 `@Tag("external")`로 분리하고, 기본 `test` task에서는 제외합니다.
+
+```powershell
+.\gradlew.bat test
+```
+
+RSS 실제 endpoint 호출은 별도 task로 실행합니다.
+
+```powershell
+.\gradlew.bat --no-daemon rssExternalTest
+```
+
+NAVER 뉴스 검색 API 실제 호출은 별도 task로 실행합니다.
+
+```powershell
+.\gradlew.bat --no-daemon naverExternalTest
+```
+
+`naverExternalTest`는 먼저 `MONEW_NAVER_CLIENT_ID`, `MONEW_NAVER_CLIENT_SECRET` 환경변수를 확인하고, 없으면 로컬 `.env.dev` 값을 읽습니다. 인증 값이 없으면 테스트를 실패시키지 않고 skip합니다.

@@ -26,6 +26,16 @@ monew:
       client-secret: ${MONEW_NAVER_CLIENT_SECRET:}
       connect-timeout: ${MONEW_NAVER_CONNECT_TIMEOUT:3s}
       read-timeout: ${MONEW_NAVER_READ_TIMEOUT:5s}
+    rss:
+      connect-timeout: ${MONEW_RSS_CONNECT_TIMEOUT:3s}
+      read-timeout: ${MONEW_RSS_READ_TIMEOUT:5s}
+      hankyung:
+        base-url: https://www.hankyung.com/feed
+      chosun:
+        base-url: https://www.chosun.com/arc/outboundfeeds/rss
+      yonhap:
+        base-url: https://www.yonhapnewstv.co.kr
+
   openapi:
     server-url: http://localhost:${server.port:8080}
     server-description: 로컬 개발 서버

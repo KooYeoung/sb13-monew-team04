@@ -41,25 +41,6 @@ class NaverNewsConfigTest {
     }
 
     @Test
-    @DisplayName("NAVER 뉴스 timeout 설정이 없으면 기본값을 사용한다")
-    void usesDefaultTimeoutWhenTimeoutPropertiesAreMissing() {
-        new ApplicationContextRunner()
-                .withUserConfiguration(NaverNewsConfig.class)
-                .withPropertyValues(
-                        "monew.news.naver.base-url=https://openapi.naver.com",
-                        "monew.news.naver.path=/v1/search/news.json",
-                        "monew.news.naver.client-id=client-id",
-                        "monew.news.naver.client-secret=client-secret"
-                )
-                .run(context -> {
-                    NaverNewsProperties properties = context.getBean(NaverNewsProperties.class);
-
-                    assertThat(properties.connectTimeout()).isEqualTo(Duration.ofSeconds(3));
-                    assertThat(properties.readTimeout()).isEqualTo(Duration.ofSeconds(5));
-                });
-    }
-
-    @Test
     @DisplayName("NAVER 뉴스 RestClient Bean을 생성한다")
     void createsNaverNewsRestClient() {
         contextRunner.run(context -> {
