@@ -10,4 +10,8 @@ public abstract class NotificationException extends MonewException {
     protected NotificationException(ApiErrorCode apiErrorCode, Map<String, Object> details) {
         super(apiErrorCode, details);
     }
+
+    protected NotificationException(ApiErrorCode apiErrorCode, Map<String, Object> details, Throwable cause) {
+        super(apiErrorCode, details, cause);
+    }
 }

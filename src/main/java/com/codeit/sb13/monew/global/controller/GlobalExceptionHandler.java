@@ -31,15 +31,23 @@ public class GlobalExceptionHandler {
 
         HttpStatus status = e.getApiErrorCode().getStatus();
 
-        if (status.is5xxServerError()) {
-            log.error("서버 오류가 발생했습니다. errorCode={}, message={}", e.getApiErrorCode(), e.getMessage(), e);
-        } else {
-            log.warn("비즈니스 예외가 발생했습니다. errorCode={}, message={}", e.getApiErrorCode(), e.getMessage());
-        }
+        logException(e, status);
 
         return ResponseEntity.status(status)
                 .body(ApiErrorResponse.of(e));
 
+    }
+
+    private static void logException(MonewException e, HttpStatus status) {
+        if (status.is5xxServerError()) {
+            log.error("서버 오류가 발생했습니다. errorCode={}, message={}", e.getApiErrorCode(), e.getMessage(), e);
+            return;
+        }
+        if (e.getCause() != null) {
+            log.warn("비즈니스 예외가 발생했습니다. errorCode={}, message={}", e.getApiErrorCode(), e.getMessage(), e);
+            return;
+        }
+        log.warn("비즈니스 예외가 발생했습니다. errorCode={}, message={}", e.getApiErrorCode(), e.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

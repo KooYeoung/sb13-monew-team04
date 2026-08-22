@@ -10,4 +10,8 @@ public abstract class UserException extends MonewException {
     protected UserException(ApiErrorCode apiErrorCode, Map<String, Object> details) {
         super(apiErrorCode, details);
     }
+
+    protected UserException(ApiErrorCode apiErrorCode, Map<String, Object> details, Throwable cause) {
+        super(apiErrorCode, details, cause);
+    }
 }

@@ -15,6 +15,12 @@ public abstract class MonewException extends RuntimeException {
         this.details = getDetailsOrDefault(details);
     }
 
+    protected MonewException(ApiErrorCode apiErrorCode, Map<String, Object> details, Throwable cause) {
+        super(apiErrorCode.getMessage(), cause);
+        this.apiErrorCode = apiErrorCode;
+        this.details = getDetailsOrDefault(details);
+    }
+
     private static Map<String, Object> getDetailsOrDefault(Map<String, Object> details) {
         return details == null ? Map.of() : details;
     }

@@ -10,4 +10,8 @@ public abstract class CommentException extends MonewException {
     protected CommentException(ApiErrorCode apiErrorCode, Map<String, Object> details) {
         super(apiErrorCode, details);
     }
+
+    protected CommentException(ApiErrorCode apiErrorCode, Map<String, Object> details, Throwable cause) {
+        super(apiErrorCode, details, cause);
+    }
 }

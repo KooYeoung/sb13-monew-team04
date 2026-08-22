@@ -10,4 +10,8 @@ public abstract class InterestException extends MonewException {
     protected InterestException(ApiErrorCode apiErrorCode, Map<String, Object> details) {
         super(apiErrorCode, details);
     }
+
+    protected InterestException(ApiErrorCode apiErrorCode, Map<String, Object> details, Throwable cause) {
+        super(apiErrorCode, details, cause);
+    }
 }

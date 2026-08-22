@@ -10,4 +10,8 @@ public abstract class ArticleException extends MonewException {
     protected ArticleException(ApiErrorCode apiErrorCode, Map<String, Object> details) {
         super(apiErrorCode, details);
     }
+
+    protected ArticleException(ApiErrorCode apiErrorCode, Map<String, Object> details, Throwable cause) {
+        super(apiErrorCode, details, cause);
+    }
 }
