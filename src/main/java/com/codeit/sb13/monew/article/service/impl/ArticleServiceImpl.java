@@ -1,5 +1,6 @@
 package com.codeit.sb13.monew.article.service.impl;
 
+import com.codeit.sb13.monew.article.repository.dto.ArticleSearchCondition;
 import com.codeit.sb13.monew.article.service.dto.ArticleDto;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
@@ -8,6 +9,7 @@ import com.codeit.sb13.monew.article.repository.ArticleRepository;
 import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
 import com.codeit.sb13.monew.article.service.ArticleService;
 import com.codeit.sb13.monew.article.service.dto.ArticleRequest;
+import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
 import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
 import com.codeit.sb13.monew.global.exception.article.ArticleDuplicateException;
 import com.codeit.sb13.monew.user.service.UserService;
@@ -48,7 +50,7 @@ public class ArticleServiceImpl implements ArticleService {
 
         boolean viewedByMe = articleViewRepository
                 .existsByArticle_IdAndUser_Id(articleId, requestUserId);
-        long viewCount = articleViewRepository.countByArticle_Id(articleId);
+        long viewCount = articleViewRepository.countByArticle_IdAndUser_DeletedAtIsNull(articleId);
 
         // commentCount는 댓글 파트 집계 방식 확정 전까지 0 (MID4-147)
         return articleMapper.toDto(article, viewedByMe, 0L, viewCount);
@@ -57,6 +59,24 @@ public class ArticleServiceImpl implements ArticleService {
     @Override
     public List<ArticleSource> getSources() {
         return List.of(ArticleSource.values());
+    }
+
+    @Override
+    public List<ArticleDto> searchArticles(ArticleSearchCommand command) {
+        userService.validateExists(command.requestUserId());
+
+        ArticleSearchCondition condition = new ArticleSearchCondition(
+                command.keyword(),
+                command.sourceIn(),
+                command.publishDateFrom(),
+                command.publishDateTo(),
+                command.requestUserId()
+        );
+
+        // commentCount는 댓글 집계 방식 확정 전까지 0 (MID4-163 → MID4-147)
+        return articleRepository.search(condition).stream()
+                .map(row -> articleMapper.toDto(row.article(), row.viewedByMe(), 0L, row.viewCount()))
+                .toList();
     }
 
     /**

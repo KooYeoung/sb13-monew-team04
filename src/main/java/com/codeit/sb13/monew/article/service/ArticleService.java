@@ -4,6 +4,7 @@ import com.codeit.sb13.monew.article.service.dto.ArticleDto;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.service.dto.ArticleRequest;
+import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
 
 import java.util.List;
 import java.util.UUID;
@@ -30,4 +31,7 @@ public interface ArticleService {
 
     // 출처 목록 조회
     List<ArticleSource> getSources();
+
+    // 목록 조회 (필터 적용, 요청자 기준 viewedByMe 포함)
+    List<ArticleDto> searchArticles(ArticleSearchCommand command);
 }

@@ -101,7 +101,7 @@ class ArticleViewServiceTest {
                 .thenReturn(Optional.empty());
         when(articleViewRepository.saveAndFlush(any(ArticleView.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(articleViewRepository.countByArticle(testArticle)).thenReturn(1L);
+        when(articleViewRepository.countByArticleAndUser_DeletedAtIsNull(testArticle)).thenReturn(1L);
         when(articleMapper.toViewDto(any(ArticleView.class), eq(0L), eq(1L)))
                 .thenReturn(testViewDto);
 
@@ -132,7 +132,7 @@ class ArticleViewServiceTest {
                 .thenReturn(Optional.of(existingView));
         when(articleViewRepository.save(any(ArticleView.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(articleViewRepository.countByArticle(testArticle)).thenReturn(3L);
+        when(articleViewRepository.countByArticleAndUser_DeletedAtIsNull(testArticle)).thenReturn(3L);
         when(articleMapper.toViewDto(any(ArticleView.class), eq(0L), eq(3L)))
                 .thenReturn(testViewDto);
 
@@ -220,14 +220,14 @@ class ArticleViewServiceTest {
     void testGetViewCount() {
         // given
         when(articleService.findById(testArticleId)).thenReturn(testArticle);
-        when(articleViewRepository.countByArticle(testArticle)).thenReturn(10L);
+        when(articleViewRepository.countByArticleAndUser_DeletedAtIsNull(testArticle)).thenReturn(10L);
 
         // when
         long count = articleViewService.getViewCount(testArticleId);
 
         // then
         assertThat(count).isEqualTo(10L);
-        verify(articleViewRepository, times(1)).countByArticle(testArticle);
+        verify(articleViewRepository, times(1)).countByArticleAndUser_DeletedAtIsNull(testArticle);
     }
 
     @Test
@@ -235,7 +235,7 @@ class ArticleViewServiceTest {
     void testGetViewCountZero() {
         // given
         when(articleService.findById(testArticleId)).thenReturn(testArticle);
-        when(articleViewRepository.countByArticle(testArticle)).thenReturn(0L);
+        when(articleViewRepository.countByArticleAndUser_DeletedAtIsNull(testArticle)).thenReturn(0L);
 
         // when & then
         assertThat(articleViewService.getViewCount(testArticleId)).isZero();

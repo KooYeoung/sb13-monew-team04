@@ -1,9 +1,11 @@
 package com.codeit.sb13.monew.article.controller;
 
+import com.codeit.sb13.monew.article.controller.dto.ArticleSearchRequest;
 import com.codeit.sb13.monew.article.service.ArticleViewService;
 import com.codeit.sb13.monew.article.service.dto.ArticleDto;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.service.ArticleService;
+import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
 import com.codeit.sb13.monew.article.service.dto.ArticleViewDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -27,6 +29,30 @@ public class ArticleController {
 
     private final ArticleService articleService;
     private final ArticleViewService articleViewService;
+
+    @Operation(summary = "뉴스 기사 목록 조회",
+            description = "검색어, 출처, 발행일 범위로 뉴스 기사 목록을 조회합니다. 논리 삭제된 기사는 제외됩니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "조회 성공"),
+            @ApiResponse(responseCode = "400", description = "요청 형식 오류 (헤더 누락, 잘못된 파라미터 형식)"),
+            @ApiResponse(responseCode = "404", description = "요청자 정보 없음"),
+            @ApiResponse(responseCode = "500", description = "서버 내부 오류")
+    })
+    @GetMapping
+    public ResponseEntity<List<ArticleDto>> getArticles(
+            @ModelAttribute ArticleSearchRequest request,
+            @Parameter(description = "요청자 ID") @RequestHeader(USER_ID_HEADER) UUID requestUserId
+    ) {
+        ArticleSearchCommand command = new ArticleSearchCommand(
+                request.keyword(),
+                request.sourceIn(),
+                request.publishDateFrom(),
+                request.publishDateTo(),
+                requestUserId
+        );
+
+        return ResponseEntity.ok(articleService.searchArticles(command));
+    }
 
     @Operation(summary = "뉴스 기사 단건 조회",
             description = "뉴스 기사 ID로 뉴스 기사 단건을 조회합니다.")

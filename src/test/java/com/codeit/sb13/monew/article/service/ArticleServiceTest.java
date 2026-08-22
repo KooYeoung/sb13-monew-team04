@@ -1,5 +1,7 @@
 package com.codeit.sb13.monew.article.service;
 
+import com.codeit.sb13.monew.article.repository.dto.ArticleSearchCondition;
+import com.codeit.sb13.monew.article.repository.dto.ArticleSearchRow;
 import com.codeit.sb13.monew.article.service.dto.ArticleDto;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
@@ -7,6 +9,7 @@ import com.codeit.sb13.monew.article.mapper.ArticleMapper;
 import com.codeit.sb13.monew.article.repository.ArticleRepository;
 import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
 import com.codeit.sb13.monew.article.service.dto.ArticleRequest;
+import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
 import com.codeit.sb13.monew.article.service.impl.ArticleServiceImpl;
 import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
 import com.codeit.sb13.monew.global.exception.article.ArticleDuplicateException;
@@ -16,6 +19,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -228,7 +233,7 @@ class ArticleServiceTest {
                 .thenReturn(Optional.of(testArticle));
         when(articleViewRepository.existsByArticle_IdAndUser_Id(testArticleId, testUserId))
                 .thenReturn(true);
-        when(articleViewRepository.countByArticle_Id(testArticleId))
+        when(articleViewRepository.countByArticle_IdAndUser_DeletedAtIsNull(testArticleId))
                 .thenReturn(7L);
         when(articleMapper.toDto(testArticle, true, 0L, 7L))
                 .thenReturn(expectedDto);
@@ -249,7 +254,7 @@ class ArticleServiceTest {
 
         assertThatThrownBy(() -> articleService.getArticle(testArticleId, testUserId))
                 .isInstanceOf(ArticleNotFoundException.class);
-        verify(articleViewRepository, never()).countByArticle_Id(any());
+        verify(articleViewRepository, never()).countByArticle_IdAndUser_DeletedAtIsNull(any());
     }
 
     @Test
@@ -271,6 +276,80 @@ class ArticleServiceTest {
         assertThatThrownBy(() -> articleService.getArticle(testArticleId, testUserId))
                 .isInstanceOf(UserNotFoundException.class);
         verify(articleRepository, never()).findByIdAndDeletedAtIsNull(any());
+    }
+
+    @Test
+    @DisplayName("목록 조회 - 검색 조건을 리포지토리에 그대로 전달한다")
+    void testSearchArticlesPassesCondition() {
+        // given
+        UUID userId = UUID.randomUUID();
+        ArticleSearchCommand command = new ArticleSearchCommand(
+                "반도체",
+                List.of(ArticleSource.NAVER, ArticleSource.CHOSUN),
+                LocalDateTime.of(2026, 8, 1, 0, 0),
+                LocalDateTime.of(2026, 8, 31, 0, 0),
+                userId
+        );
+        when(articleRepository.search(any(ArticleSearchCondition.class))).thenReturn(List.of());
+
+        // when
+        articleService.searchArticles(command);
+
+        // then
+        ArgumentCaptor<ArticleSearchCondition> captor =
+                ArgumentCaptor.forClass(ArticleSearchCondition.class);
+        verify(articleRepository).search(captor.capture());
+
+        ArticleSearchCondition condition = captor.getValue();
+        assertThat(condition.keyword()).isEqualTo("반도체");
+        assertThat(condition.sourceIn())
+                .containsExactly(ArticleSource.NAVER, ArticleSource.CHOSUN);
+        assertThat(condition.publishDateFrom()).isEqualTo(LocalDateTime.of(2026, 8, 1, 0, 0));
+        assertThat(condition.publishDateTo()).isEqualTo(LocalDateTime.of(2026, 8, 31, 0, 0));
+        assertThat(condition.requestUserId()).isEqualTo(userId);
+    }
+
+    @Test
+    @DisplayName("목록 조회 - 조회 결과를 ArticleDto로 변환하고 commentCount는 0으로 채운다")
+    void testSearchArticlesMapsRows() {
+        // given
+        UUID userId = UUID.randomUUID();
+        ArticleSearchCommand command =
+                new ArticleSearchCommand(null, null, null, null, userId);
+
+        Article article = Article.create("제목", "요약", "https://example.com/1",
+                LocalDateTime.now(), ArticleSource.NAVER);
+        ArticleSearchRow row = new ArticleSearchRow(article, 5L, true);
+        ArticleDto dto = new ArticleDto(UUID.randomUUID(), ArticleSource.NAVER,
+                "https://example.com/1", "제목", LocalDateTime.now(), "요약", 0L, 5L, true);
+
+        when(articleRepository.search(any(ArticleSearchCondition.class))).thenReturn(List.of(row));
+        when(articleMapper.toDto(article, true, 0L, 5L)).thenReturn(dto);
+
+        // when
+        List<ArticleDto> result = articleService.searchArticles(command);
+
+        // then
+        assertThat(result).containsExactly(dto);
+        verify(articleMapper).toDto(article, true, 0L, 5L);
+    }
+
+    @Test
+    @DisplayName("목록 조회 - 요청자 검증을 리포지토리 조회보다 먼저 수행한다")
+    void testSearchArticlesValidatesUserFirst() {
+        // given
+        UUID userId = UUID.randomUUID();
+        ArticleSearchCommand command =
+                new ArticleSearchCommand(null, null, null, null, userId);
+        when(articleRepository.search(any(ArticleSearchCondition.class))).thenReturn(List.of());
+
+        // when
+        articleService.searchArticles(command);
+
+        // then
+        InOrder inOrder = inOrder(userService, articleRepository);
+        inOrder.verify(userService).validateExists(userId);
+        inOrder.verify(articleRepository).search(any(ArticleSearchCondition.class));
     }
 
 

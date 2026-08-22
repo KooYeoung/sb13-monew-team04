@@ -42,7 +42,7 @@ public class ArticleViewServiceImpl implements ArticleViewService {
                 })
                 .orElseGet(() -> saveNewView(article, user));
 
-        long viewCount = articleViewRepository.countByArticle(article);
+        long viewCount = articleViewRepository.countByArticleAndUser_DeletedAtIsNull(article);
 
         // commentCount는 댓글 집계 방식 확정 전까지 0 (MID4-163 → MID4-147)
         return articleMapper.toViewDto(articleView, 0L, viewCount);
@@ -51,7 +51,7 @@ public class ArticleViewServiceImpl implements ArticleViewService {
     @Override
     public long getViewCount(UUID articleId) {
         Article article = articleService.findById(articleId);
-        return articleViewRepository.countByArticle(article);
+        return articleViewRepository.countByArticleAndUser_DeletedAtIsNull(article);
     }
 
     @Override

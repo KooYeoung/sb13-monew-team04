@@ -4,6 +4,7 @@ import com.codeit.sb13.monew.article.service.ArticleViewService;
 import com.codeit.sb13.monew.article.service.dto.ArticleDto;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.service.ArticleService;
+import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
 import com.codeit.sb13.monew.article.service.dto.ArticleViewDto;
 import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
 import com.codeit.sb13.monew.global.exception.article.ArticleViewConflictException;
@@ -11,6 +12,7 @@ import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -244,5 +246,79 @@ class ArticleControllerTest {
                         .header(USER_ID_HEADER, userId))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("ART_006"));
+    }
+
+    @Test
+    @DisplayName("목록 조회 성공 시 200과 ArticleDto 배열을 반환한다")
+    void getArticlesSuccess() throws Exception {
+        // given
+        when(articleService.searchArticles(any(ArticleSearchCommand.class)))
+                .thenReturn(List.of(articleDto));
+
+        // when & then
+        mockMvc.perform(get("/api/articles")
+                        .header(USER_ID_HEADER, userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(articleId.toString()))
+                .andExpect(jsonPath("$[0].source").value("NAVER"))
+                .andExpect(jsonPath("$[0].title").value("Test Article"))
+                .andExpect(jsonPath("$[0].viewCount").value(7))
+                .andExpect(jsonPath("$[0].commentCount").value(0))
+                .andExpect(jsonPath("$[0].viewedByMe").value(true));
+    }
+
+    @Test
+    @DisplayName("목록 조회 - 쿼리 파라미터가 검색 커맨드로 전달된다")
+    void getArticlesBindsQueryParameters() throws Exception {
+        // given
+        when(articleService.searchArticles(any(ArticleSearchCommand.class)))
+                .thenReturn(List.of());
+
+        // when
+        mockMvc.perform(get("/api/articles")
+                        .header(USER_ID_HEADER, userId)
+                        .param("keyword", "반도체")
+                        .param("sourceIn", "NAVER", "CHOSUN")
+                        .param("publishDateFrom", "2026-08-01T00:00:00")
+                        .param("publishDateTo", "2026-08-31T00:00:00"))
+                .andExpect(status().isOk());
+
+        // then
+        ArgumentCaptor<ArticleSearchCommand> captor =
+                ArgumentCaptor.forClass(ArticleSearchCommand.class);
+        verify(articleService).searchArticles(captor.capture());
+
+        ArticleSearchCommand command = captor.getValue();
+        org.assertj.core.api.Assertions.assertThat(command.keyword()).isEqualTo("반도체");
+        org.assertj.core.api.Assertions.assertThat(command.sourceIn())
+                .containsExactly(ArticleSource.NAVER, ArticleSource.CHOSUN);
+        org.assertj.core.api.Assertions.assertThat(command.publishDateFrom())
+                .isEqualTo(LocalDateTime.of(2026, 8, 1, 0, 0));
+        org.assertj.core.api.Assertions.assertThat(command.publishDateTo())
+                .isEqualTo(LocalDateTime.of(2026, 8, 31, 0, 0));
+        org.assertj.core.api.Assertions.assertThat(command.requestUserId()).isEqualTo(userId);
+    }
+
+    @Test
+    @DisplayName("목록 조회 시 Monew-Request-User-ID 헤더가 없으면 400을 반환한다")
+    void getArticlesWithoutHeader() throws Exception {
+        mockMvc.perform(get("/api/articles"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("GLB_001"));
+
+        verify(articleService, never()).searchArticles(any());
+    }
+
+    @Test
+    @DisplayName("목록 조회 시 정의되지 않은 출처 값은 400을 반환한다")
+    void getArticlesWithInvalidSource() throws Exception {
+        mockMvc.perform(get("/api/articles")
+                        .header(USER_ID_HEADER, userId)
+                        .param("sourceIn", "DAUM"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("GLB_001"));
+
+        verify(articleService, never()).searchArticles(any());
     }
 }
