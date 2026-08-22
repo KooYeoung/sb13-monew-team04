@@ -5,6 +5,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.codeit.sb13.monew.article.domain.Article;
+import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.comment.service.CommentService;
 import com.codeit.sb13.monew.comment.service.dto.CommentDto;
 import com.codeit.sb13.monew.user.domain.User;
@@ -33,7 +35,8 @@ public class CommentControllerTest {
   @DisplayName("댓글 생성 성공 - GREEN")
   void 댓글_생성_성공() throws Exception {
     // given
-    UUID articleId = UUID.randomUUID();
+    Article article = Article.create("기사 제목", "기사 요약", "https://test.com/article",
+        LocalDateTime.now(), ArticleSource.NAVER);
     User user = User.builder()
         .email("test@test.com")
         .nickname("사용자 닉네임")
@@ -41,10 +44,11 @@ public class CommentControllerTest {
         .build();
     String content = "테스트 댓글";
     ReflectionTestUtils.setField(user, "id", UUID.randomUUID()); // user 객체에 id 필드 설정
+    ReflectionTestUtils.setField(article, "id", UUID.randomUUID()); // article 객체에 id 필드 설정
 
-    CommentDto response=new CommentDto(UUID.randomUUID(), articleId, user.getId(), user.getNickname(), content, 0L, false, LocalDateTime.now());
+    CommentDto response=new CommentDto(UUID.randomUUID(), article.getId(), user.getId(), user.getNickname(), content, 0L, false, LocalDateTime.now());
     given(commentService.create(argThat(command->command != null
-        && articleId.equals(command.articleId())
+        && article.getId().equals(command.articleId())
         && user.getId().equals(command.userId())
         && content.equals(command.content())))).willReturn(response); // 값이 정확히 일치하는 방향만 통과하도록 테스트 수정
 
@@ -57,10 +61,10 @@ public class CommentControllerTest {
                   "userId": "%s",
                   "content": "%s"
                 }
-                """.formatted(articleId, user.getId(), content)))
+                """.formatted(article.getId(), user.getId(), content)))
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.id").value(response.id().toString()))
-        .andExpect(jsonPath("$.articleId").value(articleId.toString()))
+        .andExpect(jsonPath("$.articleId").value(article.getId().toString()))
         .andExpect(jsonPath("$.userId").value(user.getId().toString()))
         .andExpect(jsonPath("$.content").value(content))
         .andExpect(jsonPath("$.createdAt").isNotEmpty())

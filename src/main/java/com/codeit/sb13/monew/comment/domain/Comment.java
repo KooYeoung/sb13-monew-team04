@@ -1,5 +1,6 @@
 package com.codeit.sb13.monew.comment.domain;
 
+import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.global.domain.DeletedAtEntity;
 import com.codeit.sb13.monew.user.domain.User;
 import jakarta.persistence.Column;
@@ -8,8 +9,8 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.util.UUID;
 import lombok.AccessLevel;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -19,8 +20,9 @@ import lombok.NoArgsConstructor;
 @Table(name = "comments")
 public class Comment extends DeletedAtEntity { // DeletedAtEntity를 상속받아 공통 필드 사용하도록 수정
 
-  @Column(name = "article_id", nullable = false)
-  private UUID articleId;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "article_id", nullable = false)
+  private Article article;
 
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "user_id", nullable = false)
@@ -29,8 +31,9 @@ public class Comment extends DeletedAtEntity { // DeletedAtEntity를 상속받�
   @Column(nullable = false, length = 500)
   private String content;
 
-  public Comment(UUID articleId, User user, String content) {
-    this.articleId = articleId;
+  @Builder
+  public Comment(Article article, User user, String content) {
+    this.article = article;
     this.user = user;
     this.content = content;
   }

@@ -2,8 +2,10 @@ package com.codeit.sb13.monew.comment.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.codeit.sb13.monew.article.domain.Article;
+import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.user.domain.User;
-import java.util.UUID;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,7 +20,8 @@ public class CommentTest {
   @DisplayName("댓글 생성 성공 - GREEN")
   void 댓글_생성_성공() {
     // given
-    UUID articleId = UUID.randomUUID();
+    Article article = Article.create("기사 제목", "기사 요약", "https://test.com/article",
+        LocalDateTime.now(), ArticleSource.NAVER);
     User user = User.builder()
         .email("test@test.com")
         .nickname("테스트 사용자")
@@ -26,15 +29,12 @@ public class CommentTest {
         .build();
 
     // when
-    Comment comment=new Comment(articleId, user, "테스트 댓글");
+    Comment comment=new Comment(article, user, "테스트 댓글");
 
     // then
     Assertions.assertAll(
-        ()->assertThat(comment.getArticleId()).isEqualTo(articleId),
+        ()->assertThat(comment.getArticle()).isEqualTo(article),
         ()->assertThat(comment.getUser()).isEqualTo(user),
-        ()->assertThat(comment.getUser().getEmail()).isEqualTo("test@test.com"),
-        ()->assertThat(comment.getUser().getNickname()).isEqualTo("테스트 사용자"),
-        ()->assertThat(comment.getUser().getPassword()).isEqualTo("Abcd!"),
         ()->assertThat(comment.getContent()).isEqualTo("테스트 댓글")
     );
   }
