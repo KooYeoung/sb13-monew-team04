@@ -1,5 +1,6 @@
 package com.codeit.sb13.monew.notification.mapper;
 
+import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.notification.controller.dto.NotificationResponse;
 import com.codeit.sb13.monew.notification.domain.Notification;
 import com.codeit.sb13.monew.notification.service.dto.NotificationResult;
@@ -13,4 +14,6 @@ public interface NotificationMapper {
     NotificationResult toResult(Notification notification);
 
     NotificationResponse toResponse(NotificationResult result);
+
+    CursorPageResponseDto<NotificationResponse> toResponse(CursorPageResponseDto<NotificationResult> result);
 }

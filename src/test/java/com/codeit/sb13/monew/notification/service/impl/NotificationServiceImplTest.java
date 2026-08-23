@@ -1,13 +1,16 @@
 package com.codeit.sb13.monew.notification.service.impl;
 
+import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.notification.NotificationNotFoundException;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.notification.domain.Notification;
 import com.codeit.sb13.monew.notification.domain.ResourceType;
 import com.codeit.sb13.monew.notification.mapper.NotificationMapper;
 import com.codeit.sb13.monew.notification.repository.NotificationRepository;
+import com.codeit.sb13.monew.notification.repository.dto.NotificationFindCondition;
 import com.codeit.sb13.monew.notification.service.dto.ArticlesForInterestDto;
 import com.codeit.sb13.monew.notification.service.dto.CommentLikedDto;
+import com.codeit.sb13.monew.notification.service.dto.NotificationFindDto;
 import com.codeit.sb13.monew.notification.service.dto.NotificationResult;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.repository.UserRepository;
@@ -292,5 +295,103 @@ class NotificationServiceImplTest {
 
             verify(notificationRepository, never()).findByUser_IdAndConfirmedFalse(any());
         }
+    }
+
+    @Nested
+    @DisplayName("findAllNotifications")
+    class FindAllNotifications {
+
+        @Test
+        @DisplayName("다음 페이지가 있으면 limit만큼 잘라서 반환하고 hasNext가 true다.")
+        void 다음_페이지_있으면_hasNext_true() {
+            // given
+            UUID userId = UUID.randomUUID();
+            User user = User.builder().email("test@test.com").nickname("테스트").password("pw").build();
+            ReflectionTestUtils.setField(user, "id", userId);
+
+            int limit = 2;
+            Notification n1 = Notification.create(user, "알림1", UUID.randomUUID(), ResourceType.COMMENT);
+            Notification n2 = Notification.create(user, "알림2", UUID.randomUUID(), ResourceType.COMMENT);
+            Notification n3 = Notification.create(user, "알림3", UUID.randomUUID(), ResourceType.COMMENT);
+            ReflectionTestUtils.setField(n1, "id", UUID.randomUUID());
+            ReflectionTestUtils.setField(n2, "id", UUID.randomUUID());
+            ReflectionTestUtils.setField(n3, "id", UUID.randomUUID());
+            ReflectionTestUtils.setField(n1, "createdAt", LocalDateTime.now());
+            ReflectionTestUtils.setField(n2, "createdAt", LocalDateTime.now().minusMinutes(1));
+            ReflectionTestUtils.setField(n3, "createdAt", LocalDateTime.now().minusMinutes(2));
+
+            NotificationFindDto request = new NotificationFindDto(null, null, limit, userId);
+
+            when(userRepository.existsById(userId)).thenReturn(true);
+            when(notificationRepository.findUnconfirmedByUserWithCursor(
+                    new NotificationFindCondition(userId, null, null, limit + 1)))
+                    .thenReturn(List.of(n1, n2, n3));
+            when(notificationRepository.countByUser_IdAndConfirmedFalse(userId)).thenReturn(5L);
+            when(mapper.toResult(any(Notification.class))).thenAnswer(invocation -> {
+                Notification n = invocation.getArgument(0);
+                return new NotificationResult(n.getId(), userId, n.getContent(), n.getResourceId(),
+                        n.getResourceType(), n.isConfirmed(), n.getCreatedAt(), n.getUpdatedAt());
+            });
+
+            // when
+            CursorPageResponseDto<NotificationResult> result = notificationServiceImpl.findAllNotifications(request);
+
+            // then
+            assertThat(result.content()).hasSize(2);
+            assertThat(result.hasNext()).isTrue();
+            assertThat(result.totalElements()).isEqualTo(5L);
+            assertThat(result.nextCursor()).isEqualTo(n2.getId().toString());
+            assertThat(result.nextAfter()).isEqualTo(n2.getCreatedAt().toString());
+        }
+
+        @Test
+        @DisplayName("다음 페이지가 없으면 조회된 만큼만 반환하고 hasNext가 false다.")
+        void 다음_페이지_없으면_hasNext_false() {
+            // given
+            UUID userId = UUID.randomUUID();
+            User user = User.builder().email("test@test.com").nickname("테스트").password("pw").build();
+            ReflectionTestUtils.setField(user, "id", userId);
+
+            int limit = 10;
+            Notification n1 = Notification.create(user, "알림1", UUID.randomUUID(), ResourceType.COMMENT);
+            ReflectionTestUtils.setField(n1, "id", UUID.randomUUID());
+            ReflectionTestUtils.setField(n1, "createdAt", LocalDateTime.now());
+
+            NotificationFindDto request = new NotificationFindDto(null, null, limit, userId);
+
+            when(userRepository.existsById(userId)).thenReturn(true);
+            when(notificationRepository.findUnconfirmedByUserWithCursor(
+                    new NotificationFindCondition(userId, null, null, limit + 1)))
+                    .thenReturn(List.of(n1));
+            when(notificationRepository.countByUser_IdAndConfirmedFalse(userId)).thenReturn(1L);
+            when(mapper.toResult(n1)).thenReturn(new NotificationResult(
+                    n1.getId(), userId, n1.getContent(), n1.getResourceId(),
+                    n1.getResourceType(), n1.isConfirmed(), n1.getCreatedAt(), n1.getUpdatedAt()));
+
+            // when
+            CursorPageResponseDto<NotificationResult> result = notificationServiceImpl.findAllNotifications(request);
+
+            // then
+            assertThat(result.content()).hasSize(1);
+            assertThat(result.hasNext()).isFalse();
+            assertThat(result.nextCursor()).isNull();
+            assertThat(result.nextAfter()).isNull();
+        }
+
+        @Test
+        @DisplayName("존재하지 않는 요청자면 UserNotFoundException이 발생한다.")
+        void 요청자_없으면_예외() {
+            // given
+            UUID userId = UUID.randomUUID();
+            NotificationFindDto request = new NotificationFindDto(null, null, 10, userId);
+            when(userRepository.existsById(userId)).thenReturn(false);
+
+            // when & then
+            assertThatThrownBy(() -> notificationServiceImpl.findAllNotifications(request))
+                    .isInstanceOf(UserNotFoundException.class);
+
+            verify(notificationRepository, never()).findUnconfirmedByUserWithCursor(any(NotificationFindCondition.class));
+        }
+
     }
 }

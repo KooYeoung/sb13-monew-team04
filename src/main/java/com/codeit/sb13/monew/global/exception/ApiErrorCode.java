@@ -30,6 +30,8 @@ public enum ApiErrorCode {
 
     // NOTIFICATION NTF
     NOTIFICATION_NOT_FOUND("NTF_001", HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다."),
+    NOTIFICATION_INVALID_LIMIT("NTF_002", HttpStatus.BAD_REQUEST, "페이지 크기(limit)가 올바르지 않습니다."),
+    NOTIFICATION_INVALID_CURSOR("NTF_003", HttpStatus.BAD_REQUEST, "커서 값이 올바르지 않습니다."),
 
     // COMMENT CMT
     COMMENT_NOT_FOUND("CMT_001", HttpStatus.NOT_FOUND, "댓글을 찾을 수 없습니다."),
