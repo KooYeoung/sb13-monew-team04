@@ -20,4 +20,6 @@ public interface NotificationService {
     NotificationResult confirmNotification(UUID notificationId, UUID userId);
 
     List<NotificationResult> confirmAllNotifications(UUID userId);
+
+    void deleteConfirmedNotification();
 }

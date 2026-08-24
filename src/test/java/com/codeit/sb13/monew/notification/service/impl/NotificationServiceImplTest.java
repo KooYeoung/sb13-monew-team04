@@ -26,12 +26,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -393,5 +395,40 @@ class NotificationServiceImplTest {
             verify(notificationRepository, never()).findUnconfirmedByUserWithCursor(any(NotificationFindCondition.class));
         }
 
+    }
+
+    @Nested
+    @DisplayName("deleteConfirmedNotification")
+    class DeleteConfirmedNotification {
+
+        @Test
+        @DisplayName("확인 처리된 지 7일 경과한 알림을 삭제하고, 삭제 기준 시각으로 '지금으로부터 7일 전'을 넘긴다.")
+        void 만료된_확인_알림_삭제() {
+            // given
+            when(notificationRepository.deleteConfirmedBefore(any(LocalDateTime.class))).thenReturn(3L);
+
+            // when
+            notificationServiceImpl.deleteConfirmedNotification();
+
+            // then
+            ArgumentCaptor<LocalDateTime> thresholdCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+            verify(notificationRepository).deleteConfirmedBefore(thresholdCaptor.capture());
+
+            LocalDateTime threshold = thresholdCaptor.getValue();
+            LocalDateTime expected = LocalDateTime.now().minusDays(7);
+            assertThat(threshold).isCloseTo(expected, within(2, ChronoUnit.SECONDS));
+        }
+
+        @Test
+        @DisplayName("삭제 건수가 0이어도 예외 없이 정상 종료된다.")
+        void 삭제_건수_0이어도_정상_종료() {
+            // given
+            when(notificationRepository.deleteConfirmedBefore(any(LocalDateTime.class))).thenReturn(0L);
+
+            // when & then
+            notificationServiceImpl.deleteConfirmedNotification();
+
+            verify(notificationRepository).deleteConfirmedBefore(any(LocalDateTime.class));
+        }
     }
 }

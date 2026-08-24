@@ -19,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -121,4 +122,12 @@ public class NotificationServiceImpl implements NotificationService {
         notificationRepository.saveAll(notifications);
         return notifications.stream().map(mapper::toResult).toList();
     }
+
+    @Override
+    @Transactional
+    public void deleteConfirmedNotification() {
+        long deletedCount = notificationRepository.deleteConfirmedBefore(LocalDateTime.now().minusDays(7));
+        log.info("확인 처리된 지 7일 경과한 알림 {}건 삭제", deletedCount);
+    }
+
 }

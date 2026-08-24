@@ -50,6 +50,24 @@ class NotificationRepositoryTest {
         return em.find(Notification.class, notification.getId());
     }
 
+    private Notification saveNotification(User user, String content, boolean confirmed, LocalDateTime confirmedAt) {
+        Notification notification = Notification.create(user, content, UUID.randomUUID(), ResourceType.COMMENT);
+        if (confirmed) {
+            notification.confirm();
+        }
+        em.persist(notification);
+        em.flush();
+
+        em.getEntityManager()
+                .createNativeQuery("UPDATE notifications SET confirmed_at = ?1 WHERE id = ?2")
+                .setParameter(1, confirmedAt)
+                .setParameter(2, notification.getId())
+                .executeUpdate();
+        em.clear();
+
+        return em.find(Notification.class, notification.getId());
+    }
+
     @Test
     @DisplayName("다른 사용자의 알림은 조회되지 않는다")
     void 사용자_격리() {
@@ -130,5 +148,59 @@ class NotificationRepositoryTest {
 
         // then
         assertThat(result).hasSize(3);
+    }
+
+    @Test
+    @DisplayName("확인 처리된 지 7일이 지난 알림은 삭제된다")
+    void 확인_후_7일_지난_알림_삭제() {
+        // given
+        User user = saveUser("me@test.com", "나");
+        LocalDateTime eightDaysAgo = LocalDateTime.now().minusDays(8);
+        Notification expired = saveNotification(user, "확인된 지 오래됨", true, eightDaysAgo);
+
+        LocalDateTime threshold = LocalDateTime.now().minusDays(7);
+
+        // when
+        long deletedCount = notificationRepository.deleteConfirmedBefore(threshold);
+
+        // then
+        assertThat(deletedCount).isEqualTo(1);
+        assertThat(notificationRepository.findById(expired.getId())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("확인 처리된 지 7일이 안 지난 알림은 삭제되지 않는다")
+    void 확인_후_7일_안지난_알림_유지() {
+        // given
+        User user = saveUser("me@test.com", "나");
+        LocalDateTime threeDaysAgo = LocalDateTime.now().minusDays(3);
+        Notification recent = saveNotification(user, "최근 확인함", true, threeDaysAgo);
+
+        LocalDateTime threshold = LocalDateTime.now().minusDays(7);
+
+        // when
+        long deletedCount = notificationRepository.deleteConfirmedBefore(threshold);
+
+        // then
+        assertThat(deletedCount).isZero();
+        assertThat(notificationRepository.findById(recent.getId())).isPresent();
+    }
+
+    @Test
+    @DisplayName("미확인 알림은 확인 시각(confirmedAt)이 오래돼도 삭제 대상에서 제외된다")
+    void 미확인_알림_삭제_제외() {
+        // given
+        User user = saveUser("me@test.com", "나");
+        LocalDateTime tenDaysAgo = LocalDateTime.now().minusDays(10);
+        Notification unconfirmed = saveNotification(user, "미확인", false, tenDaysAgo);
+
+        LocalDateTime threshold = LocalDateTime.now().minusDays(7);
+
+        // when
+        long deletedCount = notificationRepository.deleteConfirmedBefore(threshold);
+
+        // then
+        assertThat(deletedCount).isZero();
+        assertThat(notificationRepository.findById(unconfirmed.getId())).isPresent();
     }
 }

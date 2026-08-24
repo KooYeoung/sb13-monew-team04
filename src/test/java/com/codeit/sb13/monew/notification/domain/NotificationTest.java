@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -52,5 +53,33 @@ class NotificationTest {
         // then
         assertThat(notification.isConfirmed()).isTrue();
         
+    }
+
+    @Test
+    @DisplayName("알림을 확인하면 confirmedAt이 설정된다.")
+    void 알림_확인시_confirmedAt_설정() {
+        // given
+        Notification notification = Notification.create(user, "알림 확인 테스트", resourceId, ResourceType.COMMENT);
+
+        // when
+        notification.confirm();
+
+        // then
+        assertThat(notification.getConfirmedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("이미 확인된 알림을 다시 확인해도 confirmedAt은 최초 확인 시각을 유지한다.")
+    void 이미_확인된_알림_재확인시_confirmedAt_유지() {
+        // given
+        Notification notification = Notification.create(user, "알림 확인 테스트", resourceId, ResourceType.COMMENT);
+        notification.confirm();
+        LocalDateTime firstConfirmedAt = notification.getConfirmedAt();
+
+        // when
+        notification.confirm();
+
+        // then
+        assertThat(notification.getConfirmedAt()).isEqualTo(firstConfirmedAt);
     }
 }

@@ -8,6 +8,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -33,6 +34,8 @@ public class Notification extends UpdatedAtEntity {
     @Column(nullable = false)
     private boolean confirmed;
 
+    private LocalDateTime confirmedAt;
+
     @Builder
     private Notification(User user, String content, UUID resourceId, ResourceType resourceType) {
         this.user = user;
@@ -52,6 +55,11 @@ public class Notification extends UpdatedAtEntity {
     }
 
     public void confirm() {
+        if (this.confirmed) {
+            return;
+        }
+
         this.confirmed = true;
+        this.confirmedAt = LocalDateTime.now();
     }
 }
