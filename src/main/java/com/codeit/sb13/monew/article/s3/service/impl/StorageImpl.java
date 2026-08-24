@@ -112,7 +112,7 @@ public class StorageImpl implements Storage {
 
     private String bucket() {
         if (!StringUtils.hasText(props.bucket())) {
-            throw new ArticleS3ConfigInvalidException("monew.s3.bucket", "S3 bucket must be configured");
+            throw new ArticleS3ConfigInvalidException("monew.s3.bucket", "S3 bucket 설정이 필요합니다");
         }
         return props.bucket();
     }
@@ -127,7 +127,7 @@ public class StorageImpl implements Storage {
 
     private String prefix() {
         if (!StringUtils.hasText(props.prefix())) {
-            throw new ArticleS3ConfigInvalidException("monew.s3.prefix", "S3 prefix must be configured");
+            throw new ArticleS3ConfigInvalidException("monew.s3.prefix", "S3 prefix 설정이 필요합니다");
         }
         return props.prefix().trim();
     }

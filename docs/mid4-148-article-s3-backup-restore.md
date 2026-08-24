@@ -4,11 +4,13 @@
 
 - Jira: `MID4-148`
 - Parent: `MID4-74`
-- 이번 PR 반영 티켓: `MID4-166`
-- 선행 티켓: `MID4-144` Article 엔티티 보강
+- 이번 PR: `PR #47` Draft
+- 이번 PR 반영 티켓: `MID4-167`
+- 이전 작업: `MID4-144` Article 엔티티 보강, `MID4-166` (`PR #45`) 기사 S3 백업 설정 및 Storage 인터페이스 구성
 - 목적: 뉴스 기사 데이터를 날짜 단위로 S3에 백업하고, 물리적으로 유실된 기사만 DB에 복구한다.
 - 구현 범위: 날짜 단위 백업 기준, AWS S3 설정 기준, Spring Scheduler 배치, PostgreSQL advisory lock 동시성 제어, 날짜 범위 복구 API, 실패 로그 기준
-- `MID4-166` 범위: AWS S3 설정, 환경변수, credentials provider, Storage 인터페이스, test profile 대체 구현
+- `MID4-166` 이전 작업 범위: AWS S3 설정, 환경변수, credentials provider, Storage 인터페이스, test profile 대체 구현
+- `MID4-167` 범위: 기사 백업 파일 모델, 백업 아이템 모델, JSON 직렬화/역직렬화 컨버터, 검증 테스트 구현
 
 ## 날짜 단위 백업 기준
 
@@ -91,7 +93,7 @@ Storage 계층에는 문자열 key가 아니라 백업 기준 날짜 `LocalDate`
 S3 bucket, region, endpoint, prefix는 환경변수로 설정한다.
 
 ```text
-MONEW_AWS_REGION=
+MONEW_AWS_REGION=ap-northeast-2
 MONEW_AWS_ENDPOINT=
 MONEW_ARTICLE_BACKUP_CRON="0 10 0 * * *"
 MONEW_ARTICLE_BACKUP_ENABLED=false
@@ -257,8 +259,8 @@ MID4-148은 전체 기능 기준으로 유지하고, 구현은 아래 하위 작
 
 | 티켓 | 범위 | 구현 시점 |
 | --- | --- | --- |
-| `MID4-166` | 기사 S3 백업 설정 및 Storage 인터페이스 구성 | 이번 PR |
-| `MID4-167` | 기사 백업 파일 모델 및 JSON 직렬화 구현 | 후속 하위 티켓 |
+| `MID4-166` | 기사 S3 백업 설정 및 Storage 인터페이스 구성 | 이전 작업 (`PR #45`) |
+| `MID4-167` | 기사 백업 파일 모델 및 JSON 직렬화 구현 | 이번 PR (`PR #47` Draft) |
 | `MID4-168` | 날짜 단위 기사 백업 서비스 구현 | 후속 하위 티켓 |
 | `MID4-169` | 기사 백업 Scheduler 및 PostgreSQL advisory lock 적용 | 후속 하위 티켓 |
 | `MID4-170` | 날짜 범위 기사 복구 서비스 구현 | 후속 하위 티켓 |

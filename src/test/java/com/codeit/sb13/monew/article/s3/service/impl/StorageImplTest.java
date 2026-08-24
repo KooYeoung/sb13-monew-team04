@@ -81,6 +81,19 @@ class StorageImplTest {
     }
 
     @Test
+    @DisplayName("contentType이 지정되면 S3 저장 요청에 그대로 사용한다")
+    void savesObjectWithExplicitContentType() {
+        StorageCommand command = new StorageCommand(BACKUP_DATE, CONTENT, "application/x-ndjson");
+
+        StorageSaveResult result = storage.saveIfAbsent(command);
+
+        assertThat(result).isEqualTo(StorageSaveResult.SAVED);
+        ArgumentCaptor<PutObjectRequest> requestCaptor = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client).putObject(requestCaptor.capture(), any(RequestBody.class));
+        assertThat(requestCaptor.getValue().contentType()).isEqualTo("application/x-ndjson");
+    }
+
+    @Test
     @DisplayName("S3 객체가 이미 있으면 ALREADY_EXISTS를 반환한다")
     void returnsAlreadyExistsWhenObjectAlreadyExists() {
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
@@ -292,7 +305,7 @@ class StorageImplTest {
                     assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ARTICLE_S3_CONFIG_INVALID);
                     assertThat(e.getDetails())
                             .containsEntry("property", "monew.s3.bucket")
-                            .containsEntry("reason", "S3 bucket must be configured");
+                            .containsEntry("reason", "S3 bucket 설정이 필요합니다");
                 });
     }
 
@@ -306,7 +319,7 @@ class StorageImplTest {
                     assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ARTICLE_S3_CONFIG_INVALID);
                     assertThat(e.getDetails())
                             .containsEntry("property", "monew.s3.prefix")
-                            .containsEntry("reason", "S3 prefix must be configured");
+                            .containsEntry("reason", "S3 prefix 설정이 필요합니다");
                 });
     }
 

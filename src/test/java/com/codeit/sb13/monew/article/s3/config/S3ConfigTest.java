@@ -1,5 +1,6 @@
 package com.codeit.sb13.monew.article.s3.config;
 
+import com.codeit.sb13.monew.global.exception.article.ArticleS3ConfigInvalidException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -47,5 +48,35 @@ class S3ConfigTest {
                         "monew.s3.endpoint=http://localhost:9090"
                 )
                 .run(context -> assertThat(context.getBean(S3Client.class)).isNotNull());
+    }
+
+    @Test
+    @DisplayName("S3 region이 비어 있으면 설정 예외가 발생한다")
+    void failsWhenRegionIsBlank() {
+        contextRunner
+                .withPropertyValues(
+                        "monew.s3.bucket=monew-backup",
+                        "monew.s3.region=",
+                        "monew.s3.endpoint=http://localhost:9090"
+                )
+                .run(context -> {
+                    Throwable startupFailure = context.getStartupFailure();
+                    assertThat(startupFailure).isNotNull();
+
+                    assertThat(rootCause(startupFailure))
+                            .isInstanceOfSatisfying(ArticleS3ConfigInvalidException.class, exception ->
+                                    assertThat(exception.getDetails())
+                                            .containsEntry("property", "monew.s3.region")
+                                            .containsEntry("reason", "S3 region 설정이 필요합니다"));
+                });
+    }
+
+    private Throwable rootCause(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+
+        return current;
     }
 }
