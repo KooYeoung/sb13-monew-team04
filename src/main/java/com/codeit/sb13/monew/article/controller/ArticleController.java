@@ -7,6 +7,7 @@ import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.service.ArticleService;
 import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
 import com.codeit.sb13.monew.article.service.dto.ArticleViewDto;
+import com.codeit.sb13.monew.global.MonewHttpHeaders;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -25,8 +26,6 @@ import java.util.UUID;
 @Tag(name = "뉴스 기사 관리", description = "뉴스 기사 관련 API")
 public class ArticleController {
 
-    private static final String USER_ID_HEADER = "Monew-Request-User-ID";
-
     private final ArticleService articleService;
     private final ArticleViewService articleViewService;
 
@@ -41,7 +40,7 @@ public class ArticleController {
     @GetMapping
     public ResponseEntity<List<ArticleDto>> getArticles(
             @ModelAttribute ArticleSearchRequest request,
-            @Parameter(description = "요청자 ID") @RequestHeader(USER_ID_HEADER) UUID requestUserId
+            @Parameter(description = "요청자 ID") @RequestHeader(MonewHttpHeaders.REQUEST_USER_ID) UUID requestUserId
     ) {
         ArticleSearchCommand command = new ArticleSearchCommand(
                 request.keyword(),
@@ -65,7 +64,7 @@ public class ArticleController {
     @GetMapping("/{articleId}")
     public ResponseEntity<ArticleDto> getArticle(
             @Parameter(description = "뉴스 기사 ID") @PathVariable UUID articleId,
-            @Parameter(description = "요청자 ID") @RequestHeader(USER_ID_HEADER) UUID requestUserId
+            @Parameter(description = "요청자 ID") @RequestHeader(MonewHttpHeaders.REQUEST_USER_ID) UUID requestUserId
     ) {
         return ResponseEntity.ok(articleService.getArticle(articleId, requestUserId));
     }
@@ -83,7 +82,7 @@ public class ArticleController {
     @PostMapping("/{articleId}/article-views")
     public ResponseEntity<ArticleViewDto> registerArticleView(
             @Parameter(description = "뉴스 기사 ID") @PathVariable UUID articleId,
-            @Parameter(description = "요청자 ID") @RequestHeader(USER_ID_HEADER) UUID requestUserId
+            @Parameter(description = "요청자 ID") @RequestHeader(MonewHttpHeaders.REQUEST_USER_ID) UUID requestUserId
     ) {
         return ResponseEntity.ok(articleViewService.recordView(articleId, requestUserId));
     }

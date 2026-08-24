@@ -30,12 +30,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static com.codeit.sb13.monew.global.MonewHttpHeaders.REQUEST_USER_ID;
 
 @WebMvcTest(ArticleController.class)
 @DisplayName("ArticleController 슬라이스 테스트")
 class ArticleControllerTest {
-
-    private static final String USER_ID_HEADER = "Monew-Request-User-ID";
 
     @Autowired
     MockMvc mockMvc;
@@ -91,7 +90,7 @@ class ArticleControllerTest {
 
         // when & then
         mockMvc.perform(get("/api/articles/{articleId}", articleId)
-                        .header(USER_ID_HEADER, userId))
+                        .header(REQUEST_USER_ID, userId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(articleId.toString()))
                 .andExpect(jsonPath("$.source").value("NAVER"))
@@ -114,7 +113,7 @@ class ArticleControllerTest {
 
         // when & then
         mockMvc.perform(get("/api/articles/{articleId}", articleId)
-                        .header(USER_ID_HEADER, userId))
+                        .header(REQUEST_USER_ID, userId))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ART_001"))
                 .andExpect(jsonPath("$.details.articleId").value(articleId.toString()));
@@ -136,7 +135,7 @@ class ArticleControllerTest {
     void getArticleWithInvalidUuid() throws Exception {
         // when & then
         mockMvc.perform(get("/api/articles/not-a-uuid")
-                        .header(USER_ID_HEADER, userId))
+                        .header(REQUEST_USER_ID, userId))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("GLB_001"));
 
@@ -165,7 +164,7 @@ class ArticleControllerTest {
     @DisplayName("잘못된 UUID 형식의 요청자 헤더는 400을 반환한다")
     void getArticleWithInvalidHeaderUuid() throws Exception {
         mockMvc.perform(get("/api/articles/{articleId}", articleId)
-                        .header(USER_ID_HEADER, "not-a-uuid"))
+                        .header(REQUEST_USER_ID, "not-a-uuid"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("GLB_001"));
 
@@ -180,7 +179,7 @@ class ArticleControllerTest {
 
         // when & then
         mockMvc.perform(post("/api/articles/{articleId}/article-views", articleId)
-                        .header(USER_ID_HEADER, userId))
+                        .header(REQUEST_USER_ID, userId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.viewedBy").value(userId.toString()))
                 .andExpect(jsonPath("$.articleId").value(articleId.toString()))
@@ -202,7 +201,7 @@ class ArticleControllerTest {
 
         // when & then
         mockMvc.perform(post("/api/articles/{articleId}/article-views", articleId)
-                        .header(USER_ID_HEADER, userId))
+                        .header(REQUEST_USER_ID, userId))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ART_001"))
                 .andExpect(jsonPath("$.details.articleId").value(articleId.toString()));
@@ -217,7 +216,7 @@ class ArticleControllerTest {
 
         // when & then
         mockMvc.perform(post("/api/articles/{articleId}/article-views", articleId)
-                        .header(USER_ID_HEADER, userId))
+                        .header(REQUEST_USER_ID, userId))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("USR_001"))
                 .andExpect(jsonPath("$.details.userId").value(userId.toString()));
@@ -243,7 +242,7 @@ class ArticleControllerTest {
 
         // when & then
         mockMvc.perform(post("/api/articles/{articleId}/article-views", articleId)
-                        .header(USER_ID_HEADER, userId))
+                        .header(REQUEST_USER_ID, userId))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("ART_006"));
     }
@@ -257,7 +256,7 @@ class ArticleControllerTest {
 
         // when & then
         mockMvc.perform(get("/api/articles")
-                        .header(USER_ID_HEADER, userId))
+                        .header(REQUEST_USER_ID, userId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].id").value(articleId.toString()))
@@ -277,7 +276,7 @@ class ArticleControllerTest {
 
         // when
         mockMvc.perform(get("/api/articles")
-                        .header(USER_ID_HEADER, userId)
+                        .header(REQUEST_USER_ID, userId)
                         .param("keyword", "반도체")
                         .param("sourceIn", "NAVER", "CHOSUN")
                         .param("publishDateFrom", "2026-08-01T00:00:00")
@@ -314,7 +313,7 @@ class ArticleControllerTest {
     @DisplayName("목록 조회 시 정의되지 않은 출처 값은 400을 반환한다")
     void getArticlesWithInvalidSource() throws Exception {
         mockMvc.perform(get("/api/articles")
-                        .header(USER_ID_HEADER, userId)
+                        .header(REQUEST_USER_ID, userId)
                         .param("sourceIn", "DAUM"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("GLB_001"));
