@@ -1,6 +1,6 @@
 package com.codeit.sb13.monew.interest.domain;
 
-import com.codeit.sb13.monew.global.domain.BaseEntity;
+import com.codeit.sb13.monew.global.domain.CreatedAtEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -24,7 +24,7 @@ import lombok.NoArgsConstructor;
                 columnNames = {"interest_id", "user_id"}
         )
 )
-public class Subscribe extends BaseEntity {
+public class Subscribe extends CreatedAtEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "interest_id", nullable = false)
