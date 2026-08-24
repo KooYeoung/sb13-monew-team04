@@ -1,6 +1,7 @@
 package com.codeit.sb13.monew.interest.repository;
 
 import com.codeit.sb13.monew.interest.domain.Subscribe;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.UUID;
@@ -29,4 +30,17 @@ public interface SubscribeRepository extends JpaRepository<Subscribe, UUID> {
      * @return 해당 관심사를 구독 중인 사용자 수
      */
     long countByInterest_Id(UUID interestId);
+
+    /**
+     * 특정 사용자가 특정 관심사를 이미 구독하고 있는지 조회한다.
+     *
+     * <p>{@link com.codeit.sb13.monew.interest.service.SubscribeServiceImpl#subscribe}가
+     * 중복 구독을 막기 위해, 새 구독을 저장하기 전에 이 메서드로 기존 구독이
+     * 있는지 먼저 확인한다.</p>
+     *
+     * @param interestId 관심사 id
+     * @param userId 사용자 id
+     * @return 이미 존재하는 구독. 없으면 빈 {@link Optional}
+     */
+    Optional<Subscribe> findByInterest_IdAndUserId(UUID interestId, UUID userId);
 }
