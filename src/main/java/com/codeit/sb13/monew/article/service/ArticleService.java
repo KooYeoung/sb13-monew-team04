@@ -1,11 +1,13 @@
 package com.codeit.sb13.monew.article.service;
 
+import com.codeit.sb13.monew.article.s3.service.dto.ArticleBackupItem;
 import com.codeit.sb13.monew.article.service.dto.ArticleDto;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.service.dto.ArticleRequest;
 import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,4 +36,7 @@ public interface ArticleService {
 
     // 목록 조회 (필터 적용, 요청자 기준 viewedByMe 포함)
     List<ArticleDto> searchArticles(ArticleSearchCommand command);
+
+    List<ArticleBackupItem> findArticleBackupItemsByDateRange(LocalDate fromInclusive,
+                                                              LocalDate toExclusive);
 }

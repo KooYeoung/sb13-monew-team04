@@ -25,4 +25,8 @@ public record StorageCommand(
         }
         return value;
     }
+
+    public static StorageCommand of(LocalDate backupDate, String content) {
+        return new StorageCommand(backupDate, content, DEFAULT_CONTENT_TYPE);
+    }
 }

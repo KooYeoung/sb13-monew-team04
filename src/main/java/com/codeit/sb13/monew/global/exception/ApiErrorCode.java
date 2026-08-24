@@ -23,6 +23,8 @@ public enum ApiErrorCode {
     ARTICLE_S3_STORAGE_FAILED("ART_008", HttpStatus.BAD_GATEWAY, "기사 백업 S3 저장소 호출에 실패했습니다."),
     ARTICLE_BACKUP_FILE_INVALID("ART_009", HttpStatus.INTERNAL_SERVER_ERROR, "기사 백업 파일 데이터가 올바르지 않습니다."),
     ARTICLE_BACKUP_FILE_JSON_FAILED("ART_010", HttpStatus.BAD_GATEWAY, "기사 백업 파일 JSON 처리에 실패했습니다."),
+    ARTICLE_BACKUP_DATE_INVALID("ART_011", HttpStatus.BAD_REQUEST, "기사 백업 날짜 조건이 올바르지 않습니다."),
+    ARTICLE_BACKUP_FAILED("ART_012", HttpStatus.INTERNAL_SERVER_ERROR, "기사 백업 처리에 실패했습니다."),
 
     // INTEREST INT
     INTEREST_NOT_FOUND("INT_001", HttpStatus.NOT_FOUND, "관심사를 찾을 수 없습니다."),

@@ -5,6 +5,7 @@ import com.codeit.sb13.monew.article.s3.service.dto.StorageCommand;
 import com.codeit.sb13.monew.article.s3.service.dto.StorageSaveResult;
 import com.codeit.sb13.monew.article.s3.service.dto.StorageSearchCommand;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -68,6 +69,13 @@ class StorageS3MockIntegrationTest {
                 s3Client,
                 new S3Properties(BUCKET, "us-east-1", endpoint, "article-backups", true, "0 10 0 * * *")
         );
+    }
+
+    @AfterEach
+    void closeS3Client() {
+        if (s3Client != null) {
+            s3Client.close();
+        }
     }
 
     @Test

@@ -2,8 +2,11 @@ package com.codeit.sb13.monew.article.repository;
 
 import com.codeit.sb13.monew.article.domain.Article;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,4 +30,13 @@ public interface ArticleRepository extends JpaRepository<Article, UUID>, Article
     Optional<Article> findByIdAndDeletedAtIsNull(UUID id);
 
     List<Article> findAllBySourceAndDeletedAtIsNullOrderByDateDesc(String source);
+
+    @Query("""
+        SELECT a
+        FROM Article a
+        WHERE a.date >= :from
+        AND a.date < :to
+    """)
+    List<Article> findArticlesForBackup(@Param("from") LocalDateTime fromInclusive,
+                                        @Param("to") LocalDateTime toExclusive);
 }

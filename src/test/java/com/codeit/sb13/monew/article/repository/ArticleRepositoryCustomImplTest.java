@@ -159,6 +159,26 @@ class ArticleRepositoryCustomImplTest {
     }
 
     @Test
+    @DisplayName("백업 조회는 Article.date가 시작 시각 이상 종료 시각 미만인 기사만 반환한다")
+    void findArticlesForBackupByPublishDateRange() {
+        LocalDateTime fromInclusive = LocalDateTime.of(2026, 8, 23, 0, 0);
+        LocalDateTime toExclusive = LocalDateTime.of(2026, 8, 24, 0, 0);
+        persistArticle("범위 이전 기사", "요약", fromInclusive.minusSeconds(1), ArticleSource.NAVER);
+        persistArticle("시작 경계 기사", "요약", fromInclusive, ArticleSource.NAVER);
+        persistArticle("범위 내부 기사", "요약", LocalDateTime.of(2026, 8, 23, 12, 0), ArticleSource.NAVER);
+        persistArticle("종료 경계 기사", "요약", toExclusive, ArticleSource.NAVER);
+
+        em.flush();
+        em.clear();
+
+        List<Article> articles = articleRepository.findArticlesForBackup(fromInclusive, toExclusive);
+
+        assertThat(articles)
+                .extracting(Article::getTitle)
+                .containsExactlyInAnyOrder("시작 경계 기사", "범위 내부 기사");
+    }
+
+    @Test
     @DisplayName("여러 필터를 동시에 적용해도 정상 동작한다")
     void searchByMultipleFilters() {
         persistArticle("반도체 수출 증가", "요약", D2, ArticleSource.NAVER);   // 전부 만족

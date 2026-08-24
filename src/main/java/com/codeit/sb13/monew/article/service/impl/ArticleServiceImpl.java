@@ -1,6 +1,7 @@
 package com.codeit.sb13.monew.article.service.impl;
 
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchCondition;
+import com.codeit.sb13.monew.article.s3.service.dto.ArticleBackupItem;
 import com.codeit.sb13.monew.article.service.dto.ArticleDto;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
@@ -12,12 +13,14 @@ import com.codeit.sb13.monew.article.service.dto.ArticleRequest;
 import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
 import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
 import com.codeit.sb13.monew.global.exception.article.ArticleDuplicateException;
+import com.codeit.sb13.monew.global.exception.article.ArticleBackupDateInvalidException;
 import com.codeit.sb13.monew.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -130,5 +133,19 @@ public class ArticleServiceImpl implements ArticleService {
     private boolean isLinkUniqueViolation(DataIntegrityViolationException e) {
         String message = e.getMostSpecificCause().getMessage();
         return message != null && message.contains("uk_articles_link");
+    }
+
+    @Override
+    public List<ArticleBackupItem> findArticleBackupItemsByDateRange(LocalDate from, LocalDate to) {
+        if (from == null || to == null) {
+            throw new ArticleBackupDateInvalidException(from, to, "백업 조회 날짜 범위는 필수입니다.");
+        }
+        if (!from.isBefore(to)) {
+            throw new ArticleBackupDateInvalidException(from, to, "백업 조회 시작일은 종료일보다 이전이어야 합니다.");
+        }
+        return articleRepository.findArticlesForBackup(from.atStartOfDay(), to.atStartOfDay())
+                .stream()
+                .map(ArticleBackupItem::from)
+                .toList();
     }
 }

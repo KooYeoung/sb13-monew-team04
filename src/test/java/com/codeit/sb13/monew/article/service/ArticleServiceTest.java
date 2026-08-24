@@ -2,6 +2,7 @@ package com.codeit.sb13.monew.article.service;
 
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchCondition;
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchRow;
+import com.codeit.sb13.monew.article.s3.service.dto.ArticleBackupItem;
 import com.codeit.sb13.monew.article.service.dto.ArticleDto;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
@@ -11,6 +12,8 @@ import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
 import com.codeit.sb13.monew.article.service.dto.ArticleRequest;
 import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
 import com.codeit.sb13.monew.article.service.impl.ArticleServiceImpl;
+import com.codeit.sb13.monew.global.exception.ApiErrorCode;
+import com.codeit.sb13.monew.global.exception.article.ArticleBackupDateInvalidException;
 import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
 import com.codeit.sb13.monew.global.exception.article.ArticleDuplicateException;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
@@ -24,7 +27,9 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
@@ -352,5 +357,70 @@ class ArticleServiceTest {
         inOrder.verify(articleRepository).search(any(ArticleSearchCondition.class));
     }
 
+    @Test
+    @DisplayName("백업 기사 조회 - LocalDate 범위를 LocalDateTime 경계로 변환하고 백업 아이템으로 매핑한다")
+    void testFindArticleBackupItemsByDateRange() {
+        // given
+        LocalDate from = LocalDate.of(2026, 8, 23);
+        LocalDate to = LocalDate.of(2026, 8, 24);
+        UUID articleId = UUID.fromString("00000000-0000-4000-8000-000000000001");
+        LocalDateTime publishedAt = LocalDateTime.of(2026, 8, 23, 10, 15);
+        Article article = Article.create(
+                "백업 기사",
+                "백업 요약",
+                "https://example.com/backup",
+                publishedAt,
+                ArticleSource.NAVER
+        );
+        ReflectionTestUtils.setField(article, "id", articleId);
+        when(articleRepository.findArticlesForBackup(
+                LocalDateTime.of(2026, 8, 23, 0, 0),
+                LocalDateTime.of(2026, 8, 24, 0, 0)
+        )).thenReturn(List.of(article));
+
+        // when
+        List<ArticleBackupItem> result = articleService.findArticleBackupItemsByDateRange(from, to);
+
+        // then
+        assertThat(result).singleElement().satisfies(item -> {
+            assertThat(item.originalArticleId()).isEqualTo(articleId);
+            assertThat(item.title()).isEqualTo("백업 기사");
+            assertThat(item.publishedAt()).isEqualTo(publishedAt);
+        });
+        verify(articleRepository).findArticlesForBackup(
+                LocalDateTime.of(2026, 8, 23, 0, 0),
+                LocalDateTime.of(2026, 8, 24, 0, 0)
+        );
+    }
+
+    @Test
+    @DisplayName("백업 기사 조회 - 날짜 범위가 비어 있으면 커스텀 예외가 발생한다")
+    void testFindArticleBackupItemsByDateRangeRequiresDates() {
+        LocalDate to = LocalDate.of(2026, 8, 24);
+
+        assertThatThrownBy(() -> articleService.findArticleBackupItemsByDateRange(null, to))
+                .isInstanceOfSatisfying(ArticleBackupDateInvalidException.class, e -> {
+                    assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ARTICLE_BACKUP_DATE_INVALID);
+                    assertThat(e.getDetails())
+                            .containsEntry("from", null)
+                            .containsEntry("to", to)
+                            .containsEntry("reason", "백업 조회 날짜 범위는 필수입니다.");
+                });
+    }
+
+    @Test
+    @DisplayName("백업 기사 조회 - 시작일이 종료일보다 이전이 아니면 커스텀 예외가 발생한다")
+    void testFindArticleBackupItemsByDateRangeRequiresIncreasingRange() {
+        LocalDate date = LocalDate.of(2026, 8, 23);
+
+        assertThatThrownBy(() -> articleService.findArticleBackupItemsByDateRange(date, date))
+                .isInstanceOfSatisfying(ArticleBackupDateInvalidException.class, e -> {
+                    assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ARTICLE_BACKUP_DATE_INVALID);
+                    assertThat(e.getDetails())
+                            .containsEntry("from", date)
+                            .containsEntry("to", date)
+                            .containsEntry("reason", "백업 조회 시작일은 종료일보다 이전이어야 합니다.");
+                });
+    }
 
 }
