@@ -23,6 +23,9 @@ public interface SubscribeRepository extends JpaRepository<Subscribe, UUID> {
      */
     void deleteByInterest_Id(UUID interestId);
 
+
+    void deleteByUserId(UUID userId);
+
     /**
      * 특정 관심사를 구독 중인 사용자 수를 센다.
      *
@@ -43,4 +46,5 @@ public interface SubscribeRepository extends JpaRepository<Subscribe, UUID> {
      * @return 이미 존재하는 구독. 없으면 빈 {@link Optional}
      */
     Optional<Subscribe> findByInterest_IdAndUserId(UUID interestId, UUID userId);
+
 }

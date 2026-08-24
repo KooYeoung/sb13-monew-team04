@@ -1,6 +1,11 @@
 package com.codeit.sb13.monew.user.service.impl;
 
+import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
+import com.codeit.sb13.monew.comment.repository.CommentLikeRepository;
+import com.codeit.sb13.monew.comment.repository.CommentRepository;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
+import com.codeit.sb13.monew.interest.repository.SubscribeRepository;
+import com.codeit.sb13.monew.notification.repository.NotificationRepository;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.exception.AlreadyDeletedUserException;
 import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
@@ -43,6 +48,18 @@ public class UserServiceImplTest {
 
   @Mock
   UserRepository userRepository;
+  @Mock
+  CommentLikeRepository commentLikeRepository;
+  @Mock
+  CommentRepository commentRepository;
+  @Mock
+  ArticleViewRepository articleViewRepository;
+  @Mock
+  SubscribeRepository subscribeRepository;
+  @Mock
+  NotificationRepository notificationRepository;
+
+
   @Mock
   PasswordEncoder passwordEncoder;
   @Mock
@@ -407,6 +424,47 @@ public class UserServiceImplTest {
     // when & then
     assertThatThrownBy(() -> userServiceImpl.deleteUser(userId))
         .isInstanceOf(AlreadyDeletedUserException.class);
+  }
+
+  @Test
+  @DisplayName("존재하지 않는 userId로 물리 삭제 요청시 예외를 터트린다.")
+  void 존재하지_않는_userId로_물리삭제_요청_시_예외를_던진다() {
+    // given
+    UUID userId = UUID.randomUUID();
+    when(userRepository.findById(userId))
+        .thenReturn(Optional.empty());
+
+    // when & then
+    assertThatThrownBy(() -> userServiceImpl.hardDeleteUser(userId))
+        .isInstanceOf(UserNotFoundException.class);
+
+
+  }
+
+  @Test
+  @DisplayName("존재하는_userId로_물리삭제_요청_시에_정상장동")
+  void 존재하는_userId로_물리삭제_요청_시에_정상작() {
+    // given
+    UUID userId = UUID.randomUUID();
+    User user = User.builder()
+        .email("email@email.com")
+        .nickname("닉네임")
+        .password("PassWord")
+        .build();
+    when(userRepository.findById(userId))
+        .thenReturn(Optional.of(user));
+
+    // when
+    userServiceImpl.hardDeleteUser(userId);
+
+    // then
+    verify(commentLikeRepository).deleteByComment_User_Id(userId);
+    verify(commentLikeRepository).deleteByLikedBy_Id(userId);
+    verify(commentRepository).deleteByUser_Id(userId);
+    verify(articleViewRepository).deleteByUser_Id(userId);
+    verify(subscribeRepository).deleteByUserId(userId);
+    verify(notificationRepository).deleteByUser_Id(userId);
+    verify(userRepository).deleteById(userId);
   }
 
 

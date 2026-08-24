@@ -39,4 +39,6 @@ public interface CommentRepository extends JpaRepository<Comment, UUID> {
       LIMIT 10
       """)
   List<RecentCommentActivityProjection> findRecentCommentActivities(@Param("userId") UUID userId);
+
+  void deleteByUser_Id(UUID userId);
 }

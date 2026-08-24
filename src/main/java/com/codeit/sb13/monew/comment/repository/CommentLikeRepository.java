@@ -28,6 +28,11 @@ public interface CommentLikeRepository extends JpaRepository<CommentLike, UUID> 
   """)
   Optional<CommentLike> findByCommentAndLikedBy(@Param("commentId") UUID commentId, @Param("likedById") UUID likedById);
 
+
+  void deleteByComment_User_Id(UUID userId);
+  void deleteByLikedBy_Id(UUID userId);
+
+
   @Query("""
     SELECT new com.codeit.sb13.monew.comment.repository.dto.RecentCommentLikeActivityProjection(
         CL.id,
@@ -61,6 +66,7 @@ public interface CommentLikeRepository extends JpaRepository<CommentLike, UUID> 
     """)
   List<RecentCommentLikeActivityProjection> findRecentCommentLikeActivity(@Param("userId") UUID userId);
 
+
   // 쿼리 실행 전 쓰기 지연 저장소 남아 있는 쿼리 미리 flush
   @Modifying(flushAutomatically = true)
   @Query("""
@@ -72,4 +78,5 @@ public interface CommentLikeRepository extends JpaRepository<CommentLike, UUID> 
       @Param("commentId") UUID commentId,
       @Param("likedById") UUID likedById
   );
+
 }

@@ -37,6 +37,9 @@ public interface ArticleViewRepository extends JpaRepository<ArticleView, UUID> 
     // 기사 조회수 집계 (탈퇴 사용자 조회 이력 제외)
     long countByArticle_IdAndUser_DeletedAtIsNull(UUID articleId);
 
+
+    void deleteByUser_Id(UUID userId);
+
     @Query("""
                 SELECT new com.codeit.sb13.monew.article.repository.dto.RecentArticleViewActivityProjection(
                     AT.id,
@@ -70,4 +73,5 @@ public interface ArticleViewRepository extends JpaRepository<ArticleView, UUID> 
                 LIMIT 10
             """)
     List<RecentArticleViewActivityProjection> findRecentArticleViewActivities(@Param("userId") UUID userId);
+
 }
