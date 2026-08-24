@@ -69,6 +69,14 @@ dependencies {
     implementation 'com.rometools:rome:2.1.0'
     implementation 'com.rometools:rome-modules:2.1.0'
 
+    // S3
+    implementation platform('software.amazon.awssdk:bom:2.46.7')
+    implementation 'software.amazon.awssdk:s3'
+
+    // Adobe S3Mock - 로컬에서 진짜 S3 API 를 흉내내는 컨테이너.
+    //   계정/토큰 불필요(LocalStack 은 2026-03 부터 토큰 필요) → S3 연동을 격리·재현 가능하게 테스트.
+    testImplementation 'com.adobe.testing:s3mock-testcontainers:4.11.0'
+
     // Test
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
