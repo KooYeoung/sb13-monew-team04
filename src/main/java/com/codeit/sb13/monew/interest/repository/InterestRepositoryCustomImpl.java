@@ -82,7 +82,7 @@ public class InterestRepositoryCustomImpl implements InterestRepositoryCustom {
 
         // 키워드는 여기서 즉시 조회하지 않는다. Interest.keywords에 붙은 @BatchSize(size = 100) 덕분에,
         // 이후 같은 트랜잭션 안에서 interest.getKeywords()가 처음 호출되는 시점에 이 페이지에 담긴
-        // 관심사들의 id를 묶어 IN 쿼리 한 번으로 지연 로딩된다(InterestServiceImpl#search 참고).
+        // 관심사들의 id를 묶어 한 번의 지연 로딩 쿼리로 조회된다(InterestServiceImpl#search 참고).
 
         Long totalElements = queryFactory
                 .select(interest.count())
