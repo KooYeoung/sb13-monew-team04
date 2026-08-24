@@ -4,12 +4,11 @@
 
 - Jira: `MID4-148`
 - Parent: `MID4-74`
-- 이번 PR: `PR #47` Draft
-- 이번 PR 반영 티켓: `MID4-167`
-- 이전 작업: `MID4-144` Article 엔티티 보강, `MID4-166` (`PR #45`) 기사 S3 백업 설정 및 Storage 인터페이스 구성
+- 현재 작업 티켓: `MID4-169`
+- PR 매핑: `MID4-166` `PR #45`, `MID4-167` `PR #47`, `MID4-168` `PR #48`, `MID4-169` `PR #57`
 - 목적: 뉴스 기사 데이터를 날짜 단위로 S3에 백업하고, 물리적으로 유실된 기사만 DB에 복구한다.
 - 구현 범위: 날짜 단위 백업 기준, AWS S3 설정 기준, Spring Scheduler 배치, PostgreSQL advisory lock 동시성 제어, 날짜 범위 복구 API, 실패 로그 기준
-- `MID4-166` 이전 작업 범위: AWS S3 설정, 환경변수, credentials provider, Storage 인터페이스, test profile 대체 구현
+- `MID4-166` 범위: AWS S3 설정, 환경변수, credentials provider, Storage 인터페이스, test profile 대체 구현
 - `MID4-167` 범위: 기사 백업 파일 모델, 백업 아이템 모델, JSON 직렬화/역직렬화 컨버터, 검증 테스트 구현
 
 ## 날짜 단위 백업 기준
@@ -95,8 +94,6 @@ S3 bucket, region, endpoint, prefix는 환경변수로 설정한다.
 ```text
 MONEW_AWS_REGION=ap-northeast-2
 MONEW_AWS_ENDPOINT=
-MONEW_ARTICLE_BACKUP_CRON="0 10 0 * * *"
-MONEW_ARTICLE_BACKUP_ENABLED=false
 MONEW_ARTICLE_BACKUP_S3_BUCKET=
 MONEW_ARTICLE_BACKUP_S3_PREFIX=article-backups
 ```
@@ -117,6 +114,13 @@ access key와 secret은 코드, 문서 예시값, commit에 포함하지 않는�
 ## 스케줄 백업 기준
 
 백업 작업은 Spring Scheduler로 daily job을 둔다.
+
+스케줄러 실행 여부와 cron은 `monew.backup.schedule` 설정으로 분리한다. 환경변수가 없으면 `application.yaml` fallback 값을 사용한다.
+
+| 설정 | 환경변수 | 기본값 |
+| --- | --- | --- |
+| `monew.backup.schedule.enabled` | `MONEW_ARTICLE_BACKUP_ENABLED` | `false` |
+| `monew.backup.schedule.cron` | `MONEW_ARTICLE_BACKUP_CRON` | `0 10 0 * * *` |
 
 기본 scheduler는 실행일 기준 전날의 기사 발행일을 백업 대상으로 잡는다.
 
@@ -257,14 +261,14 @@ S3 read/write 실패, JSON parse 실패, 필수 필드 누락은 복구 또는 �
 
 MID4-148은 전체 기능 기준으로 유지하고, 구현은 아래 하위 작업 단위로 분리한다.
 
-| 티켓 | 범위 | 구현 시점 |
+| 티켓 | 범위 | PR |
 | --- | --- | --- |
-| `MID4-166` | 기사 S3 백업 설정 및 Storage 인터페이스 구성 | 이전 작업 (`PR #45`) |
-| `MID4-167` | 기사 백업 파일 모델 및 JSON 직렬화 구현 | 이번 PR (`PR #47` Draft) |
-| `MID4-168` | 날짜 단위 기사 백업 서비스 구현 | 후속 하위 티켓 |
-| `MID4-169` | 기사 백업 Scheduler 및 PostgreSQL advisory lock 적용 | 후속 하위 티켓 |
-| `MID4-170` | 날짜 범위 기사 복구 서비스 구현 | 후속 하위 티켓 |
-| `MID4-171` | 기사 복구 API 및 응답 DTO 구현 | 후속 하위 티켓 |
+| `MID4-166` | 기사 S3 백업 설정 및 Storage 인터페이스 구성 | `PR #45` |
+| `MID4-167` | 기사 백업 파일 모델 및 JSON 직렬화 구현 | `PR #47` |
+| `MID4-168` | 날짜 단위 기사 백업 서비스 구현 | `PR #48` |
+| `MID4-169` | 기사 백업 Scheduler 및 PostgreSQL advisory lock 적용 | `PR #57` |
+| `MID4-170` | 날짜 범위 기사 복구 서비스 구현 | - |
+| `MID4-171` | 기사 복구 API 및 응답 DTO 구현 | - |
 
 ## 구현 전 확인할 사항
 
@@ -273,4 +277,3 @@ MID4-148은 전체 기능 기준으로 유지하고, 구현은 아래 하위 작
 - 백업 대상에 논리삭제 기사를 포함할지 여부
 - 백업 파일이 없을 때 복구 API를 실패로 볼지, 해당 날짜 복구 건수 0으로 볼지
 - 강제 재백업 또는 overwrite 옵션을 제공할지 여부
-- scheduler cron과 enable 기본값

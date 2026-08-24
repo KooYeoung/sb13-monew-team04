@@ -7,8 +7,6 @@ public record S3Properties(
         String bucket,
         String region,
         String endpoint,
-        String prefix,
-        Boolean enabled,
-        String cron
+        String prefix
 ) {
 }

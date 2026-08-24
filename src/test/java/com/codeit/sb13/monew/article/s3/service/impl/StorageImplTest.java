@@ -347,7 +347,7 @@ class StorageImplTest {
     }
 
     private S3Properties s3Properties(String bucket, String prefix) {
-        return new S3Properties(bucket, "us-east-1", "", prefix, true, "0 10 0 * * *");
+        return new S3Properties(bucket, "us-east-1", "", prefix);
     }
 
     private S3Exception notFoundException() {

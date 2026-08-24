@@ -25,6 +25,7 @@ public enum ApiErrorCode {
     ARTICLE_BACKUP_FILE_JSON_FAILED("ART_010", HttpStatus.BAD_GATEWAY, "기사 백업 파일 JSON 처리에 실패했습니다."),
     ARTICLE_BACKUP_DATE_INVALID("ART_011", HttpStatus.BAD_REQUEST, "기사 백업 날짜 조건이 올바르지 않습니다."),
     ARTICLE_BACKUP_FAILED("ART_012", HttpStatus.INTERNAL_SERVER_ERROR, "기사 백업 처리에 실패했습니다."),
+    ARTICLE_ADVISORY_LOCK_FAILED("ART_013", HttpStatus.INTERNAL_SERVER_ERROR, "기사 백업 락 처리에 실패했습니다."),
 
     // INTEREST INT
     INTEREST_NOT_FOUND("INT_001", HttpStatus.NOT_FOUND, "관심사를 찾을 수 없습니다."),

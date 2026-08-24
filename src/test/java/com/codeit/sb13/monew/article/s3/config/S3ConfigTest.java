@@ -22,9 +22,7 @@ class S3ConfigTest {
                         "monew.s3.bucket=monew-backup",
                         "monew.s3.region=us-east-1",
                         "monew.s3.endpoint=http://localhost:9090",
-                        "monew.s3.prefix=article-backups",
-                        "monew.s3.enabled=true",
-                        "monew.s3.cron=0 0 1 * * *"
+                        "monew.s3.prefix=article-backups"
                 )
                 .run(context -> {
                     S3Properties properties = context.getBean(S3Properties.class);
@@ -33,8 +31,6 @@ class S3ConfigTest {
                     assertThat(properties.region()).isEqualTo("us-east-1");
                     assertThat(properties.endpoint()).isEqualTo("http://localhost:9090");
                     assertThat(properties.prefix()).isEqualTo("article-backups");
-                    assertThat(properties.enabled()).isTrue();
-                    assertThat(properties.cron()).isEqualTo("0 0 1 * * *");
                 });
     }
 

@@ -67,7 +67,7 @@ class StorageS3MockIntegrationTest {
         createBucketIfMissing();
         storage = new StorageImpl(
                 s3Client,
-                new S3Properties(BUCKET, "us-east-1", endpoint, "article-backups", true, "0 10 0 * * *")
+                new S3Properties(BUCKET, "us-east-1", endpoint, "article-backups")
         );
     }
 

@@ -35,5 +35,7 @@ monew:
     region: ap-northeast-2
     endpoint:
     prefix: article-backups
-    enabled: false
-    cron: "0 10 0 * * *"
+  backup:
+    schedule:
+      enabled: false
+      cron: "0 10 0 * * *"
