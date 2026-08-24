@@ -4,6 +4,7 @@ import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.interest.controller.dto.InterestResponse;
 import com.codeit.sb13.monew.interest.service.dto.InterestCreateCommand;
 import com.codeit.sb13.monew.interest.service.dto.InterestSearchCommand;
+import com.codeit.sb13.monew.interest.service.dto.InterestUpdateCommand;
 import java.util.UUID;
 
 public interface InterestService {
@@ -17,6 +18,22 @@ public interface InterestService {
      *         이미 존재하는 이름으로 등록을 시도한 경우
      */
     InterestResponse create(InterestCreateCommand command);
+
+    /**
+     * 관심사의 키워드를 수정한다.
+     *
+     * <p>이름은 수정 대상이 아니며, 전달받은 키워드 목록으로 기존 키워드
+     * 전체를 교체한다. 이 요청에는 요청자 정보가 없어, 구독 여부는 항상
+     * false로 응답한다.</p>
+     *
+     * @param command 수정할 관심사 id와 교체할 키워드 목록을 담은 커맨드
+     * @return 수정된 관심사 정보
+     * @throws com.codeit.sb13.monew.global.exception.interest.InterestNotFoundException
+     *         해당 id의 관심사가 존재하지 않는 경우
+     * @throws com.codeit.sb13.monew.global.exception.interest.InterestKeywordRequiredException
+     *         교체할 키워드 목록이 비어 있는 경우
+     */
+    InterestResponse update(InterestUpdateCommand command);
 
     /**
      * 조건에 맞는 관심사 목록을 커서 기반으로 조회한다.

@@ -6,9 +6,11 @@ import com.codeit.sb13.monew.global.exception.interest.InterestSearchConditionIn
 import com.codeit.sb13.monew.interest.controller.dto.InterestCreateRequest;
 import com.codeit.sb13.monew.interest.controller.dto.InterestResponse;
 import com.codeit.sb13.monew.interest.controller.dto.InterestSearchRequest;
+import com.codeit.sb13.monew.interest.controller.dto.InterestUpdateRequest;
 import com.codeit.sb13.monew.interest.service.InterestService;
 import com.codeit.sb13.monew.interest.service.dto.InterestCreateCommand;
 import com.codeit.sb13.monew.interest.service.dto.InterestSearchCommand;
+import com.codeit.sb13.monew.interest.service.dto.InterestUpdateCommand;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -48,6 +51,30 @@ public class InterestController {
                 interestService.create(new InterestCreateCommand(request.name(), request.keywords()));
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /**
+     * 관심사의 키워드를 수정한다.
+     *
+     * <p>이름은 변경할 수 없고 키워드만 교체된다. 키워드 목록의 형식 검증은
+     * {@link InterestUpdateRequest}에서 처리되며, 존재하지 않는 {@code interestId}면
+     * {@link InterestNotFoundException}이 발생해 {@code INT_001}(404)로 응답한다.
+     * 이 요청에는 요청자를 식별할 헤더가 없어, 응답의 {@code subscribedByMe}는
+     * 항상 false로 채워진다.</p>
+     *
+     * @param interestId 수정할 관심사 id
+     * @param request 교체할 키워드 목록
+     * @return 200 상태코드와 수정된 관심사 정보
+     */
+    @PatchMapping("/{interestId}")
+    public ResponseEntity<InterestResponse> update(
+            @PathVariable UUID interestId,
+            @Valid @RequestBody InterestUpdateRequest request
+    ) {
+        InterestResponse response =
+                interestService.update(new InterestUpdateCommand(interestId, request.keywords()));
+
+        return ResponseEntity.ok(response);
     }
 
     /**

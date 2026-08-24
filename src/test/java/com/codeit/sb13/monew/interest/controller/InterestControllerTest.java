@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -17,9 +18,11 @@ import com.codeit.sb13.monew.global.exception.interest.InterestNotFoundException
 import com.codeit.sb13.monew.global.exception.interest.InterestSearchConditionInvalidException;
 import com.codeit.sb13.monew.interest.controller.dto.InterestCreateRequest;
 import com.codeit.sb13.monew.interest.controller.dto.InterestResponse;
+import com.codeit.sb13.monew.interest.controller.dto.InterestUpdateRequest;
 import com.codeit.sb13.monew.interest.service.InterestService;
 import com.codeit.sb13.monew.interest.service.dto.InterestCreateCommand;
 import com.codeit.sb13.monew.interest.service.dto.InterestSearchCommand;
+import com.codeit.sb13.monew.interest.service.dto.InterestUpdateCommand;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -121,6 +124,87 @@ class InterestControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("INT_005"));
+    }
+
+    @Test
+    @DisplayName("정상 요청 시 200과 수정된 관심사 정보를 반환한다")
+    void update_validRequest_returns200() throws Exception {
+        // given
+        UUID interestId = UUID.randomUUID();
+        InterestUpdateRequest request = new InterestUpdateRequest(List.of("농구", "배구"));
+        InterestResponse response = new InterestResponse(
+                interestId, "스포츠", List.of("농구", "배구"), 3L, false, LocalDateTime.now()
+        );
+        when(interestService.update(any(InterestUpdateCommand.class))).thenReturn(response);
+
+        // when & then
+        mockMvc.perform(patch("/api/interests/{interestId}", interestId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.keywords[0]").value("농구"))
+                .andExpect(jsonPath("$.keywords[1]").value("배구"))
+                .andExpect(jsonPath("$.subscriberCount").value(3))
+                .andExpect(jsonPath("$.subscribedByMe").value(false));
+
+        ArgumentCaptor<InterestUpdateCommand> commandCaptor = ArgumentCaptor.forClass(InterestUpdateCommand.class);
+        verify(interestService).update(commandCaptor.capture());
+        InterestUpdateCommand capturedCommand = commandCaptor.getValue();
+        assertThat(capturedCommand.interestId()).isEqualTo(interestId);
+        assertThat(capturedCommand.keywords()).isEqualTo(request.keywords());
+    }
+
+    @Test
+    @DisplayName("키워드가 비어 있으면 400으로 응답한다")
+    void update_emptyKeywords_returns400() throws Exception {
+        UUID interestId = UUID.randomUUID();
+        InterestUpdateRequest request = new InterestUpdateRequest(List.of());
+
+        mockMvc.perform(patch("/api/interests/{interestId}", interestId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").exists());
+    }
+
+    @Test
+    @DisplayName("키워드 중 공백이 있으면 400으로 응답한다")
+    void update_blankKeyword_returns400() throws Exception {
+        UUID interestId = UUID.randomUUID();
+        InterestUpdateRequest request = new InterestUpdateRequest(List.of("농구", "  "));
+
+        mockMvc.perform(patch("/api/interests/{interestId}", interestId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").exists());
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 관심사를 수정하려 하면 404(INT_001)로 응답한다")
+    void update_nonExistingInterest_returns404() throws Exception {
+        UUID interestId = UUID.randomUUID();
+        InterestUpdateRequest request = new InterestUpdateRequest(List.of("농구"));
+        when(interestService.update(any(InterestUpdateCommand.class)))
+                .thenThrow(new InterestNotFoundException(interestId));
+
+        mockMvc.perform(patch("/api/interests/{interestId}", interestId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("INT_001"));
+    }
+
+    @Test
+    @DisplayName("interestId가 UUID 형식이 아니면 400으로 응답한다")
+    void update_invalidUuidFormat_returns400() throws Exception {
+        InterestUpdateRequest request = new InterestUpdateRequest(List.of("농구"));
+
+        mockMvc.perform(patch("/api/interests/{interestId}", "not-a-uuid")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").exists());
     }
 
     @Test

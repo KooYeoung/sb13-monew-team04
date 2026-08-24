@@ -304,4 +304,97 @@ class InterestTest {
                     .isInstanceOf(InterestNameInvalidException.class);
         }
     }
+    @Nested
+    @DisplayName("changeKeywords()")
+    class ChangeKeywords {
+
+        @Test
+        @DisplayName("키워드 목록을 통째로 교체하면 새 목록으로 바뀐다")
+        void changeKeywords_replacesKeywordList() {
+            // given
+            Interest interest = Interest.create("스포츠");
+            interest.addKeyword("축구");
+            interest.addKeyword("야구");
+
+            // when
+            interest.changeKeywords(List.of("농구", "배구"));
+
+            // then
+            List<String> keywordTexts = interest.getKeywords().stream()
+                    .map(Keyword::getKeyword)
+                    .toList();
+            assertThat(keywordTexts).containsExactly("농구", "배구");
+        }
+
+        @Test
+        @DisplayName("교체된 새 키워드는 이 관심사를 양방향으로 참조한다")
+        void changeKeywords_newKeywordsReferenceInterest() {
+            // given
+            Interest interest = Interest.create("스포츠");
+            interest.addKeyword("축구");
+
+            // when
+            interest.changeKeywords(List.of("농구"));
+
+            // then
+            assertThat(interest.getKeywords())
+                    .allSatisfy(keyword -> assertThat(keyword.getInterest()).isEqualTo(interest));
+        }
+
+        @Test
+        @DisplayName("교체 전 키워드는 관심사와의 참조가 끊긴다")
+        void changeKeywords_detachesOldKeywords() {
+            // given
+            Interest interest = Interest.create("스포츠");
+            Keyword football = interest.addKeyword("축구");
+
+            // when
+            interest.changeKeywords(List.of("농구"));
+
+            // then
+            assertThat(football.getInterest()).isEqualTo(null);
+        }
+
+        @Test
+        @DisplayName("빈 목록으로 교체하려 하면 예외가 발생하고 기존 키워드는 그대로 유지된다")
+        void changeKeywords_empty_throwsException() {
+            // given
+            Interest interest = Interest.create("스포츠");
+            Keyword football = interest.addKeyword("축구");
+
+            // when & then
+            assertThatThrownBy(() -> interest.changeKeywords(List.of()))
+                    .isInstanceOf(InterestKeywordRequiredException.class);
+            assertThat(interest.getKeywords()).containsExactly(football);
+            assertThat(football.getInterest()).isEqualTo(interest);
+        }
+
+        @Test
+        @DisplayName("null로 교체하려 하면 예외가 발생하고 기존 키워드는 그대로 유지된다")
+        void changeKeywords_null_throwsException() {
+            // given
+            Interest interest = Interest.create("스포츠");
+            Keyword football = interest.addKeyword("축구");
+
+            // when & then
+            assertThatThrownBy(() -> interest.changeKeywords(null))
+                    .isInstanceOf(InterestKeywordRequiredException.class);
+            assertThat(interest.getKeywords()).containsExactly(football);
+        }
+
+        @Test
+        @DisplayName("교체할 키워드 중 하나라도 공백이거나 50자를 넘으면, 기존 키워드는 전혀 바뀌지 않는다")
+        void changeKeywords_invalidKeyword_keepsOldKeywordsUntouched() {
+            // given
+            Interest interest = Interest.create("스포츠");
+            Keyword football = interest.addKeyword("축구");
+            String tooLong = "가".repeat(51);
+
+            // when & then
+            assertThatThrownBy(() -> interest.changeKeywords(List.of("농구", tooLong)))
+                    .isInstanceOf(InterestKeywordInvalidException.class);
+            assertThat(interest.getKeywords()).containsExactly(football);
+            assertThat(football.getInterest()).isEqualTo(interest);
+        }
+    }
 }

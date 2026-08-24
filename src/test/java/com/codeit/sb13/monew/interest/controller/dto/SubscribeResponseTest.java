@@ -1,5 +1,6 @@
 package com.codeit.sb13.monew.interest.controller.dto;
 
+import com.codeit.sb13.monew.global.config.JpaAuditingConfig;
 import com.codeit.sb13.monew.global.config.QueryDslConfig;
 import com.codeit.sb13.monew.interest.domain.Interest;
 import com.codeit.sb13.monew.interest.domain.Subscribe;
@@ -21,9 +22,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 비교하는 셈이라 매핑이 실제로 값을 잘 옮기는지 증명하지 못한다. 그래서
  * {@code @DataJpaTest}로 Interest와 Subscribe를 실제로 저장해, id와 createdAt이
  * 채워진 상태에서 {@link SubscribeResponse#of}의 매핑을 검증한다.
+ *
+ * <p>{@code @DataJpaTest}는 일반 {@code @Configuration} 빈을 자동으로 스캔하지
+ * 않으므로, {@code @CreatedDate}가 실제로 채워지려면 {@code @EnableJpaAuditing}이
+ * 선언된 {@link JpaAuditingConfig}도 {@link QueryDslConfig}와 함께 명시적으로
+ * 임포트해야 한다. 이걸 빠뜨리면 영속화해도 {@code createdAt}이 계속 {@code null}로
+ * 남아 검증 자체가 무의미해진다.</p>
  */
 @DataJpaTest
-@Import(QueryDslConfig.class)
+@Import({QueryDslConfig.class, JpaAuditingConfig.class})
 @ActiveProfiles("test")
 class SubscribeResponseTest {
 

@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
+import com.codeit.sb13.monew.global.exception.interest.InterestKeywordRequiredException;
 import com.codeit.sb13.monew.global.exception.interest.InterestNameDuplicatedException;
 import com.codeit.sb13.monew.global.exception.interest.InterestNotFoundException;
 import com.codeit.sb13.monew.interest.controller.dto.InterestResponse;
@@ -22,6 +23,7 @@ import com.codeit.sb13.monew.interest.repository.dto.InterestSearchRow;
 import com.codeit.sb13.monew.interest.service.dto.InterestCreateCommand;
 import com.codeit.sb13.monew.interest.service.dto.InterestOrderBy;
 import com.codeit.sb13.monew.interest.service.dto.InterestSearchCommand;
+import com.codeit.sb13.monew.interest.service.dto.InterestUpdateCommand;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
@@ -283,6 +285,58 @@ class InterestServiceTest {
         assertThatThrownBy(() -> interestServiceImpl.create(command))
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .isNotInstanceOf(InterestNameDuplicatedException.class);
+    }
+
+    @Test
+    @DisplayName("존재하는 관심사의 키워드를 수정하면 새 키워드로 교체되고, 실제 구독자 수를 응답에 담는다")
+    void update_existingInterest_replacesKeywordsAndReturnsSubscriberCount() {
+        // given
+        Interest interest = interestWithIdAndCreatedAt("스포츠", LocalDateTime.now());
+        interest.addKeyword("축구");
+        InterestUpdateCommand command = new InterestUpdateCommand(interest.getId(), List.of("농구", "배구"));
+
+        when(interestRepository.findById(interest.getId())).thenReturn(Optional.of(interest));
+        when(subscribeRepository.countByInterest_Id(interest.getId())).thenReturn(3L);
+
+        // when
+        InterestResponse response = interestServiceImpl.update(command);
+
+        // then
+        assertThat(response.keywords()).containsExactly("농구", "배구");
+        assertThat(response.subscriberCount()).isEqualTo(3L);
+        assertThat(response.subscribedByMe()).isFalse();
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 관심사를 수정하려 하면 InterestNotFoundException을 던지고 구독자 수를 조회하지 않는다")
+    void update_nonExistingInterest_throwsExceptionAndDoesNotCountSubscribers() {
+        // given
+        UUID interestId = UUID.randomUUID();
+        InterestUpdateCommand command = new InterestUpdateCommand(interestId, List.of("농구"));
+        when(interestRepository.findById(interestId)).thenReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> interestServiceImpl.update(command))
+                .isInstanceOf(InterestNotFoundException.class);
+
+        verify(subscribeRepository, never()).countByInterest_Id(any());
+    }
+
+    @Test
+    @DisplayName("빈 키워드 목록으로 수정하려 하면 InterestKeywordRequiredException을 던지고 구독자 수를 조회하지 않는다")
+    void update_emptyKeywords_throwsExceptionAndDoesNotCountSubscribers() {
+        // given
+        Interest interest = interestWithIdAndCreatedAt("스포츠", LocalDateTime.now());
+        interest.addKeyword("축구");
+        InterestUpdateCommand command = new InterestUpdateCommand(interest.getId(), List.of());
+
+        when(interestRepository.findById(interest.getId())).thenReturn(Optional.of(interest));
+
+        // when & then
+        assertThatThrownBy(() -> interestServiceImpl.update(command))
+                .isInstanceOf(InterestKeywordRequiredException.class);
+
+        verify(subscribeRepository, never()).countByInterest_Id(any());
     }
 
     @Test

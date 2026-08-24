@@ -125,4 +125,37 @@ public class Interest extends UpdatedAtEntity {
     public void changeName(String name) {
         this.name = validateName(name);
     }
+
+    /**
+     * 키워드 목록을 통째로 새 목록으로 교체한다.
+     *
+     * <p>기존 키워드는 모두 제거되고, 전달받은 텍스트로 새 키워드가 다시
+     * 추가된다. 새 키워드는 기존 목록을 지우기 전에 먼저 전부 만들어보고,
+     * 하나라도 공백이거나 50자를 넘어 {@link Keyword}의 생성자가 예외를
+     * 던지면 기존 키워드는 전혀 건드리지 않은 채 그대로 전파한다. 그렇지
+     * 않고 기존 키워드를 먼저 지운 뒤 새 키워드를 하나씩 추가하다 중간에
+     * 실패하면, 관심사가 새 키워드도 옛 키워드도 아닌 어중간한 상태로
+     * 남는다.</p>
+     *
+     * <p>관심사는 항상 최소 1개의 키워드를 유지해야 하므로, 빈 목록이
+     * 전달되면 예외를 던지고 교체를 거부한다.</p>
+     *
+     * @param keywords 교체할 새 키워드 텍스트 목록
+     * @throws InterestKeywordRequiredException 전달받은 목록이 비어 있는 경우
+     */
+    public void changeKeywords(List<String> keywords) {
+        if (keywords == null || keywords.isEmpty()) {
+            throw new InterestKeywordRequiredException(this.getId());
+        }
+
+        List<Keyword> newKeywords = keywords.stream()
+                .map(text -> new Keyword(this, text))
+                .toList();
+
+        List<Keyword> oldKeywords = new ArrayList<>(this.keywords);
+        oldKeywords.forEach(Keyword::detachInterest);
+
+        this.keywords.clear();
+        this.keywords.addAll(newKeywords);
+    }
 }
