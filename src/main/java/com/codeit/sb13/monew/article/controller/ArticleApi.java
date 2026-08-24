@@ -118,7 +118,7 @@ public interface ArticleApi {
             ),
             @ApiResponse(
                     responseCode = "409",
-                    description = "동시 요청으로 조회 기록 등록이 충돌함",
+                    description = "동시 요청 충돌 후 기존 조회 기록 재조회에도 실패함",
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
             ),
             @ApiResponse(
