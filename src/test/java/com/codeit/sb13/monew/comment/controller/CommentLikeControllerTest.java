@@ -3,7 +3,9 @@ package com.codeit.sb13.monew.comment.controller;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willDoNothing;
 import static org.mockito.Mockito.times;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -99,5 +101,31 @@ public class CommentLikeControllerTest {
         .likeComment(argThat(command->
             comment.getId().equals(command.commentId())
                 && likedBy.getId().equals(command.requestUserId())));
+  }
+
+
+  @Test
+  @DisplayName("댓글 좋아요 취소 성공 - GREEN")
+  void 댓글_좋아요_취소() throws Exception {
+    // given
+    UUID commentId = UUID.randomUUID();
+    UUID requestUserId = UUID.randomUUID();
+
+    willDoNothing()
+        .given(commentLikeService)
+        .unlikeComment(argThat(command -> command != null
+            && commentId.equals(command.commentId())
+            && requestUserId.equals(command.requestUserId())));
+    // when
+    mockMvc.perform(
+        delete("/api/comments/{commentId}/comment-likes", commentId)
+            .header("Monew-Request-User-ID", requestUserId.toString())
+    ).andExpect(status().isNoContent());
+
+
+    // then
+    then(commentLikeService).should(times(1))
+        .unlikeComment(argThat(command ->commentId.equals(command.commentId())
+            && requestUserId.equals(command.requestUserId())));
   }
 }

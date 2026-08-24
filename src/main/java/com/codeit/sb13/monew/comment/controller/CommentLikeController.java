@@ -7,6 +7,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -15,15 +16,25 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/comments")
+@RequestMapping("/api/comments/{commentId}/comment-likes")
 public class CommentLikeController implements CommentLikeApi {
 
   private final CommentLikeService commentLikeService;
 
   @Override
-  @PostMapping("/{commentId}/comment-likes")
+  @PostMapping
   public ResponseEntity<CommentLikeDto> likeComment(@PathVariable UUID commentId, @RequestHeader("Monew-Request-User-ID") UUID requestUserId) {
     CommentLikeRegisterCommand command = new CommentLikeRegisterCommand(commentId, requestUserId);
     return ResponseEntity.status(HttpStatus.OK).body(commentLikeService.likeComment(command));
+  }
+
+  @Override
+  @DeleteMapping
+  public ResponseEntity<Void> unlikeComment(
+      @PathVariable UUID commentId,
+      @RequestHeader("Monew-Request-User-ID") UUID requestUserId
+  ) {
+    commentLikeService.unlikeComment(new CommentLikeRegisterCommand(commentId, requestUserId));
+    return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
   }
 }

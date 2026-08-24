@@ -6,6 +6,7 @@ import com.codeit.sb13.monew.comment.repository.CommentRepository;
 import com.codeit.sb13.monew.comment.service.CommentLikeService;
 import com.codeit.sb13.monew.comment.service.dto.CommentLikeDto;
 import com.codeit.sb13.monew.comment.service.dto.CommentLikeRegisterCommand;
+import com.codeit.sb13.monew.global.exception.comment.CommentLikeNotFoundException;
 import com.codeit.sb13.monew.global.exception.comment.CommentNotFoundException;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.user.repository.UserRepository;
@@ -15,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
 @Slf4j
@@ -62,6 +64,25 @@ public class CommentLikeServiceImpl implements CommentLikeService {
     return commentLikeRepository.findByCommentAndLikedBy(commentId, likedById)
         .map(this::toDto)
         .orElseThrow(()->new IllegalStateException("댓글 좋아요 등록 후 조회 실패 - 댓글 아이디: " + commentId));
+  }
+
+  @Override
+  @Transactional
+  public void unlikeComment(@Valid CommentLikeRegisterCommand command) {
+    UUID commentId = command.commentId();
+    UUID requestUserId = command.requestUserId();
+
+    log.debug("댓글 좋아요 취소 시작 - 댓글 아이디: {}", commentId);
+
+    commentRepository.findByIdAndDeletedAtIsNull(commentId).orElseThrow(()-> new CommentNotFoundException(commentId));
+    userRepository.findById(requestUserId).orElseThrow(()->new UserNotFoundException(requestUserId));
+
+    Long deletedCount = commentLikeRepository.deleteByCommentIdAndLikedById(commentId, requestUserId);
+    if (deletedCount == 0L) {
+      throw new CommentLikeNotFoundException(commentId, requestUserId);
+    }
+
+    log.info("댓글 좋아요 취소 완료 - 댓글 아이디: {}", commentId);
   }
 
   // 댓글 좋아요가 성공적으로 등록되면 재조회하여 좋아요 수를 포함한 DTO 반환

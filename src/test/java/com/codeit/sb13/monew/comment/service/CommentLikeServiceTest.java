@@ -20,6 +20,7 @@ import com.codeit.sb13.monew.comment.service.dto.CommentLikeRegisterCommand;
 import com.codeit.sb13.monew.comment.service.impl.CommentLikeSaveService;
 import com.codeit.sb13.monew.comment.service.impl.CommentLikeServiceImpl;
 import com.codeit.sb13.monew.global.exception.comment.CommentNotFoundException;
+import com.codeit.sb13.monew.global.exception.comment.CommentLikeNotFoundException;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.repository.UserRepository;
@@ -263,5 +264,40 @@ public class CommentLikeServiceTest {
 
     then(commentLikeRepository).shouldHaveNoInteractions();
     then(commentLikeSaveService).shouldHaveNoInteractions();
+  }
+
+  @Test
+  @DisplayName("댓글 좋아요를 취소할 수 있다")
+  void 댓글_좋아요를_취소한다() {
+    // given
+    CommentLikeRegisterCommand command = new CommentLikeRegisterCommand(comment.getId(), likedBy.getId());
+    given(commentRepository.findByIdAndDeletedAtIsNull(comment.getId()))
+        .willReturn(Optional.of(comment));
+    given(userRepository.findById(likedBy.getId()))
+        .willReturn(Optional.of(likedBy));
+    given(commentLikeRepository.deleteByCommentIdAndLikedById(comment.getId(), likedBy.getId()))
+        .willReturn(1L);
+
+    // when
+    commentLikeService.unlikeComment(command);
+
+    // then
+    then(commentLikeRepository).should(times(1))
+        .deleteByCommentIdAndLikedById(comment.getId(), likedBy.getId());
+  }
+
+  @Test
+  @DisplayName("좋아요하지 않은 댓글은 취소할 수 없다")
+  void 존재하지_않는_댓글_좋아요를_취소하면_예외가_발생한다() {
+    // given
+    CommentLikeRegisterCommand command = new CommentLikeRegisterCommand(comment.getId(), likedBy.getId());
+    given(commentRepository.findByIdAndDeletedAtIsNull(comment.getId())).willReturn(Optional.of(comment));
+    given(userRepository.findById(likedBy.getId())).willReturn(Optional.of(likedBy));
+    given(commentLikeRepository.deleteByCommentIdAndLikedById(comment.getId(), likedBy.getId()))
+        .willReturn(0L);
+
+    // when & then
+    assertThatThrownBy(() -> commentLikeService.unlikeComment(command))
+        .isInstanceOf(CommentLikeNotFoundException.class);
   }
 }

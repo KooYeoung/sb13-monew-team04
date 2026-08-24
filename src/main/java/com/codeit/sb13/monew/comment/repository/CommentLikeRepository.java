@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import com.codeit.sb13.monew.comment.repository.dto.RecentCommentLikeActivityProjection;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -59,4 +60,16 @@ public interface CommentLikeRepository extends JpaRepository<CommentLike, UUID> 
     LIMIT 10
     """)
   List<RecentCommentLikeActivityProjection> findRecentCommentLikeActivity(@Param("userId") UUID userId);
+
+  // 쿼리 실행 전 쓰기 지연 저장소 남아 있는 쿼리 미리 flush
+  @Modifying(flushAutomatically = true)
+  @Query("""
+      DELETE FROM CommentLike CL
+      WHERE CL.comment.id = :commentId
+        AND CL.likedBy.id = :likedById
+      """)
+  Long deleteByCommentIdAndLikedById(
+      @Param("commentId") UUID commentId,
+      @Param("likedById") UUID likedById
+  );
 }

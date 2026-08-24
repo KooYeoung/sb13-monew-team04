@@ -50,4 +50,36 @@ public interface CommentLikeApi {
           required = true
       ) @RequestHeader("Monew-Request-User-ID") UUID requestUserId
   );
+
+
+  @Operation(
+      summary = "댓글 좋아요 취소",
+      description = "사용자가 특정 댓글에 좋아요를 취소하는 기능입니다."
+  )
+  @ApiResponses({
+      @ApiResponse(
+          responseCode = "204",
+          description = "댓글 좋아요 취소 성공"
+      ),
+      @ApiResponse(
+          responseCode = "404",
+          description = "댓글, 사용자 또는 댓글 좋아요 정보를 찾을 수 없음",
+          content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
+      ),
+      @ApiResponse(
+          responseCode = "500",
+          description = "서버 내부 오류 발생",
+          content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
+      )
+  })
+  ResponseEntity<Void> unlikeComment(
+      @Parameter(
+          name = "commentId",
+          description = "좋아요를 취소할 댓글의 ID",
+          required = true
+      ) @PathVariable UUID commentId,
+      @Parameter(
+          description = "좋아요를 취소한 요청자 ID",
+          required = true
+      ) @RequestHeader("Monew-Request-User-ID") UUID requestUserId);
 }
