@@ -1,5 +1,6 @@
 package com.codeit.sb13.monew.notification.controller;
 
+import com.codeit.sb13.monew.global.MonewHttpHeaders;
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.notification.controller.dto.NotificationFindRequest;
 import com.codeit.sb13.monew.notification.controller.dto.NotificationResponse;
@@ -25,7 +26,7 @@ public class NotificationController {
     @GetMapping
     public ResponseEntity<CursorPageResponseDto<NotificationResponse>> findAllNotifications(
             @ModelAttribute NotificationFindRequest request,
-            @RequestHeader("Monew-Request-User-ID") UUID userId
+            @RequestHeader(MonewHttpHeaders.REQUEST_USER_ID) UUID userId
     ) {
         NotificationFindDto command = NotificationFindDto.of(
                 request.cursor(), request.after(), request.limit(), userId);
@@ -36,13 +37,13 @@ public class NotificationController {
 
     @PatchMapping("/{notificationId}")
     public ResponseEntity<NotificationResponse> confirmNotification(@PathVariable UUID notificationId,
-                                                                    @RequestHeader("Monew-Request-User-ID") UUID userId) {
+                                                                    @RequestHeader(MonewHttpHeaders.REQUEST_USER_ID) UUID userId) {
         NotificationResult notificationResult = notificationService.confirmNotification(notificationId, userId);
         return ResponseEntity.ok(mapper.toResponse(notificationResult));
     }
 
     @PatchMapping
-    public ResponseEntity<List<NotificationResponse>> confirmAllNotifications(@RequestHeader("Monew-Request-User-ID") UUID userId) {
+    public ResponseEntity<List<NotificationResponse>> confirmAllNotifications(@RequestHeader(MonewHttpHeaders.REQUEST_USER_ID) UUID userId) {
         List<NotificationResult> notificationResults = notificationService.confirmAllNotifications(userId);
         return ResponseEntity.ok(notificationResults.stream().map(mapper::toResponse).toList());
     }

@@ -1,5 +1,6 @@
 package com.codeit.sb13.monew.notification.controller;
 
+import com.codeit.sb13.monew.global.MonewHttpHeaders;
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.notification.NotificationInvalidCursorException;
 import com.codeit.sb13.monew.global.exception.notification.NotificationInvalidLimitException;
@@ -33,8 +34,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 @WebMvcTest(NotificationController.class)
 class NotificationControllerTest {
-
-    private static final String USER_ID_HEADER = "Monew-Request-User-ID";
 
     @Autowired
     MockMvc mockMvc;
@@ -71,7 +70,7 @@ class NotificationControllerTest {
 
             // when & then
             mockMvc.perform(patch("/api/notifications/{notificationId}", notificationId)
-                            .header(USER_ID_HEADER, userId.toString()))
+                            .header(MonewHttpHeaders.REQUEST_USER_ID, userId.toString()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.id").value(notificationId.toString()))
                     .andExpect(jsonPath("$.confirmed").value(true));
@@ -100,7 +99,7 @@ class NotificationControllerTest {
 
             // when & then
             mockMvc.perform(patch("/api/notifications/{notificationId}", notificationId)
-                            .header(USER_ID_HEADER, userId.toString()))
+                            .header(MonewHttpHeaders.REQUEST_USER_ID, userId.toString()))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").exists())
                     .andExpect(jsonPath("$.code").value("NTF_001"))
@@ -118,7 +117,7 @@ class NotificationControllerTest {
 
             // when & then
             mockMvc.perform(patch("/api/notifications/{notificationId}", notificationId)
-                            .header(USER_ID_HEADER, userId.toString()))
+                            .header(MonewHttpHeaders.REQUEST_USER_ID, userId.toString()))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").exists())
                     .andExpect(jsonPath("$.code").value("NTF_001"))
@@ -150,7 +149,7 @@ class NotificationControllerTest {
 
             // when & then
             mockMvc.perform(patch("/api/notifications")
-                            .header(USER_ID_HEADER, userId.toString()))
+                            .header(MonewHttpHeaders.REQUEST_USER_ID, userId.toString()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$[0].confirmed").value(true));
         }
@@ -174,7 +173,7 @@ class NotificationControllerTest {
 
             // when & then
             mockMvc.perform(patch("/api/notifications")
-                            .header(USER_ID_HEADER, userId.toString()))
+                            .header(MonewHttpHeaders.REQUEST_USER_ID, userId.toString()))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").exists());
         }
@@ -208,7 +207,7 @@ class NotificationControllerTest {
             // when & then
             mockMvc.perform(get("/api/notifications")
                             .param("limit", "10")
-                            .header(USER_ID_HEADER, userId.toString()))
+                            .header(MonewHttpHeaders.REQUEST_USER_ID, userId.toString()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.content[0].id").value(result.id().toString()))
                     .andExpect(jsonPath("$.hasNext").value(false))
@@ -233,7 +232,7 @@ class NotificationControllerTest {
 
             // when & then
             mockMvc.perform(get("/api/notifications")
-                            .header(USER_ID_HEADER, userId.toString()))
+                            .header(MonewHttpHeaders.REQUEST_USER_ID, userId.toString()))
                     .andExpect(status().isBadRequest());
         }
 
@@ -248,7 +247,7 @@ class NotificationControllerTest {
             // when & then
             mockMvc.perform(get("/api/notifications")
                             .param("limit", "0")
-                            .header(USER_ID_HEADER, userId.toString()))
+                            .header(MonewHttpHeaders.REQUEST_USER_ID, userId.toString()))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("NTF_002"));
         }
@@ -265,7 +264,7 @@ class NotificationControllerTest {
             mockMvc.perform(get("/api/notifications")
                             .param("limit", "10")
                             .param("cursor", "bad-cursor")
-                            .header(USER_ID_HEADER, userId.toString()))
+                            .header(MonewHttpHeaders.REQUEST_USER_ID, userId.toString()))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("NTF_003"));
         }
@@ -281,7 +280,7 @@ class NotificationControllerTest {
             // when & then
             mockMvc.perform(get("/api/notifications")
                             .param("limit", "10")
-                            .header(USER_ID_HEADER, userId.toString()))
+                            .header(MonewHttpHeaders.REQUEST_USER_ID, userId.toString()))
                     .andExpect(status().isNotFound());
         }
     }
