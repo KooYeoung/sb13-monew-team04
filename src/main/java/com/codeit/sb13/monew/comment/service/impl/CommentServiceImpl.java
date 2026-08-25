@@ -11,7 +11,6 @@ import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.repository.UserRepository;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -32,7 +31,7 @@ public class CommentServiceImpl implements CommentService {
 
   @Transactional
   @Override
-  public CommentDto create(@Valid CommentRegisterCommand command) { // 서비스 전용객체를 사용
+  public CommentDto create(CommentRegisterCommand command) { // 서비스 전용객체를 사용
     log.debug("댓글 생성 시작 - 기사 아이디: {}", command.articleId()); // 개인 정보 또는 민감한 정보는 로그에 남기지 않음
     User user = userRepository.findById(command.userId()).orElseThrow(()->new UserNotFoundException(command.userId()));
     Article article = articleRepository.findById(command.articleId()).orElseThrow(()->new ArticleNotFoundException(command.articleId()));

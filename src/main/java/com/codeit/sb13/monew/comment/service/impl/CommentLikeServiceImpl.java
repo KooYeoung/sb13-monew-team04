@@ -10,7 +10,6 @@ import com.codeit.sb13.monew.global.exception.comment.CommentLikeNotFoundExcepti
 import com.codeit.sb13.monew.global.exception.comment.CommentNotFoundException;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.user.repository.UserRepository;
-import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,7 +31,7 @@ public class CommentLikeServiceImpl implements CommentLikeService {
 
   // 댓글, 사용자 존재 여부 확인 -> 기존 좋아요가 없다면 새로운 좋아요 등록, 이미 좋아요가 있다면 기존 좋아요 반환
   @Override
-  public CommentLikeDto likeComment(@Valid CommentLikeRegisterCommand command) {
+  public CommentLikeDto likeComment(CommentLikeRegisterCommand command) {
     UUID commentId = command.commentId();
     UUID likedById = command.requestUserId();
 
@@ -68,7 +67,7 @@ public class CommentLikeServiceImpl implements CommentLikeService {
 
   @Override
   @Transactional
-  public void unlikeComment(@Valid CommentLikeRegisterCommand command) {
+  public void unlikeComment(CommentLikeRegisterCommand command) {
     UUID commentId = command.commentId();
     UUID requestUserId = command.requestUserId();
 
