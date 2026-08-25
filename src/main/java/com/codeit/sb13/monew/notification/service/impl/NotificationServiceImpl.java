@@ -2,7 +2,6 @@ package com.codeit.sb13.monew.notification.service.impl;
 
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.notification.NotificationNotFoundException;
-import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.notification.domain.Notification;
 import com.codeit.sb13.monew.notification.domain.ResourceType;
 import com.codeit.sb13.monew.notification.mapper.NotificationMapper;
@@ -13,7 +12,7 @@ import com.codeit.sb13.monew.notification.service.dto.ArticlesForInterestDto;
 import com.codeit.sb13.monew.notification.service.dto.CommentLikedDto;
 import com.codeit.sb13.monew.notification.service.dto.NotificationFindDto;
 import com.codeit.sb13.monew.notification.service.dto.NotificationResult;
-import com.codeit.sb13.monew.user.repository.UserRepository;
+import com.codeit.sb13.monew.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -30,7 +29,7 @@ import java.util.UUID;
 public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationRepository notificationRepository;
-    private final UserRepository userRepository;
+    private final UserService userService;
     private final NotificationMapper mapper;
 
     @Override
@@ -62,9 +61,7 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public CursorPageResponseDto<NotificationResult> findAllNotifications(NotificationFindDto request) {
-        if (!userRepository.existsById(request.userId())) {
-            throw new UserNotFoundException(request.userId());
-        }
+        userService.validateExists(request.userId());
 
         List<Notification> fetched = notificationRepository.findUnconfirmedByUserWithCursor(
                 new NotificationFindCondition(request.userId(), request.cursorId(), request.after(), request.limit() + 1));
@@ -93,9 +90,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     @Transactional
     public NotificationResult confirmNotification(UUID notificationId, UUID userId) {
-        if(!userRepository.existsById(userId)) {
-            throw new UserNotFoundException(userId);
-        }
+        userService.validateExists(userId);
         Notification notification = notificationRepository.findById(notificationId)
                 .orElseThrow(()->new NotificationNotFoundException(notificationId));
 
@@ -112,10 +107,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     @Transactional
     public List<NotificationResult> confirmAllNotifications(UUID userId) {
-        if(!userRepository.existsById(userId)) {
-            throw new UserNotFoundException(userId);
-        }
-
+        userService.validateExists(userId);
         List<Notification> notifications = notificationRepository.findByUser_IdAndConfirmedFalse(userId);
         notifications.forEach(Notification::confirm);
 

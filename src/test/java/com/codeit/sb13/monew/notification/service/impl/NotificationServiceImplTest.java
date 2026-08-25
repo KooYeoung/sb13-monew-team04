@@ -13,7 +13,7 @@ import com.codeit.sb13.monew.notification.service.dto.CommentLikedDto;
 import com.codeit.sb13.monew.notification.service.dto.NotificationFindDto;
 import com.codeit.sb13.monew.notification.service.dto.NotificationResult;
 import com.codeit.sb13.monew.user.domain.User;
-import com.codeit.sb13.monew.user.repository.UserRepository;
+import com.codeit.sb13.monew.user.service.UserService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -50,7 +50,7 @@ class NotificationServiceImplTest {
     ArgumentCaptor<List<Notification>> notificationsCaptor;
 
     @Mock
-    UserRepository userRepository;
+    UserService userService;
 
     @Mock
     NotificationMapper mapper;
@@ -174,7 +174,6 @@ class NotificationServiceImplTest {
             Notification notification = Notification.create(user, "내용", UUID.randomUUID(), ResourceType.COMMENT);
 
             when(notificationRepository.findById(notificationId)).thenReturn(Optional.of(notification));
-            when(userRepository.existsById(userId)).thenReturn(true);
 
             NotificationResult expectedResult = new NotificationResult(
                     notification.getId(), userId, "내용", notification.getResourceId(),
@@ -198,7 +197,6 @@ class NotificationServiceImplTest {
             UUID notificationId = UUID.randomUUID();
             UUID userId = UUID.randomUUID();
 
-            when(userRepository.existsById(userId)).thenReturn(true);
             when(notificationRepository.findById(notificationId)).thenReturn(Optional.empty());
 
             // when & then
@@ -212,7 +210,7 @@ class NotificationServiceImplTest {
             // given
             UUID notificationId = UUID.randomUUID();
             UUID userId = UUID.randomUUID();
-            when(userRepository.existsById(userId)).thenReturn(false);
+            doThrow(new UserNotFoundException(userId)).when(userService).validateExists(userId);
 
             // when & then
             assertThatThrownBy(() -> notificationServiceImpl.confirmNotification(notificationId, userId))
@@ -238,7 +236,6 @@ class NotificationServiceImplTest {
             Notification notification = Notification.create(owner, "내용", UUID.randomUUID(), ResourceType.COMMENT);
 
             when(notificationRepository.findById(notificationId)).thenReturn(Optional.of(notification));
-            when(userRepository.existsById(otherId)).thenReturn(true);
 
             // when & then
             assertThatThrownBy(() -> notificationServiceImpl.confirmNotification(notificationId, otherId))
@@ -264,7 +261,6 @@ class NotificationServiceImplTest {
             Notification notification2 = Notification.create(user, "알림2", UUID.randomUUID(), ResourceType.INTEREST);
             List<Notification> notifications = List.of(notification1, notification2);
 
-            when(userRepository.existsById(userId)).thenReturn(true);
             when(notificationRepository.findByUser_IdAndConfirmedFalse(userId)).thenReturn(notifications);
 
             NotificationResult notificationResult = new NotificationResult(
@@ -289,7 +285,7 @@ class NotificationServiceImplTest {
         void 요청자_없으면_예외() {
             // given
             UUID userId = UUID.randomUUID();
-            when(userRepository.existsById(userId)).thenReturn(false);
+            doThrow(new UserNotFoundException(userId)).when(userService).validateExists(userId);
 
             // when & then
             assertThatThrownBy(() -> notificationServiceImpl.confirmAllNotifications(userId))
@@ -324,7 +320,6 @@ class NotificationServiceImplTest {
 
             NotificationFindDto request = new NotificationFindDto(null, null, limit, userId);
 
-            when(userRepository.existsById(userId)).thenReturn(true);
             when(notificationRepository.findUnconfirmedByUserWithCursor(
                     new NotificationFindCondition(userId, null, null, limit + 1)))
                     .thenReturn(List.of(n1, n2, n3));
@@ -361,7 +356,6 @@ class NotificationServiceImplTest {
 
             NotificationFindDto request = new NotificationFindDto(null, null, limit, userId);
 
-            when(userRepository.existsById(userId)).thenReturn(true);
             when(notificationRepository.findUnconfirmedByUserWithCursor(
                     new NotificationFindCondition(userId, null, null, limit + 1)))
                     .thenReturn(List.of(n1));
@@ -386,7 +380,7 @@ class NotificationServiceImplTest {
             // given
             UUID userId = UUID.randomUUID();
             NotificationFindDto request = new NotificationFindDto(null, null, 10, userId);
-            when(userRepository.existsById(userId)).thenReturn(false);
+            doThrow(new UserNotFoundException(userId)).when(userService).validateExists(userId);
 
             // when & then
             assertThatThrownBy(() -> notificationServiceImpl.findAllNotifications(request))
