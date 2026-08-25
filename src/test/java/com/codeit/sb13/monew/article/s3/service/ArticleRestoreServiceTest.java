@@ -3,6 +3,7 @@ package com.codeit.sb13.monew.article.s3.service;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.s3.service.dto.ArticleBackupFile;
 import com.codeit.sb13.monew.article.s3.service.dto.ArticleBackupItem;
+import com.codeit.sb13.monew.article.s3.service.dto.ArticleRestoreCommand;
 import com.codeit.sb13.monew.article.s3.service.dto.ArticleRestoreResult;
 import com.codeit.sb13.monew.article.s3.service.dto.StorageSearchCommand;
 import com.codeit.sb13.monew.global.exception.ApiErrorCode;
@@ -65,7 +66,7 @@ class ArticleRestoreServiceTest {
         when(storage.find(new StorageSearchCommand(RESTORE_DATE))).thenReturn(Optional.empty());
         when(storage.find(new StorageSearchCommand(NEXT_DATE))).thenReturn(Optional.empty());
 
-        List<ArticleRestoreResult> results = service.restoreArticles(RESTORE_DATE, NEXT_DATE);
+        List<ArticleRestoreResult> results = service.restoreArticles(restoreCommand(RESTORE_DATE, NEXT_DATE));
 
         assertThat(results)
                 .extracting(ArticleRestoreResult::restoreDate)
@@ -80,7 +81,7 @@ class ArticleRestoreServiceTest {
     void restoresSingleMaxDateWithoutOverflow() {
         when(storage.find(new StorageSearchCommand(LocalDate.MAX))).thenReturn(Optional.empty());
 
-        List<ArticleRestoreResult> results = service.restoreArticles(LocalDate.MAX, LocalDate.MAX);
+        List<ArticleRestoreResult> results = service.restoreArticles(restoreCommand(LocalDate.MAX, LocalDate.MAX));
 
         assertThat(results)
                 .extracting(ArticleRestoreResult::restoreDate)
@@ -95,7 +96,7 @@ class ArticleRestoreServiceTest {
         when(storage.find(new StorageSearchCommand(maxPreviousDate))).thenReturn(Optional.empty());
         when(storage.find(new StorageSearchCommand(LocalDate.MAX))).thenReturn(Optional.empty());
 
-        List<ArticleRestoreResult> results = service.restoreArticles(maxPreviousDate, LocalDate.MAX);
+        List<ArticleRestoreResult> results = service.restoreArticles(restoreCommand(maxPreviousDate, LocalDate.MAX));
 
         assertThat(results)
                 .extracting(ArticleRestoreResult::restoreDate)
@@ -111,7 +112,7 @@ class ArticleRestoreServiceTest {
         LocalDate to = from.plusDays(30);
         when(storage.find(any(StorageSearchCommand.class))).thenReturn(Optional.empty());
 
-        List<ArticleRestoreResult> results = service.restoreArticles(from, to);
+        List<ArticleRestoreResult> results = service.restoreArticles(restoreCommand(from, to));
 
         assertThat(results).hasSize(31);
         assertThat(results)
@@ -131,7 +132,7 @@ class ArticleRestoreServiceTest {
         LocalDate from = RESTORE_DATE;
         LocalDate to = from.plusDays(31);
 
-        assertThatThrownBy(() -> service.restoreArticles(from, to))
+        assertThatThrownBy(() -> service.restoreArticles(restoreCommand(from, to)))
                 .isInstanceOfSatisfying(ArticleRestoreDateInvalidException.class, e -> {
                     assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ARTICLE_RESTORE_DATE_INVALID);
                     assertThat(e.getDetails())
@@ -147,7 +148,7 @@ class ArticleRestoreServiceTest {
     void returnsEmptyResultWhenBackupFileIsMissing() {
         when(storage.find(new StorageSearchCommand(RESTORE_DATE))).thenReturn(Optional.empty());
 
-        List<ArticleRestoreResult> results = service.restoreArticles(RESTORE_DATE, RESTORE_DATE);
+        List<ArticleRestoreResult> results = service.restoreArticles(restoreCommand(RESTORE_DATE, RESTORE_DATE));
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).restoreDate()).isEqualTo(RESTORE_DATE);
@@ -174,7 +175,7 @@ class ArticleRestoreServiceTest {
         when(converter.deserialize("{}")).thenReturn(backupFile);
         when(commandService.restore(RESTORE_DATE, backupFile.articles())).thenReturn(restoreResult);
 
-        List<ArticleRestoreResult> results = service.restoreArticles(RESTORE_DATE, RESTORE_DATE);
+        List<ArticleRestoreResult> results = service.restoreArticles(restoreCommand(RESTORE_DATE, RESTORE_DATE));
 
         assertThat(results).containsExactly(restoreResult);
         verify(commandService).restore(RESTORE_DATE, backupFile.articles());
@@ -183,7 +184,7 @@ class ArticleRestoreServiceTest {
     @Test
     @DisplayName("복구 날짜 조건이 올바르지 않으면 실패한다")
     void throwsDateInvalidExceptionWhenDateRangeIsInvalid() {
-        assertThatThrownBy(() -> service.restoreArticles(null, RESTORE_DATE))
+        assertThatThrownBy(() -> service.restoreArticles(restoreCommand(null, RESTORE_DATE)))
                 .isInstanceOfSatisfying(ArticleRestoreDateInvalidException.class, e -> {
                     assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ARTICLE_RESTORE_DATE_INVALID);
                     assertThat(e.getDetails())
@@ -191,7 +192,7 @@ class ArticleRestoreServiceTest {
                             .containsEntry("to", RESTORE_DATE);
                 });
 
-        assertThatThrownBy(() -> service.restoreArticles(RESTORE_DATE, null))
+        assertThatThrownBy(() -> service.restoreArticles(restoreCommand(RESTORE_DATE, null)))
                 .isInstanceOfSatisfying(ArticleRestoreDateInvalidException.class, e -> {
                     assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ARTICLE_RESTORE_DATE_INVALID);
                     assertThat(e.getDetails())
@@ -199,13 +200,28 @@ class ArticleRestoreServiceTest {
                             .containsEntry("to", null);
                 });
 
-        assertThatThrownBy(() -> service.restoreArticles(NEXT_DATE, RESTORE_DATE))
+        assertThatThrownBy(() -> service.restoreArticles(restoreCommand(NEXT_DATE, RESTORE_DATE)))
                 .isInstanceOfSatisfying(ArticleRestoreDateInvalidException.class, e -> {
                     assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ARTICLE_RESTORE_DATE_INVALID);
                     assertThat(e.getDetails())
                             .containsEntry("from", NEXT_DATE)
                             .containsEntry("to", RESTORE_DATE);
                 });
+        verifyNoInteractions(storage, converter, commandService);
+    }
+
+    @Test
+    @DisplayName("복구 command가 없으면 커스텀 예외로 실패한다")
+    void throwsDateInvalidExceptionWhenRestoreCommandIsNull() {
+        assertThatThrownBy(() -> service.restoreArticles(null))
+                .isInstanceOfSatisfying(ArticleRestoreDateInvalidException.class, e -> {
+                    assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ARTICLE_RESTORE_DATE_INVALID);
+                    assertThat(e.getDetails())
+                            .containsEntry("from", null)
+                            .containsEntry("to", null)
+                            .containsEntry("reason", "복구 날짜 범위는 필수입니다.");
+                });
+
         verifyNoInteractions(storage, converter, commandService);
     }
 
@@ -220,7 +236,7 @@ class ArticleRestoreServiceTest {
         );
         when(storage.find(new StorageSearchCommand(RESTORE_DATE))).thenThrow(cause);
 
-        assertThatThrownBy(() -> service.restoreArticles(RESTORE_DATE, RESTORE_DATE))
+        assertThatThrownBy(() -> service.restoreArticles(restoreCommand(RESTORE_DATE, RESTORE_DATE)))
                 .isInstanceOfSatisfying(ArticleRestoreFailedException.class, e -> {
                     assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ARTICLE_RESTORE_FAILED);
                     assertThat(e.getCause()).isSameAs(cause);
@@ -237,7 +253,7 @@ class ArticleRestoreServiceTest {
         when(storage.find(new StorageSearchCommand(RESTORE_DATE))).thenReturn(Optional.of("{}"));
         when(converter.deserialize("{}")).thenThrow(cause);
 
-        assertThatThrownBy(() -> service.restoreArticles(RESTORE_DATE, RESTORE_DATE))
+        assertThatThrownBy(() -> service.restoreArticles(restoreCommand(RESTORE_DATE, RESTORE_DATE)))
                 .isInstanceOfSatisfying(ArticleRestoreFailedException.class, e -> {
                     assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ARTICLE_RESTORE_FAILED);
                     assertThat(e.getCause()).isSameAs(cause);
@@ -260,7 +276,7 @@ class ArticleRestoreServiceTest {
         when(converter.deserialize("{}")).thenReturn(backupFile);
         when(commandService.restore(RESTORE_DATE, backupFile.articles())).thenThrow(cause);
 
-        assertThatThrownBy(() -> service.restoreArticles(RESTORE_DATE, RESTORE_DATE))
+        assertThatThrownBy(() -> service.restoreArticles(restoreCommand(RESTORE_DATE, RESTORE_DATE)))
                 .isSameAs(cause);
     }
 
@@ -274,5 +290,9 @@ class ArticleRestoreServiceTest {
                 LocalDateTime.of(2026, 8, 23, 10, 15),
                 null
         );
+    }
+
+    private ArticleRestoreCommand restoreCommand(LocalDate from, LocalDate to) {
+        return new ArticleRestoreCommand(from, to);
     }
 }

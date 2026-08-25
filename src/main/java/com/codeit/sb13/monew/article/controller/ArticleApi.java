@@ -1,7 +1,9 @@
 package com.codeit.sb13.monew.article.controller;
 
+import com.codeit.sb13.monew.article.controller.dto.ArticleRestoreRequest;
 import com.codeit.sb13.monew.article.controller.dto.ArticleSearchRequest;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
+import com.codeit.sb13.monew.article.s3.service.dto.ArticleRestoreResult;
 import com.codeit.sb13.monew.article.service.dto.ArticleDto;
 import com.codeit.sb13.monew.article.service.dto.ArticleViewDto;
 import com.codeit.sb13.monew.global.MonewHttpHeaders;
@@ -14,6 +16,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -151,4 +154,27 @@ public interface ArticleApi {
             )
     })
     ResponseEntity<List<ArticleSource>> getSources();
+
+    @Operation(
+            summary = "뉴스 기사 복구",
+            description = "지정한 from/to 날짜 범위의 백업 파일을 읽어 유실된 기사를 복구합니다. 정적 웹 프론트 호환성을 위해 GET 계약을 유지하며, 응답은 캐시하지 않습니다."
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "복구 성공",
+                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = ArticleRestoreResult.class)))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "잘못된 복구 요청",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "500",
+                    description = "기사 복구 실패",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
+            )
+    })
+    ResponseEntity<List<ArticleRestoreResult>> restore(@Valid @ModelAttribute ArticleRestoreRequest request);
 }

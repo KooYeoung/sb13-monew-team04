@@ -37,7 +37,7 @@ public class StorageImpl implements Storage {
     @Override
     public StorageSaveResult saveIfAbsent(StorageCommand command) {
         String bucket = bucket();
-        String key = resolveKey(command.backupDate());
+        String key = resolveObjectKey(command.backupDate());
 
         try {
             PutObjectRequest request = PutObjectRequest.builder()
@@ -65,7 +65,7 @@ public class StorageImpl implements Storage {
     @Override
     public Optional<String> find(StorageSearchCommand searchCommand) {
         String bucket = bucket();
-        String key = resolveKey(searchCommand.backupDate());
+        String key = resolveBackupObjectKey(searchCommand);
 
         try {
             GetObjectRequest request = GetObjectRequest.builder()
@@ -89,7 +89,7 @@ public class StorageImpl implements Storage {
     @Override
     public boolean exists(StorageSearchCommand searchCommand) {
         String bucket = bucket();
-        String key = resolveKey(searchCommand.backupDate());
+        String key = resolveBackupObjectKey(searchCommand);
 
         try {
             HeadObjectRequest request = HeadObjectRequest.builder()
@@ -117,7 +117,12 @@ public class StorageImpl implements Storage {
         return props.bucket();
     }
 
-    private String resolveKey(LocalDate backupDate) {
+    @Override
+    public String resolveBackupObjectKey(StorageSearchCommand searchCommand) {
+        return resolveObjectKey(searchCommand.backupDate());
+    }
+
+    private String resolveObjectKey(LocalDate backupDate) {
         if (backupDate == null) {
             throw new IllegalArgumentException("Storage backupDate must not be null");
         }

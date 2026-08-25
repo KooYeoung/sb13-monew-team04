@@ -3,9 +3,13 @@ package com.codeit.sb13.monew.article.controller;
 import com.codeit.sb13.monew.article.service.ArticleViewService;
 import com.codeit.sb13.monew.article.service.dto.ArticleDto;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
+import com.codeit.sb13.monew.article.s3.service.ArticleRestoreService;
+import com.codeit.sb13.monew.article.s3.service.dto.ArticleRestoreCommand;
+import com.codeit.sb13.monew.article.s3.service.dto.ArticleRestoreResult;
 import com.codeit.sb13.monew.article.service.ArticleService;
 import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
 import com.codeit.sb13.monew.article.service.dto.ArticleViewDto;
+import com.codeit.sb13.monew.global.exception.article.ArticleRestoreFailedException;
 import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
 import com.codeit.sb13.monew.global.exception.article.ArticleViewConflictException;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
@@ -18,19 +22,22 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static com.codeit.sb13.monew.global.MonewHttpHeaders.REQUEST_USER_ID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static com.codeit.sb13.monew.global.MonewHttpHeaders.REQUEST_USER_ID;
 
 @WebMvcTest(ArticleController.class)
 @DisplayName("ArticleController 슬라이스 테스트")
@@ -44,6 +51,9 @@ class ArticleControllerTest {
 
     @MockitoBean
     ArticleViewService articleViewService;
+
+    @MockitoBean
+    ArticleRestoreService articleRestoreService;
 
     private UUID articleId;
     private UUID userId;
@@ -319,5 +329,58 @@ class ArticleControllerTest {
                 .andExpect(jsonPath("$.code").value("GLB_001"));
 
         verify(articleService, never()).searchArticles(any());
+    }
+
+    @Test
+    @DisplayName("기사 복구 성공 시 200과 날짜별 복구 결과를 반환한다")
+    void restoreArticlesSuccess() throws Exception {
+        LocalDate restoreFrom = LocalDate.of(2026, 8, 23);
+        LocalDate restoreTo = LocalDate.of(2026, 8, 25);
+        UUID restoredArticleId = UUID.randomUUID();
+        ArticleRestoreResult restoreResult = ArticleRestoreResult.of(restoreFrom, List.of(restoredArticleId));
+        when(articleRestoreService.restoreArticles(any(ArticleRestoreCommand.class)))
+                .thenReturn(List.of(restoreResult));
+
+        mockMvc.perform(get("/api/articles/restore")
+                        .param("from", "2026-08-23")
+                        .param("to", "2026-08-25"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].restoreDate").value("2026-08-23"))
+                .andExpect(jsonPath("$[0].restoredArticleIds[0]").value(restoredArticleId.toString()))
+                .andExpect(jsonPath("$[0].restoredArticleCount").value(1));
+
+        ArgumentCaptor<ArticleRestoreCommand> captor = ArgumentCaptor.forClass(ArticleRestoreCommand.class);
+        verify(articleRestoreService).restoreArticles(captor.capture());
+        assertThat(captor.getValue().from()).isEqualTo(restoreFrom);
+        assertThat(captor.getValue().to()).isEqualTo(restoreTo);
+    }
+
+    @Test
+    @DisplayName("기사 복구 요청에서 시작일이 종료일보다 이후이면 400을 반환한다")
+    void restoreArticlesReturnsBadRequestWhenDateRangeIsInvalid() throws Exception {
+        mockMvc.perform(get("/api/articles/restore")
+                        .param("from", "2026-08-24")
+                        .param("to", "2026-08-23"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("GLB_001"));
+
+        verify(articleRestoreService, never()).restoreArticles(any());
+    }
+
+    @Test
+    @DisplayName("기사 복구 실패 시 500과 ART_015를 반환한다")
+    void restoreArticlesReturnsServerErrorWhenRestoreFails() throws Exception {
+        LocalDate restoreDate = LocalDate.of(2026, 8, 23);
+        when(articleRestoreService.restoreArticles(any(ArticleRestoreCommand.class)))
+                .thenThrow(new ArticleRestoreFailedException(restoreDate, new IllegalStateException("restore failure")));
+
+        mockMvc.perform(get("/api/articles/restore")
+                        .param("from", "2026-08-23")
+                        .param("to", "2026-08-23"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("ART_015"))
+                .andExpect(jsonPath("$.details.restoreDate").value("2026-08-23"));
     }
 }

@@ -129,6 +129,20 @@ tasks.register('naverExternalTest', Test) {
     shouldRunAfter tasks.named('test')
 }
 
+tasks.register('s3DevExternalTest', Test) {
+    description = 'Runs dev-profile S3 backup/restore smoke tests against configured AWS S3 and dev DB.'
+    group = 'verification'
+
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+
+    useJUnitPlatform {
+        includeTags 's3-dev-external'
+    }
+
+    shouldRunAfter tasks.named('test')
+}
+
 tasks.register('migrationTest', Test) {
     description = 'Runs Flyway migration tests against PostgreSQL.'
     group = 'verification'

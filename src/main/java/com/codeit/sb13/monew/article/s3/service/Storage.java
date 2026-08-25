@@ -12,4 +12,6 @@ public interface Storage {
     Optional<String> find(StorageSearchCommand searchCommand);
 
     boolean exists(StorageSearchCommand searchCommand);
+
+    String resolveBackupObjectKey(StorageSearchCommand searchCommand);
 }
