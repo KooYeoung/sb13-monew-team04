@@ -11,6 +11,8 @@ import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
 import com.codeit.sb13.monew.article.service.ArticleService;
 import com.codeit.sb13.monew.article.service.dto.ArticleRequest;
 import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
+import com.codeit.sb13.monew.comment.repository.CommentLikeRepository;
+import com.codeit.sb13.monew.comment.repository.CommentRepository;
 import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
 import com.codeit.sb13.monew.global.exception.article.ArticleDuplicateException;
 import com.codeit.sb13.monew.global.exception.article.ArticleBackupDateInvalidException;
@@ -31,6 +33,8 @@ public class ArticleServiceImpl implements ArticleService {
 
     private final ArticleRepository articleRepository;
     private final ArticleViewRepository articleViewRepository;
+    private final CommentRepository commentRepository;
+    private final CommentLikeRepository commentLikeRepository;
     private final ArticleMapper articleMapper;
     private final UserService userService;
 
@@ -128,6 +132,19 @@ public class ArticleServiceImpl implements ArticleService {
         Article article = findById(id);
         article.softDelete();
         articleRepository.save(article);
+    }
+
+    @Override
+    @Transactional
+    public void hardDelete(UUID id) {
+        if (!articleRepository.existsById(id)) {
+            throw new ArticleNotFoundException(id);
+        }
+        // FK 제약 순서: CommentLike -> Comment -> ArticleView -> Article
+        commentLikeRepository.deleteByComment_Article_Id(id);
+        commentRepository.deleteByArticle_Id(id);
+        articleViewRepository.deleteByArticle_Id(id);
+        articleRepository.deleteById(id);
     }
 
     private boolean isLinkUniqueViolation(DataIntegrityViolationException e) {

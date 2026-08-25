@@ -156,6 +156,61 @@ public interface ArticleApi {
     ResponseEntity<List<ArticleSource>> getSources();
 
     @Operation(
+            summary = "뉴스 기사 논리 삭제",
+            description = "뉴스 기사를 논리 삭제합니다. 삭제된 기사는 조회 API에서 제외됩니다."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "삭제 성공"),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "잘못된 UUID 형식",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "뉴스 기사 정보 없음",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "500",
+                    description = "서버 내부 오류",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
+            )
+    })
+    ResponseEntity<Void> softDeleteArticle(
+            @Parameter(name = "articleId", description = "뉴스 기사 ID", required = true)
+            @PathVariable UUID articleId
+    );
+
+    @Operation(
+            summary = "뉴스 기사 물리 삭제",
+            description = "뉴스 기사를 물리 삭제합니다. 해당 기사의 댓글, 댓글 좋아요, 조회 기록도 함께 제거됩니다. "
+                    + "논리 삭제된 기사도 물리 삭제할 수 있습니다."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "삭제 성공"),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "잘못된 UUID 형식",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "뉴스 기사 정보 없음",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "500",
+                    description = "서버 내부 오류",
+                    content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
+            )
+    })
+    ResponseEntity<Void> hardDeleteArticle(
+            @Parameter(name = "articleId", description = "뉴스 기사 ID", required = true)
+            @PathVariable UUID articleId
+    );
+
+    @Operation(
             summary = "뉴스 기사 복구",
             description = "지정한 from/to 날짜 범위의 백업 파일을 읽어 유실된 기사를 복구합니다. 정적 웹 프론트 호환성을 위해 GET 계약을 유지하며, 응답은 캐시하지 않습니다."
     )

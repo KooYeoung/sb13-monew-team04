@@ -40,6 +40,9 @@ public interface ArticleViewRepository extends JpaRepository<ArticleView, UUID> 
 
     void deleteByUser_Id(UUID userId);
 
+    // 기사 물리 삭제 시 조회 기록 정리 (MID4-146)
+    void deleteByArticle_Id(UUID articleId);
+
     @Query("""
                 SELECT new com.codeit.sb13.monew.article.repository.dto.RecentArticleViewActivityProjection(
                     AT.id,

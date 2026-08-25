@@ -41,4 +41,7 @@ public interface CommentRepository extends JpaRepository<Comment, UUID> {
   List<RecentCommentActivityProjection> findRecentCommentActivities(@Param("userId") UUID userId);
 
   void deleteByUser_Id(UUID userId);
+
+  // 기사 물리 삭제 시 댓글 정리 (MID4-146)
+  void deleteByArticle_Id(UUID articleId);
 }

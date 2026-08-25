@@ -12,6 +12,8 @@ import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
 import com.codeit.sb13.monew.article.service.dto.ArticleRequest;
 import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
 import com.codeit.sb13.monew.article.service.impl.ArticleServiceImpl;
+import com.codeit.sb13.monew.comment.repository.CommentLikeRepository;
+import com.codeit.sb13.monew.comment.repository.CommentRepository;
 import com.codeit.sb13.monew.global.exception.ApiErrorCode;
 import com.codeit.sb13.monew.global.exception.article.ArticleBackupDateInvalidException;
 import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
@@ -49,6 +51,12 @@ class ArticleServiceTest {
 
     @Mock
     private ArticleViewRepository articleViewRepository;
+
+    @Mock
+    private CommentRepository commentRepository;
+
+    @Mock
+    private CommentLikeRepository commentLikeRepository;
 
     @Mock
     private ArticleMapper articleMapper;
@@ -228,6 +236,55 @@ class ArticleServiceTest {
                 .isInstanceOf(ArticleNotFoundException.class);
         verify(articleRepository, times(1)).findByIdAndDeletedAtIsNull(testArticleId);
         verify(articleRepository, never()).save(any(Article.class));
+    }
+
+    @Test
+    @DisplayName("기사 물리 삭제 - 연관 데이터를 FK 제약 순서대로 제거한다")
+    void testHardDeleteSuccess() {
+        // given
+        when(articleRepository.existsById(testArticleId)).thenReturn(true);
+
+        // when
+        articleService.hardDelete(testArticleId);
+
+        // then
+        InOrder inOrder = inOrder(
+                commentLikeRepository, commentRepository, articleViewRepository, articleRepository);
+        inOrder.verify(commentLikeRepository).deleteByComment_Article_Id(testArticleId);
+        inOrder.verify(commentRepository).deleteByArticle_Id(testArticleId);
+        inOrder.verify(articleViewRepository).deleteByArticle_Id(testArticleId);
+        inOrder.verify(articleRepository).deleteById(testArticleId);
+    }
+
+    @Test
+    @DisplayName("기사 물리 삭제는 논리 삭제 여부를 따지지 않는다")
+    void testHardDeleteIgnoresSoftDeleteFlag() {
+        // given
+        when(articleRepository.existsById(testArticleId)).thenReturn(true);
+
+        // when
+        articleService.hardDelete(testArticleId);
+
+        // then
+        // deletedAt IS NULL 조건이 붙은 조회를 쓰면 논리 삭제 -> 물리 삭제 흐름이 404로 막힌다.
+        verify(articleRepository, never()).findByIdAndDeletedAtIsNull(any(UUID.class));
+        verify(articleRepository, times(1)).deleteById(testArticleId);
+    }
+
+    @Test
+    @DisplayName("기사 물리 삭제 실패 - 기사 없음")
+    void testHardDeleteNotFound() {
+        // given
+        when(articleRepository.existsById(testArticleId)).thenReturn(false);
+
+        // when & then
+        assertThatThrownBy(() -> articleService.hardDelete(testArticleId))
+                .isInstanceOf(ArticleNotFoundException.class);
+
+        verify(commentLikeRepository, never()).deleteByComment_Article_Id(any(UUID.class));
+        verify(commentRepository, never()).deleteByArticle_Id(any(UUID.class));
+        verify(articleViewRepository, never()).deleteByArticle_Id(any(UUID.class));
+        verify(articleRepository, never()).deleteById(any(UUID.class));
     }
 
     @Test

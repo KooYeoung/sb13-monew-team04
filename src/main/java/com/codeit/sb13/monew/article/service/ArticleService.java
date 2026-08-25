@@ -28,6 +28,9 @@ public interface ArticleService {
     // 기사 삭제 (소프트 딜리트)
     void softDelete(UUID id);
 
+    // 기사 물리 삭제 (연관 데이터 함께 제거)
+    void hardDelete(UUID id);
+
     // 단건 조회 (요청자 기준 viewedByMe 포함)
     ArticleDto getArticle(UUID articleId, UUID requestUserId);
 

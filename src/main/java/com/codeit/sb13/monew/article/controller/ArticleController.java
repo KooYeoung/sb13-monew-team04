@@ -15,6 +15,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -82,5 +83,19 @@ public class ArticleController implements ArticleApi {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(articleRestoreService.restoreArticles(request.toRestoreCommand()));
+    }
+
+    @Override
+    @DeleteMapping("/{articleId}")
+    public ResponseEntity<Void> softDeleteArticle(@PathVariable UUID articleId) {
+        articleService.softDelete(articleId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Override
+    @DeleteMapping("/{articleId}/hard")
+    public ResponseEntity<Void> hardDeleteArticle(@PathVariable UUID articleId) {
+        articleService.hardDelete(articleId);
+        return ResponseEntity.noContent().build();
     }
 }

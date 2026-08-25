@@ -32,6 +32,9 @@ public interface CommentLikeRepository extends JpaRepository<CommentLike, UUID> 
   void deleteByComment_User_Id(UUID userId);
   void deleteByLikedBy_Id(UUID userId);
 
+  // 기사 물리 삭제 시 해당 기사 댓글의 좋아요 정리 (MID4-146)
+  void deleteByComment_Article_Id(UUID articleId);
+
 
   @Query("""
     SELECT new com.codeit.sb13.monew.comment.repository.dto.RecentCommentLikeActivityProjection(
