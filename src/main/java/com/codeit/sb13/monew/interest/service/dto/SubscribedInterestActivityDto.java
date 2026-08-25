@@ -16,14 +16,14 @@ import java.util.UUID;
  * 내려준다. 반면 {@code createdAt}은 관심사 생성 시각이 아니라 사용자가 해당
  * 관심사를 구독한 시각이다.</p>
  *
- * @param id 구독 id
- * @param createdAt 구독 생성 시각
- * @param interestId 구독 중인 관심사 id
- * @param interestName 관심사 이름
- * @param interestKeywords 관심사에 등록된 키워드 목록
+ * @param id                      구독 id
+ * @param createdAt               구독 생성 시각
+ * @param interestId              구독 중인 관심사 id
+ * @param interestName            관심사 이름
+ * @param interestKeywords        관심사에 등록된 키워드 목록
  * @param interestSubscriberCount 관심사의 현재 활성 구독자 수
  */
-public record SubscribedInterestActivity(
+public record SubscribedInterestActivityDto(
         UUID id,
         LocalDateTime createdAt,
         UUID interestId,
@@ -39,9 +39,9 @@ public record SubscribedInterestActivity(
      * 한 번에 변환할 때는 {@code Interest.keywords}의 배치 로딩 설정에 따라 여러 관심사의
      * 키워드가 한 번의 지연 로딩 쿼리로 묶여 조회된다.</p>
      */
-    public static SubscribedInterestActivity from(SubscribedInterestActivityProjection projection) {
+    public static SubscribedInterestActivityDto from(SubscribedInterestActivityProjection projection) {
         Interest interest = projection.interest();
-        return new SubscribedInterestActivity(
+        return new SubscribedInterestActivityDto(
                 projection.id(),
                 projection.createdAt(),
                 interest.getId(),

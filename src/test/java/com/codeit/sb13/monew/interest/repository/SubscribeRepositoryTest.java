@@ -10,7 +10,7 @@ import com.codeit.sb13.monew.interest.domain.Interest;
 import com.codeit.sb13.monew.interest.domain.Subscribe;
 import com.codeit.sb13.monew.interest.repository.dto.InterestSubscriberRow;
 import com.codeit.sb13.monew.interest.repository.dto.SubscribedInterestActivityProjection;
-import com.codeit.sb13.monew.interest.service.dto.SubscribedInterestActivity;
+import com.codeit.sb13.monew.interest.service.dto.SubscribedInterestActivityDto;
 import com.codeit.sb13.monew.user.domain.User;
 import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
@@ -355,8 +355,8 @@ class SubscribeRepositoryTest {
         Interest interest = persistInterest("스포츠", "축구", "야구");
         Subscribe subscribe = persistSubscribe(interest, requester);
 
-        List<SubscribedInterestActivity> activities = findActivities(requester.getId()).stream()
-                .map(SubscribedInterestActivity::from)
+        List<SubscribedInterestActivityDto> activities = findActivities(requester.getId()).stream()
+                .map(SubscribedInterestActivityDto::from)
                 .toList();
 
         assertThat(activities).singleElement()
@@ -378,8 +378,8 @@ class SubscribeRepositoryTest {
                 .mapToObj(i -> persistInterest("소량-" + i, "키워드-" + i))
                 .forEach(interest -> persistSubscribe(interest, requester));
 
-        List<SubscribedInterestActivity> activities = findActivities(requester.getId()).stream()
-                .map(SubscribedInterestActivity::from)
+        List<SubscribedInterestActivityDto> activities = findActivities(requester.getId()).stream()
+                .map(SubscribedInterestActivityDto::from)
                 .toList();
 
         assertThat(activities).hasSize(2);
@@ -396,8 +396,8 @@ class SubscribeRepositoryTest {
                 .mapToObj(i -> persistInterest("다량-" + i, "키워드-" + i))
                 .forEach(interest -> persistSubscribe(interest, requester));
 
-        List<SubscribedInterestActivity> activities = findActivities(requester.getId()).stream()
-                .map(SubscribedInterestActivity::from)
+        List<SubscribedInterestActivityDto> activities = findActivities(requester.getId()).stream()
+                .map(SubscribedInterestActivityDto::from)
                 .toList();
 
         assertThat(activities).hasSize(50);
