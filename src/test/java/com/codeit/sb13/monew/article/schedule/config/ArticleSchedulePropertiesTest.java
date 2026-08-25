@@ -6,7 +6,7 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@DisplayName("기사 백업 스케줄 설정 단위 테스트")
+@DisplayName("기사 스케줄 설정 단위 테스트")
 class ArticleSchedulePropertiesTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
@@ -25,6 +25,23 @@ class ArticleSchedulePropertiesTest {
 
                     assertThat(properties.enabled()).isTrue();
                     assertThat(properties.cron()).isEqualTo("0 0 1 * * *");
+                });
+    }
+
+    @Test
+    @DisplayName("기사 수집 스케줄 설정 값을 바인딩한다")
+    void bindsArticleCollectScheduleProperties() {
+        contextRunner
+                .withPropertyValues(
+                        "monew.collect.schedule.enabled=true",
+                        "monew.collect.schedule.cron=0 0/10 * * * *"
+                )
+                .run(context -> {
+                    ArticleCollectScheduleProperties properties =
+                            context.getBean(ArticleCollectScheduleProperties.class);
+
+                    assertThat(properties.enabled()).isTrue();
+                    assertThat(properties.cron()).isEqualTo("0 0/10 * * * *");
                 });
     }
 }

@@ -185,6 +185,57 @@ class SubscribeRepositoryTest {
         }
     }
 
+    @Nested
+    @DisplayName("findDistinctKeywordsOfSubscribedInterests()")
+    class FindDistinctKeywordsOfSubscribedInterests {
+
+        @Test
+        @DisplayName("구독 중인 관심사의 키워드만 반환하고, 구독이 없는 관심사의 키워드는 제외한다")
+        void returnsOnlyKeywordsOfSubscribedInterests() {
+            Interest subscribed = persistInterest("스포츠", "축구", "야구");
+            persistInterest("여행", "국내여행");
+            persistSubscribe(subscribed, persistUser("구독자"));
+
+            List<String> result = subscribeRepository.findDistinctKeywordsOfSubscribedInterests();
+
+            assertThat(result).containsExactlyInAnyOrder("축구", "야구");
+        }
+
+        @Test
+        @DisplayName("서로 다른 관심사가 같은 키워드를 가져도 한 번만 반환한다")
+        void duplicateKeywordAcrossInterests_returnedOnce() {
+            Interest sports = persistInterest("스포츠", "인공지능");
+            Interest tech = persistInterest("기술", "인공지능");
+            persistSubscribe(sports, persistUser("구독자1"));
+            persistSubscribe(tech, persistUser("구독자2"));
+
+            List<String> result = subscribeRepository.findDistinctKeywordsOfSubscribedInterests();
+
+            assertThat(result).containsExactly("인공지능");
+        }
+
+        @Test
+        @DisplayName("논리 삭제된 사용자의 구독은 제외한다")
+        void excludesSubscriptionsOfDeletedUsers() {
+            Interest interest = persistInterest("스포츠", "축구");
+            persistSubscribe(interest, persistDeletedUser("삭제사용자"));
+
+            List<String> result = subscribeRepository.findDistinctKeywordsOfSubscribedInterests();
+
+            assertThat(result).isEmpty();
+        }
+
+        @Test
+        @DisplayName("구독이 하나도 없으면 빈 목록을 반환한다")
+        void noSubscriptions_returnsEmptyList() {
+            persistInterest("스포츠", "축구");
+
+            List<String> result = subscribeRepository.findDistinctKeywordsOfSubscribedInterests();
+
+            assertThat(result).isEmpty();
+        }
+    }
+
     @Test
     @DisplayName("countByInterest_Id()는 해당 관심사를 구독 중인 사용자 수만 센다")
     void countByInterest_Id_countsOnlyThatInterestsSubscriptions() {

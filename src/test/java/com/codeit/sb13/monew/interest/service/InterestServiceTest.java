@@ -737,4 +737,18 @@ class InterestServiceTest {
             Locale.setDefault(originalDefault);
         }
     }
+
+    @Test
+    @DisplayName("findSubscribedKeywords()는 구독 중인 관심사들의 중복 제거된 키워드 목록을 그대로 반환한다")
+    void findSubscribedKeywords_delegatesToSubscribeRepository() {
+        // given
+        List<String> keywords = List.of("축구", "AI");
+        when(subscribeRepository.findDistinctKeywordsOfSubscribedInterests()).thenReturn(keywords);
+
+        // when
+        List<String> result = interestServiceImpl.findSubscribedKeywords();
+
+        // then
+        assertThat(result).isEqualTo(keywords);
+    }
 }

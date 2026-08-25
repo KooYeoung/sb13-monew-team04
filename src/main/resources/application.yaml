@@ -44,6 +44,10 @@ monew:
     schedule:
       enabled: ${MONEW_ARTICLE_BACKUP_ENABLED:false}
       cron: "${MONEW_ARTICLE_BACKUP_CRON:0 10 0 * * *}"
+  collect:
+    schedule:
+      enabled: ${MONEW_ARTICLE_COLLECT_ENABLED:false}
+      cron: "${MONEW_ARTICLE_COLLECT_CRON:0 0/10 * * * *}"
 
   openapi:
     server-url: http://localhost:${server.port:8080}

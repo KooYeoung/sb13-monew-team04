@@ -89,6 +89,26 @@ public interface SubscribeRepository extends JpaRepository<Subscribe, UUID> {
     List<InterestSubscriberRow> findSubscriberUsersByInterestIds(@Param("interestIds") List<UUID> interestIds);
 
     /**
+     * 현재 구독자가 있는 관심사들의 키워드를, 어느 관심사의 키워드인지 구분 없이
+     * 중복 제거해 조회한다.
+     *
+     * <p>{@link com.codeit.sb13.monew.interest.service.InterestServiceImpl#findSubscribedKeywords}가
+     * 네이버 뉴스 검색어를 정하기 위해 이 메서드를 쓴다. 구독자가 논리 삭제된 경우는
+     * 구독이 없는 것으로 본다.</p>
+     *
+     * @return 구독 중인 관심사들의 키워드 문자열 목록 (중복 제거, 순서는 보장하지 않는다)
+     */
+    @Query("""
+        SELECT DISTINCT k.keyword
+        FROM Subscribe s
+        JOIN s.interest i
+        JOIN i.keywords k
+        JOIN User u ON u.id = s.userId
+        WHERE u.deletedAt IS NULL
+    """)
+    List<String> findDistinctKeywordsOfSubscribedInterests();
+
+    /**
      * 사용자 활동내역의 "구독 중인 관심사" 영역에 내려줄 현재 구독 목록을 조회한다.
      *
      * <p>이 조회는 최근 활동 10건처럼 자르는 목록이 아니라, 요청 사용자가 현재 구독 중인

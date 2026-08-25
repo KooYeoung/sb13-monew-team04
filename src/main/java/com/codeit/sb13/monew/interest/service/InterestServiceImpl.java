@@ -279,6 +279,14 @@ public class InterestServiceImpl implements InterestService{
     }
 
     /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List<String> findSubscribedKeywords() {
+        return subscribeRepository.findDistinctKeywordsOfSubscribedInterests();
+    }
+
+    /**
      * 두 문자열 중 하나가 다른 하나를 대소문자 구분 없이 포함하는지 확인한다.
      *
      * <p>{@link String#toLowerCase()}를 로케일 없이 쓰면 JVM 기본 로케일이
