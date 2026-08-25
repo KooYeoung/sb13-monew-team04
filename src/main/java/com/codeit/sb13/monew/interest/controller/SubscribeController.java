@@ -7,6 +7,7 @@ import com.codeit.sb13.monew.interest.service.SubscribeService;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -45,5 +46,25 @@ public class SubscribeController {
     ) {
         SubscribeResponse response = subscribeService.subscribe(interestId, requestUserId);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 관심사 구독을 취소한다.
+     *
+     * <p>구독하지 않은 관심사에 대한 취소 요청도 에러 없이 204로 응답한다(멱등).
+     * 존재하지 않는 {@code interestId}면 {@link InterestNotFoundException}이 발생해
+     * {@code INT_001}(404)로 응답한다.</p>
+     *
+     * @param interestId 구독을 취소할 관심사 id
+     * @param requestUserId 구독을 취소하는 사용자 id
+     * @return 204 상태코드
+     */
+    @DeleteMapping
+    public ResponseEntity<Void> unsubscribe(
+            @PathVariable UUID interestId,
+            @RequestHeader(MonewHttpHeaders.REQUEST_USER_ID) UUID requestUserId
+    ) {
+        subscribeService.unsubscribe(interestId, requestUserId);
+        return ResponseEntity.noContent().build();
     }
 }

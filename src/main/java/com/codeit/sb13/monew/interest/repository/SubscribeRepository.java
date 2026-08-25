@@ -30,6 +30,18 @@ public interface SubscribeRepository extends JpaRepository<Subscribe, UUID> {
     void deleteByUserId(UUID userId);
 
     /**
+     * 특정 사용자의 특정 관심사에 대한 구독을 삭제한다.
+     *
+     * <p>{@link com.codeit.sb13.monew.interest.service.SubscribeServiceImpl#unsubscribe}가
+     * 구독 취소 요청을 처리할 때 쓴다. 구독하지 않은 상태에서 호출해도 삭제되는 행이
+     * 없을 뿐 예외 없이 끝나므로(멱등), 구독 여부를 미리 확인할 필요가 없다.</p>
+     *
+     * @param interestId 구독을 취소할 관심사의 id
+     * @param userId 구독을 취소하는 사용자의 id
+     */
+    void deleteByInterest_IdAndUserId(UUID interestId, UUID userId);
+
+    /**
      * 특정 관심사를 구독 중인 사용자 수를 센다.
      *
      * @param interestId 구독자 수를 셀 관심사의 id

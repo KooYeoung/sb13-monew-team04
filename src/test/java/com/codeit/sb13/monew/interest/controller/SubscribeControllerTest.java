@@ -1,8 +1,11 @@
 package com.codeit.sb13.monew.interest.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -92,6 +95,68 @@ class SubscribeControllerTest {
         UUID interestId = UUID.randomUUID();
 
         mockMvc.perform(post("/api/interests/{interestId}/subscriptions", interestId)
+                        .header("Monew-Request-User-ID", "not-a-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").exists());
+    }
+
+    @Test
+    @DisplayName("정상 요청 시 204로 응답하고 구독을 취소한다")
+    void unsubscribe_validRequest_returns204() throws Exception {
+        // given
+        UUID interestId = UUID.randomUUID();
+        UUID requestUserId = UUID.randomUUID();
+        doNothing().when(subscribeService).unsubscribe(interestId, requestUserId);
+
+        // when & then
+        mockMvc.perform(delete("/api/interests/{interestId}/subscriptions", interestId)
+                        .header("Monew-Request-User-ID", requestUserId.toString()))
+                .andExpect(status().isNoContent());
+
+        verify(subscribeService).unsubscribe(interestId, requestUserId);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 관심사의 구독을 취소하려 하면 404(INT_001)로 응답한다")
+    void unsubscribe_nonExistingInterest_returns404() throws Exception {
+        // given
+        UUID interestId = UUID.randomUUID();
+        UUID requestUserId = UUID.randomUUID();
+        doThrow(new InterestNotFoundException(interestId))
+                .when(subscribeService).unsubscribe(any(), any());
+
+        // when & then
+        mockMvc.perform(delete("/api/interests/{interestId}/subscriptions", interestId)
+                        .header("Monew-Request-User-ID", requestUserId.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("INT_001"));
+    }
+
+    @Test
+    @DisplayName("Monew-Request-User-ID 헤더가 없으면 400으로 응답한다")
+    void unsubscribe_missingUserIdHeader_returns400() throws Exception {
+        UUID interestId = UUID.randomUUID();
+
+        mockMvc.perform(delete("/api/interests/{interestId}/subscriptions", interestId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").exists());
+    }
+
+    @Test
+    @DisplayName("interestId가 UUID 형식이 아니면 400으로 응답한다")
+    void unsubscribe_invalidUuidFormat_returns400() throws Exception {
+        mockMvc.perform(delete("/api/interests/{interestId}/subscriptions", "not-a-uuid")
+                        .header("Monew-Request-User-ID", UUID.randomUUID().toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").exists());
+    }
+
+    @Test
+    @DisplayName("Monew-Request-User-ID 헤더가 UUID 형식이 아니면 400으로 응답한다")
+    void unsubscribe_invalidUserIdHeaderFormat_returns400() throws Exception {
+        UUID interestId = UUID.randomUUID();
+
+        mockMvc.perform(delete("/api/interests/{interestId}/subscriptions", interestId)
                         .header("Monew-Request-User-ID", "not-a-uuid"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").exists());

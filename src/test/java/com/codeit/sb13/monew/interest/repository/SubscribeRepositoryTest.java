@@ -84,6 +84,38 @@ class SubscribeRepositoryTest {
         }
     }
 
+    @Nested
+    @DisplayName("deleteByInterest_IdAndUserId()")
+    class DeleteByInterestIdAndUserId {
+
+        @Test
+        @DisplayName("구독 중이면 해당 사용자의 구독만 삭제한다")
+        void existingSubscription_deletesOnlyThatUsersSubscription() {
+            Interest interest = persistInterest("스포츠", "축구");
+            UUID targetUserId = UUID.randomUUID();
+            UUID otherUserId = UUID.randomUUID();
+            em.persistAndFlush(Subscribe.of(interest, targetUserId));
+            em.persistAndFlush(Subscribe.of(interest, otherUserId));
+
+            subscribeRepository.deleteByInterest_IdAndUserId(interest.getId(), targetUserId);
+            em.flush();
+            em.clear();
+
+            assertThat(subscribeRepository.findByInterest_IdAndUserId(interest.getId(), targetUserId))
+                    .isEmpty();
+            assertThat(subscribeRepository.findByInterest_IdAndUserId(interest.getId(), otherUserId))
+                    .isPresent();
+        }
+
+        @Test
+        @DisplayName("구독한 적이 없어도 예외 없이 아무 일도 일어나지 않는다")
+        void notSubscribed_doesNothingWithoutError() {
+            Interest interest = persistInterest("스포츠", "축구");
+
+            subscribeRepository.deleteByInterest_IdAndUserId(interest.getId(), UUID.randomUUID());
+        }
+    }
+
     @Test
     @DisplayName("countByInterest_Id()는 해당 관심사를 구독 중인 사용자 수만 센다")
     void countByInterest_Id_countsOnlyThatInterestsSubscriptions() {

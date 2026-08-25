@@ -161,4 +161,48 @@ class SubscribeServiceTest {
         assertThatThrownBy(() -> subscribeServiceImpl.subscribe(interest.getId(), userId))
                 .isSameAs(original);
     }
+
+    @Test
+    @DisplayName("구독 중인 관심사의 구독을 취소하면 해당 구독을 삭제한다")
+    void unsubscribe_subscribed_deletesSubscription() {
+        // given
+        UUID interestId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(interestRepository.existsById(interestId)).thenReturn(true);
+
+        // when
+        subscribeServiceImpl.unsubscribe(interestId, userId);
+
+        // then
+        verify(subscribeRepository).deleteByInterest_IdAndUserId(interestId, userId);
+    }
+
+    @Test
+    @DisplayName("구독하지 않은 관심사에 대한 구독 취소 요청도 에러 없이 성공한다")
+    void unsubscribe_notSubscribed_succeedsWithoutError() {
+        // given
+        UUID interestId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(interestRepository.existsById(interestId)).thenReturn(true);
+
+        // when & then
+        subscribeServiceImpl.unsubscribe(interestId, userId);
+
+        verify(subscribeRepository).deleteByInterest_IdAndUserId(interestId, userId);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 관심사의 구독을 취소하려 하면 InterestNotFoundException을 던지고 삭제하지 않는다")
+    void unsubscribe_nonExistingInterest_throwsExceptionAndDoesNotDelete() {
+        // given
+        UUID interestId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(interestRepository.existsById(interestId)).thenReturn(false);
+
+        // when & then
+        assertThatThrownBy(() -> subscribeServiceImpl.unsubscribe(interestId, userId))
+                .isInstanceOf(InterestNotFoundException.class);
+
+        verify(subscribeRepository, never()).deleteByInterest_IdAndUserId(any(), any());
+    }
 }

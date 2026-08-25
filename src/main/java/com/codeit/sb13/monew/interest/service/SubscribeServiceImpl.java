@@ -51,6 +51,22 @@ public class SubscribeServiceImpl implements SubscribeService {
     }
 
     /**
+     * {@inheritDoc}
+     *
+     * <p>구독 존재 여부는 확인하지 않고 바로 삭제를 시도한다.
+     * {@link SubscribeRepository#deleteByInterest_IdAndUserId}는 삭제할 행이
+     * 없어도 예외 없이 끝나므로, 구독하지 않은 상태에서 호출해도 그대로
+     * 성공(멱등)한다.</p>
+     */
+    @Override
+    public void unsubscribe(UUID interestId, UUID userId) {
+        if (!interestRepository.existsById(interestId)) {
+            throw new InterestNotFoundException(interestId);
+        }
+        subscribeRepository.deleteByInterest_IdAndUserId(interestId, userId);
+    }
+
+    /**
      * 새 구독을 저장한다.
      *
      * <p>저장 시점에 {@code uk_subscriptions_interest_user} 유니크 제약 위반이
