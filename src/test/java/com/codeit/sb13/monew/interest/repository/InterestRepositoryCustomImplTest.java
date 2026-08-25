@@ -1,7 +1,6 @@
 package com.codeit.sb13.monew.interest.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import com.codeit.sb13.monew.global.config.JpaAuditingConfig;
@@ -75,7 +74,7 @@ class InterestRepositoryCustomImplTest {
     }
 
     /**
-     * {@link InterestSearchPage#rows}에서 {@link Interest} 목록만 뽑아낸다.
+     * {@link InterestSearchPage#rows()}에서 {@link Interest} 목록만 뽑아낸다.
      *
      * <p>{@code InterestSearchPage}는 {@code InterestSearchRow} 목록만 담고 있어,
      * 정렬 순서나 이름을 확인하는 테스트에서 매번 {@code .rows().stream().map(...)}을
@@ -86,7 +85,7 @@ class InterestRepositoryCustomImplTest {
     }
 
     /**
-     * {@link InterestSearchPage#rows}를 관심사 id별 구독자 수 맵으로 다시 조립한다.
+     * {@link InterestSearchPage#rows()}를 관심사 id별 구독자 수 맵으로 다시 조립한다.
      * 리포지토리가 실제로 이 맵을 만들어 돌려주는 것은 아니지만, 테스트에서 특정
      * 관심사의 구독자 수를 id로 바로 찾아보기 편하도록 이 헬퍼에서만 조립한다.
      */
@@ -96,7 +95,7 @@ class InterestRepositoryCustomImplTest {
     }
 
     /**
-     * {@link InterestSearchPage#rows} 중 요청자가 구독 중인 관심사의 id만 집합으로 뽑아낸다.
+     * {@link InterestSearchPage#rows()} 중 요청자가 구독 중인 관심사의 id만 집합으로 뽑아낸다.
      */
     private Set<UUID> subscribedInterestIdsOf(InterestSearchPage page) {
         return page.rows().stream()

@@ -1,16 +1,18 @@
 package com.codeit.sb13.monew.interest.repository;
 
 import com.codeit.sb13.monew.global.config.QueryDslConfig;
-import com.codeit.sb13.monew.global.exception.interest.InterestKeywordRequiredException;
 import com.codeit.sb13.monew.interest.domain.Interest;
 import com.codeit.sb13.monew.interest.domain.Keyword;
 import com.codeit.sb13.monew.interest.domain.Subscribe;
 import com.codeit.sb13.monew.interest.service.InterestServiceImpl;
+import com.codeit.sb13.monew.notification.service.NotificationService;
 import com.codeit.sb13.monew.user.domain.User;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
@@ -110,6 +112,36 @@ class InterestRepositoryTest {
     }
 
     @Test
+    @DisplayName("findAllWithKeywords()는 키워드가 여러 개인 관심사도 fan-out 없이 한 건으로 반환하며, 키워드도 함께 채워져 있다")
+    void findAllWithKeywords_returnsEachInterestOnceWithKeywordsPopulated() {
+        // given
+        Interest multiKeyword = Interest.create("스포츠");
+        multiKeyword.addKeyword("축구");
+        multiKeyword.addKeyword("야구");
+        multiKeyword.addKeyword("농구");
+        Interest noKeyword = Interest.create("빈관심사");
+        interestRepository.save(multiKeyword);
+        interestRepository.save(noKeyword);
+        em.flush();
+        em.clear();
+
+        // when
+        List<Interest> result = interestRepository.findAllWithKeywords();
+
+        // then: 1:N fetch join이어도 관심사 한 건당 정확히 한 행만 돌아온다 (fan-out 없음)
+        assertThat(result).extracting(Interest::getId)
+                .containsExactlyInAnyOrder(multiKeyword.getId(), noKeyword.getId());
+
+        Interest reloadedMultiKeyword = result.stream()
+                .filter(i -> i.getId().equals(multiKeyword.getId()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(reloadedMultiKeyword.getKeywords())
+                .extracting(Keyword::getKeyword)
+                .containsExactlyInAnyOrder("축구", "야구", "농구");
+    }
+
+    @Test
     @DisplayName("이름이 같은 관심사를 두 번 저장하면 실제로 유니크 제약 위반 예외가 발생한다")
     void save_duplicateName_violatesUniqueConstraint() {
         interestRepository.saveAndFlush(Interest.create("스포츠"));
@@ -138,7 +170,9 @@ class InterestRepositoryTest {
         em.flush();
         em.clear();
 
-        InterestServiceImpl interestService = new InterestServiceImpl(interestRepository, subscribeRepository);
+        // notifyForNewArticles()는 이 테스트와 무관해 실제 빈 대신 목으로 채운다.
+        InterestServiceImpl interestService = new InterestServiceImpl(
+                interestRepository, subscribeRepository, Mockito.mock(NotificationService.class));
 
         // when
         interestService.delete(interest.getId());

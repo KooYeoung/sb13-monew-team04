@@ -2,11 +2,13 @@ package com.codeit.sb13.monew.interest.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
+import static org.assertj.core.groups.Tuple.tuple;
 
 import com.codeit.sb13.monew.global.config.JpaAuditingConfig;
 import com.codeit.sb13.monew.global.config.QueryDslConfig;
 import com.codeit.sb13.monew.interest.domain.Interest;
 import com.codeit.sb13.monew.interest.domain.Subscribe;
+import com.codeit.sb13.monew.interest.repository.dto.InterestSubscriberRow;
 import com.codeit.sb13.monew.interest.repository.dto.SubscribedInterestActivityProjection;
 import com.codeit.sb13.monew.interest.service.dto.SubscribedInterestActivity;
 import com.codeit.sb13.monew.user.domain.User;
@@ -113,6 +115,73 @@ class SubscribeRepositoryTest {
             Interest interest = persistInterest("스포츠", "축구");
 
             subscribeRepository.deleteByInterest_IdAndUserId(interest.getId(), UUID.randomUUID());
+        }
+    }
+
+    @Nested
+    @DisplayName("findSubscriberUsersByInterestIds()")
+    class FindSubscriberUsersByInterestIds {
+
+        @Test
+        @DisplayName("전달한 관심사들을 구독 중인 사용자만 반환한다")
+        void returnsOnlySubscribersOfRequestedInterests() {
+            Interest target = persistInterest("스포츠", "축구");
+            Interest other = persistInterest("여행", "국내여행");
+            User subscriber = persistUser("구독자");
+            User otherInterestSubscriber = persistUser("다른관심사구독자");
+            persistSubscribe(target, subscriber);
+            persistSubscribe(other, otherInterestSubscriber);
+
+            List<InterestSubscriberRow> result =
+                    subscribeRepository.findSubscriberUsersByInterestIds(List.of(target.getId()));
+
+            assertThat(result).extracting(row -> row.user().getId()).containsExactly(subscriber.getId());
+        }
+
+        @Test
+        @DisplayName("논리 삭제된 사용자는 제외한다")
+        void excludesDeletedUsers() {
+            Interest interest = persistInterest("스포츠", "축구");
+            User active = persistUser("활성사용자");
+            User deleted = persistDeletedUser("삭제사용자");
+            persistSubscribe(interest, active);
+            persistSubscribe(interest, deleted);
+
+            List<InterestSubscriberRow> result =
+                    subscribeRepository.findSubscriberUsersByInterestIds(List.of(interest.getId()));
+
+            assertThat(result).extracting(row -> row.user().getId()).containsExactly(active.getId());
+        }
+
+        @Test
+        @DisplayName("구독자가 없으면 빈 목록을 반환한다")
+        void noSubscribers_returnsEmptyList() {
+            Interest interest = persistInterest("스포츠", "축구");
+
+            List<InterestSubscriberRow> result =
+                    subscribeRepository.findSubscriberUsersByInterestIds(List.of(interest.getId()));
+
+            assertThat(result).isEmpty();
+        }
+
+        @Test
+        @DisplayName("여러 관심사 id를 한 번에 넘기면, 각 결과 행이 어느 관심사의 구독자인지 관심사 id로 구분된다")
+        void multipleInterestIds_pairsEachUserWithItsOwnInterestId() {
+            Interest sports = persistInterest("스포츠", "축구");
+            Interest travel = persistInterest("여행", "국내여행");
+            User sportsSubscriber = persistUser("스포츠구독자");
+            User travelSubscriber = persistUser("여행구독자");
+            persistSubscribe(sports, sportsSubscriber);
+            persistSubscribe(travel, travelSubscriber);
+
+            List<InterestSubscriberRow> result = subscribeRepository
+                    .findSubscriberUsersByInterestIds(List.of(sports.getId(), travel.getId()));
+
+            assertThat(result)
+                    .extracting(InterestSubscriberRow::interestId, row -> row.user().getId())
+                    .containsExactlyInAnyOrder(
+                            tuple(sports.getId(), sportsSubscriber.getId()),
+                            tuple(travel.getId(), travelSubscriber.getId()));
         }
     }
 

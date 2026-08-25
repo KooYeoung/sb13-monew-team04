@@ -6,9 +6,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.codeit.sb13.monew.article.domain.Article;
+import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.interest.InterestKeywordRequiredException;
 import com.codeit.sb13.monew.global.exception.interest.InterestNameDuplicatedException;
@@ -20,11 +24,16 @@ import com.codeit.sb13.monew.interest.repository.SubscribeRepository;
 import com.codeit.sb13.monew.interest.repository.dto.InterestSearchCondition;
 import com.codeit.sb13.monew.interest.repository.dto.InterestSearchPage;
 import com.codeit.sb13.monew.interest.repository.dto.InterestSearchRow;
+import com.codeit.sb13.monew.interest.repository.dto.InterestSubscriberRow;
 import com.codeit.sb13.monew.interest.service.dto.InterestCreateCommand;
 import com.codeit.sb13.monew.interest.service.dto.InterestOrderBy;
 import com.codeit.sb13.monew.interest.service.dto.InterestSearchCommand;
 import com.codeit.sb13.monew.interest.service.dto.InterestUpdateCommand;
+import com.codeit.sb13.monew.notification.service.NotificationService;
+import com.codeit.sb13.monew.notification.service.dto.ArticlesForInterestDto;
+import com.codeit.sb13.monew.user.domain.User;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -59,6 +68,9 @@ class InterestServiceTest {
     @Mock
     SubscribeRepository subscribeRepository;
 
+    @Mock
+    NotificationService notificationService;
+
     @Captor
     ArgumentCaptor<Interest> interestCaptor;
 
@@ -70,6 +82,36 @@ class InterestServiceTest {
         ReflectionTestUtils.setField(interest, "id", UUID.randomUUID());
         ReflectionTestUtils.setField(interest, "createdAt", createdAt);
         return interest;
+    }
+
+    private Interest interestWithId(String name, String... keywords) {
+        Interest interest = Interest.create(name);
+        for (String keyword : keywords) {
+            interest.addKeyword(keyword);
+        }
+        ReflectionTestUtils.setField(interest, "id", UUID.randomUUID());
+        return interest;
+    }
+
+    private Article article(String title, String summary) {
+        return Article.create(title, summary, "https://example.com/" + UUID.randomUUID(),
+                LocalDateTime.now(), ArticleSource.NAVER);
+    }
+
+    private User userWithId() {
+        User user = User.builder()
+                .email(UUID.randomUUID() + "@test.com")
+                .nickname("사용자")
+                .password("password")
+                .build();
+        ReflectionTestUtils.setField(user, "id", UUID.randomUUID());
+        return user;
+    }
+
+    private List<InterestSubscriberRow> subscribersOf(UUID interestId, User... users) {
+        return Arrays.stream(users)
+                .map(user -> new InterestSubscriberRow(interestId, user))
+                .toList();
     }
 
     @Test
@@ -480,5 +522,219 @@ class InterestServiceTest {
 
         verify(subscribeRepository, never()).deleteByInterest_Id(any());
         verify(interestRepository, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("새로 수집된 기사 목록이 null이면 아무 일도 하지 않는다")
+    void notifyForNewArticles_null_doesNothing() {
+        interestServiceImpl.notifyForNewArticles(null);
+
+        verifyNoInteractions(subscribeRepository, notificationService);
+        verify(interestRepository, never()).findAllWithKeywords();
+    }
+
+    @Test
+    @DisplayName("새로 수집된 기사 목록이 비어 있으면 아무 일도 하지 않는다")
+    void notifyForNewArticles_empty_doesNothing() {
+        interestServiceImpl.notifyForNewArticles(List.of());
+
+        verifyNoInteractions(subscribeRepository, notificationService);
+        verify(interestRepository, never()).findAllWithKeywords();
+    }
+
+    @Test
+    @DisplayName("관심사 키워드가 기사 제목에 포함되고 구독자가 있으면 알림을 보낸다")
+    void notifyForNewArticles_titleMatchesWithSubscribers_sendsNotification() {
+        // given
+        Interest interest = interestWithId("스포츠", "축구");
+        Article matched = article("오늘의 축구 경기 결과", "요약");
+        User subscriber = userWithId();
+
+        when(interestRepository.findAllWithKeywords()).thenReturn(List.of(interest));
+        when(subscribeRepository.findSubscriberUsersByInterestIds(List.of(interest.getId())))
+                .thenReturn(subscribersOf(interest.getId(), subscriber));
+
+        // when
+        interestServiceImpl.notifyForNewArticles(List.of(matched));
+
+        // then
+        ArgumentCaptor<ArticlesForInterestDto> captor = ArgumentCaptor.forClass(ArticlesForInterestDto.class);
+        verify(notificationService).notifyArticlesForInterest(captor.capture());
+
+        ArticlesForInterestDto dto = captor.getValue();
+        assertThat(dto.recipients()).containsExactly(subscriber);
+        assertThat(dto.resourceId()).isEqualTo(interest.getId());
+        assertThat(dto.interestName()).isEqualTo("스포츠");
+        assertThat(dto.articleCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("관심사 키워드가 기사 요약에 포함돼도 매칭된 것으로 본다")
+    void notifyForNewArticles_summaryMatches_countsAsMatched() {
+        // given
+        Interest interest = interestWithId("스포츠", "축구");
+        Article matched = article("오늘의 뉴스", "축구 관련 요약입니다");
+        User subscriber = userWithId();
+
+        when(interestRepository.findAllWithKeywords()).thenReturn(List.of(interest));
+        when(subscribeRepository.findSubscriberUsersByInterestIds(List.of(interest.getId())))
+                .thenReturn(subscribersOf(interest.getId(), subscriber));
+
+        // when
+        interestServiceImpl.notifyForNewArticles(List.of(matched));
+
+        // then
+        verify(notificationService).notifyArticlesForInterest(any());
+    }
+
+    @Test
+    @DisplayName("대소문자가 달라도 매칭된다")
+    void notifyForNewArticles_caseInsensitive_matches() {
+        // given
+        Interest interest = interestWithId("IT", "AI");
+        Article matched = article("생성형 ai 기술 동향", "요약");
+        User subscriber = userWithId();
+
+        when(interestRepository.findAllWithKeywords()).thenReturn(List.of(interest));
+        when(subscribeRepository.findSubscriberUsersByInterestIds(List.of(interest.getId())))
+                .thenReturn(subscribersOf(interest.getId(), subscriber));
+
+        // when
+        interestServiceImpl.notifyForNewArticles(List.of(matched));
+
+        // then
+        verify(notificationService).notifyArticlesForInterest(any());
+    }
+
+    @Test
+    @DisplayName("매칭되는 기사가 없는 관심사는 구독자 조회도, 알림 발송도 하지 않는다")
+    void notifyForNewArticles_noMatch_skipsInterest() {
+        // given
+        Interest interest = interestWithId("스포츠", "축구");
+        Article unmatched = article("오늘의 날씨", "요약");
+
+        when(interestRepository.findAllWithKeywords()).thenReturn(List.of(interest));
+
+        // when
+        interestServiceImpl.notifyForNewArticles(List.of(unmatched));
+
+        // then
+        verify(subscribeRepository, never()).findSubscriberUsersByInterestIds(any());
+        verify(notificationService, never()).notifyArticlesForInterest(any());
+    }
+
+    @Test
+    @DisplayName("매칭되는 기사가 있어도 구독자가 없으면 알림을 보내지 않는다")
+    void notifyForNewArticles_matchedButNoSubscribers_doesNotNotify() {
+        // given
+        Interest interest = interestWithId("스포츠", "축구");
+        Article matched = article("오늘의 축구 경기 결과", "요약");
+
+        when(interestRepository.findAllWithKeywords()).thenReturn(List.of(interest));
+        when(subscribeRepository.findSubscriberUsersByInterestIds(List.of(interest.getId())))
+                .thenReturn(List.of());
+
+        // when
+        interestServiceImpl.notifyForNewArticles(List.of(matched));
+
+        // then
+        verify(notificationService, never()).notifyArticlesForInterest(any());
+    }
+
+    @Test
+    @DisplayName("여러 관심사 중 매칭되는 관심사만 각각 독립적으로 알림을 보낸다")
+    void notifyForNewArticles_multipleInterests_handledIndependently() {
+        // given
+        Interest matchingInterest = interestWithId("스포츠", "축구");
+        Interest nonMatchingInterest = interestWithId("여행", "국내여행");
+        Article matchedArticle = article("오늘의 축구 경기 결과", "요약");
+        User subscriber = userWithId();
+
+        when(interestRepository.findAllWithKeywords()).thenReturn(List.of(matchingInterest, nonMatchingInterest));
+        when(subscribeRepository.findSubscriberUsersByInterestIds(List.of(matchingInterest.getId())))
+                .thenReturn(subscribersOf(matchingInterest.getId(), subscriber));
+
+        // when
+        interestServiceImpl.notifyForNewArticles(List.of(matchedArticle));
+
+        // then: 매칭되지 않은 관심사의 id는 배치 구독자 조회 대상에 포함되지 않는다
+        verify(notificationService).notifyArticlesForInterest(any());
+        verify(subscribeRepository).findSubscriberUsersByInterestIds(List.of(matchingInterest.getId()));
+    }
+
+    @Test
+    @DisplayName("여러 관심사가 동시에 매칭되면 구독자 조회는 매칭된 관심사 id 전체를 모아 한 번만 실행한다")
+    void notifyForNewArticles_multipleMatchedInterests_batchesSubscriberLookupIntoSingleCall() {
+        // given
+        Interest sports = interestWithId("스포츠", "축구");
+        Interest travel = interestWithId("여행", "국내여행");
+        Article sportsArticle = article("오늘의 축구 경기 결과", "요약");
+        Article travelArticle = article("이번 주 국내여행 추천", "요약");
+        User sportsSubscriber = userWithId();
+        User travelSubscriber = userWithId();
+
+        when(interestRepository.findAllWithKeywords()).thenReturn(List.of(sports, travel));
+        when(subscribeRepository.findSubscriberUsersByInterestIds(List.of(sports.getId(), travel.getId())))
+                .thenReturn(List.of(
+                        new InterestSubscriberRow(sports.getId(), sportsSubscriber),
+                        new InterestSubscriberRow(travel.getId(), travelSubscriber)));
+
+        // when
+        interestServiceImpl.notifyForNewArticles(List.of(sportsArticle, travelArticle));
+
+        // then: 관심사마다 반복 조회하지 않고 배치 조회를 정확히 한 번만 호출한다
+        verify(subscribeRepository, times(1))
+                .findSubscriberUsersByInterestIds(any());
+        verify(notificationService, times(2)).notifyArticlesForInterest(any());
+    }
+
+    @Test
+    @DisplayName("한 관심사에 매칭되는 기사가 여러 건이면 건수를 정확히 센다")
+    void notifyForNewArticles_multipleMatches_countsCorrectly() {
+        // given
+        Interest interest = interestWithId("스포츠", "축구");
+        Article first = article("축구 뉴스 1", "요약");
+        Article second = article("축구 뉴스 2", "요약");
+        Article unrelated = article("오늘의 날씨", "요약");
+        User subscriber = userWithId();
+
+        when(interestRepository.findAllWithKeywords()).thenReturn(List.of(interest));
+        when(subscribeRepository.findSubscriberUsersByInterestIds(List.of(interest.getId())))
+                .thenReturn(subscribersOf(interest.getId(), subscriber));
+
+        // when
+        interestServiceImpl.notifyForNewArticles(List.of(first, second, unrelated));
+
+        // then
+        ArgumentCaptor<ArticlesForInterestDto> captor = ArgumentCaptor.forClass(ArticlesForInterestDto.class);
+        verify(notificationService).notifyArticlesForInterest(captor.capture());
+        assertThat(captor.getValue().articleCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("JVM 기본 로케일이 튀르키예어여도 영문 키워드는 대소문자 구분 없이 매칭된다")
+    void notifyForNewArticles_caseInsensitiveUnderTurkishDefaultLocale_matches() {
+        Locale originalDefault = Locale.getDefault();
+        try {
+            // given: toLowerCase()를 로케일 없이 쓰면 튀르키예어 로케일에서
+            // "AI"의 대문자 I가 점 없는 ı로 바뀌어 "ai"와 매칭에 실패할 수 있다.
+            Locale.setDefault(new Locale("tr", "TR"));
+
+            Interest interest = interestWithId("IT", "AI");
+            Article matched = article("생성형 ai 기술 동향", "요약");
+            User subscriber = userWithId();
+
+            when(interestRepository.findAllWithKeywords()).thenReturn(List.of(interest));
+            when(subscribeRepository.findSubscriberUsersByInterestIds(List.of(interest.getId())))
+                    .thenReturn(subscribersOf(interest.getId(), subscriber));
+
+            // when
+            interestServiceImpl.notifyForNewArticles(List.of(matched));
+
+            // then
+            verify(notificationService).notifyArticlesForInterest(any());
+        } finally {
+            Locale.setDefault(originalDefault);
+        }
     }
 }

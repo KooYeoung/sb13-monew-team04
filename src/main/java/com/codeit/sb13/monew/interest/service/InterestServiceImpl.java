@@ -1,21 +1,29 @@
 package com.codeit.sb13.monew.interest.service;
 
+import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.interest.InterestNameDuplicatedException;
 import com.codeit.sb13.monew.global.exception.interest.InterestNotFoundException;
 import com.codeit.sb13.monew.interest.controller.dto.InterestResponse;
 import com.codeit.sb13.monew.interest.domain.Interest;
+import com.codeit.sb13.monew.interest.domain.Keyword;
 import com.codeit.sb13.monew.interest.repository.InterestRepository;
 import com.codeit.sb13.monew.interest.repository.SubscribeRepository;
 import com.codeit.sb13.monew.interest.repository.dto.InterestSearchCondition;
 import com.codeit.sb13.monew.interest.repository.dto.InterestSearchPage;
+import com.codeit.sb13.monew.interest.repository.dto.InterestSubscriberRow;
 import com.codeit.sb13.monew.interest.service.dto.InterestCreateCommand;
 import com.codeit.sb13.monew.interest.service.dto.InterestOrderBy;
 import com.codeit.sb13.monew.interest.service.dto.InterestSearchCommand;
 import com.codeit.sb13.monew.interest.service.dto.InterestUpdateCommand;
+import com.codeit.sb13.monew.notification.service.NotificationService;
+import com.codeit.sb13.monew.notification.service.dto.ArticlesForInterestDto;
+import com.codeit.sb13.monew.user.domain.User;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.text.similarity.LevenshteinDistance;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -45,6 +53,7 @@ public class InterestServiceImpl implements InterestService{
 
     private final InterestRepository interestRepository;
     private final SubscribeRepository subscribeRepository;
+    private final NotificationService notificationService;
 
     /**
      * {@inheritDoc}
@@ -183,6 +192,105 @@ public class InterestServiceImpl implements InterestService{
 
         subscribeRepository.deleteByInterest_Id(interestId);
         interestRepository.delete(interest);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>모든 관심사를 순회하며 매칭을 판단한다. 매칭 자체는 DB 쿼리가 아니라
+     * 이미 넘겨받은 {@code newArticles}를 대상으로 애플리케이션 메모리에서
+     * 비교한다. 새로 수집되는 기사 수와 관심사 수가 이 비교를 감당 못 할
+     * 정도로 커지면, 그때는 DB 쪽 매칭으로 옮기는 걸 고려해야 한다.</p>
+     *
+     * <p>매칭된 관심사가 여러 개여도 구독자 조회는 관심사마다 반복하지 않는다.
+     * 먼저 모든 관심사에 대해 매칭 여부와 매칭 건수를 메모리에서 계산해 매칭된
+     * 관심사만 추려낸 뒤, 그 관심사 id 전체를 모아
+     * {@link SubscribeRepository#findSubscriberUsersByInterestIds}를 한 번만 호출해
+     * 알림 수신자를 가져오고 관심사 id별로 묶는다. 매칭되는 관심사 수가 늘어도
+     * 구독자 조회 쿼리는 항상 한 번만 실행된다.</p>
+     *
+     * <p>관심사 목록도 {@link InterestRepository#findAllWithKeywords}로 키워드까지
+     * fetch join으로 함께 가져온다. {@code findAll()}만 쓰면 매칭 판단 중
+     * {@code interest.getKeywords()}를 호출할 때마다 {@code @BatchSize(size = 100)}
+     * 지연 로딩이 걸려, 관심사가 100개를 넘을 때마다 배치 조회가 한 번씩 더 실행된다.</p>
+     */
+    @Override
+    public void notifyForNewArticles(List<Article> newArticles) {
+        if (newArticles == null || newArticles.isEmpty()) {
+            return;
+        }
+
+        List<MatchedInterest> matchedInterests = interestRepository.findAllWithKeywords().stream()
+                .map(interest -> new MatchedInterest(interest, countMatchedArticles(interest, newArticles)))
+                .filter(matched -> matched.matchedCount() > 0)
+                .toList();
+
+        if (matchedInterests.isEmpty()) {
+            return;
+        }
+
+        List<UUID> matchedInterestIds = matchedInterests.stream()
+                .map(matched -> matched.interest().getId())
+                .toList();
+
+        Map<UUID, List<User>> recipientsByInterestId = subscribeRepository
+                .findSubscriberUsersByInterestIds(matchedInterestIds).stream()
+                .collect(Collectors.groupingBy(
+                        InterestSubscriberRow::interestId,
+                        Collectors.mapping(InterestSubscriberRow::user, Collectors.toList())));
+
+        for (MatchedInterest matched : matchedInterests) {
+            Interest interest = matched.interest();
+            List<User> recipients = recipientsByInterestId.getOrDefault(interest.getId(), List.of());
+            if (recipients.isEmpty()) {
+                continue;
+            }
+
+            notificationService.notifyArticlesForInterest(new ArticlesForInterestDto(
+                    recipients, interest.getId(), interest.getName(), (int) matched.matchedCount()));
+        }
+    }
+
+    /**
+     * {@link #notifyForNewArticles}가 매칭 여부를 먼저 판단하는 단계에서, 관심사와
+     * 그 관심사에 매칭된 기사 건수를 함께 들고 다니기 위한 내부 보관용 레코드.
+     *
+     * @param interest 매칭된 관심사
+     * @param matchedCount 그 관심사에 매칭된 기사 건수 (1 이상)
+     */
+    private record MatchedInterest(Interest interest, long matchedCount) {
+
+    }
+
+    private long countMatchedArticles(Interest interest, List<Article> newArticles) {
+        List<String> keywords = interest.getKeywords().stream()
+                .map(Keyword::getKeyword)
+                .toList();
+
+        return newArticles.stream()
+                .filter(article -> matchesAnyKeyword(article, keywords))
+                .count();
+    }
+
+    private boolean matchesAnyKeyword(Article article, List<String> keywords) {
+        return keywords.stream().anyMatch(keyword ->
+                containsIgnoreCase(article.getTitle(), keyword)
+                        || containsIgnoreCase(article.getSummary(), keyword));
+    }
+
+    /**
+     * 두 문자열 중 하나가 다른 하나를 대소문자 구분 없이 포함하는지 확인한다.
+     *
+     * <p>{@link String#toLowerCase()}를 로케일 없이 쓰면 JVM 기본 로케일이
+     * 튀르키예어일 경우 대문자 {@code I}가 점 없는 {@code ı}로 변환되어
+     * (예: {@code "AI"}가 {@code "aı"}가 되어) 정상적인 영문 매칭이 실패할 수
+     * 있다. 이 문제는 {@link #isNameUniqueViolation}에서도 이미 다룬 것과
+     * 같은 문제라, 여기서도 언어와 무관한 {@link Locale#ROOT}를 명시적으로
+     * 사용한다.</p>
+     */
+    private boolean containsIgnoreCase(String text, String keyword) {
+        return text != null && keyword != null
+                && text.toLowerCase(Locale.ROOT).contains(keyword.toLowerCase(Locale.ROOT));
     }
 
     /**

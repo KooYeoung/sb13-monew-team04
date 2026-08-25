@@ -46,4 +46,27 @@ public interface InterestRepository extends JpaRepository<Interest, UUID>, Inter
      */
     @Query("select i.name from Interest i where length(i.name) between :minLength and :maxLength")
     List<String> findNamesByLengthBetween(@Param("minLength") int minLength, @Param("maxLength") int maxLength);
+
+    /**
+     * 모든 관심사를 키워드까지 함께 조회한다.
+     *
+     * <p>{@link com.codeit.sb13.monew.interest.service.InterestServiceImpl#notifyForNewArticles}가
+     * 신규 기사와 매칭되는지 판단하려면 결국 모든 관심사의 {@code keywords}를 순회해야 한다.
+     * {@code Interest.keywords}는 지연 로딩에 {@code @BatchSize(size = 100)}가 붙어 있어
+     * 관심사 하나마다 별도 조회가 나가지는 않지만, 관심사가 100개를 넘으면 배치 로딩
+     * 쿼리 자체가 {@code ceil(전체 관심사 수 / 100)}회로 늘어난다. 이 메서드는 fetch join으로
+     * 관심사와 키워드를 한 번의 쿼리에 담아, 관심사 수와 무관하게 조회가 정확히 한 번만
+     * 실행되게 한다.</p>
+     *
+     * <p>{@link InterestRepositoryCustomImpl#search}가 검색 결과에는 fetch join을 쓰지
+     * 않는 것과는 상황이 다르다. 거기서는 {@code LIMIT}으로 페이지 크기를 자르는데, 1:N
+     * 조인은 관심사 하나를 키워드 수만큼 여러 행으로 부풀려(fan-out) 그 LIMIT이 관심사
+     * 개수가 아니라 조인된 행 개수를 자르게 만든다. 이 메서드는 페이지네이션 없이 전체를
+     * 가져오므로 그 문제가 없고, {@code DISTINCT}로 부풀려진 행을 다시 관심사 1건당
+     * 1개체로 되돌린다.</p>
+     *
+     * @return 키워드까지 함께 로딩된 전체 관심사 목록
+     */
+    @Query("SELECT DISTINCT i FROM Interest i LEFT JOIN FETCH i.keywords")
+    List<Interest> findAllWithKeywords();
 }
