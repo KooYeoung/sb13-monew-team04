@@ -14,7 +14,6 @@ import com.codeit.sb13.monew.user.service.dto.UserLoginResult;
 import com.codeit.sb13.monew.user.service.dto.UserUpdateNicknameCommand;
 import com.codeit.sb13.monew.user.service.dto.UserUpdateNicknameResult;
 import jakarta.validation.Valid;
-import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -26,6 +25,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.codeit.sb13.monew.global.MonewHttpHeaders;
 
 @RestController
 @RequestMapping("/api/users")
@@ -33,7 +33,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserController {
 
   private final UserService userService;
-  private static final String USER_ID_HEADER = "MoNew-Request-User-ID";
 
   @PostMapping
   public ResponseEntity<UserCreateResponse> signUp(
@@ -65,7 +64,7 @@ public class UserController {
         login.email(),
         login.nickname());
     return ResponseEntity.status(HttpStatus.OK)
-        .header(USER_ID_HEADER, login.userId().toString())
+        .header(MonewHttpHeaders.REQUEST_USER_ID, login.userId().toString())
         .body(response);
   }
 
