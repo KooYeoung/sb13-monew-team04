@@ -8,9 +8,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.comment.service.CommentService;
+import com.codeit.sb13.monew.comment.service.CommentOrderBy;
 import com.codeit.sb13.monew.comment.service.dto.CommentDto;
+import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.user.domain.User;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,6 +23,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 @WebMvcTest(CommentController.class)
 @DisplayName("댓글 컨트롤러 - TDD")
@@ -30,6 +34,11 @@ public class CommentControllerTest {
 
   @MockitoBean
   private CommentService commentService;
+
+  private MockHttpServletRequestBuilder commentSearchRequestWithRequestUserHeader() {
+    return get("/api/comments")
+        .header("Monew-Request-User-ID", UUID.randomUUID());
+  }
 
   @Test
   @DisplayName("댓글 생성 성공 - GREEN")
@@ -72,4 +81,175 @@ public class CommentControllerTest {
         .andExpect(jsonPath("$.likeCount").value(0))
         .andExpect(jsonPath("$.likedByMe").value(false));
   }
+
+  @Test
+  @DisplayName("댓글 목록 조회 성공 - GREEN")
+  void 댓글_목록_조회_성공() throws Exception {
+    // given
+    UUID articleId = UUID.randomUUID();
+    UUID requestUserId = UUID.randomUUID();
+    UUID commentId = UUID.randomUUID();
+    LocalDateTime createdAt = LocalDateTime.of(2026, 8, 25, 10, 30);
+    CommentDto comment = new CommentDto(
+        commentId, articleId, UUID.randomUUID(), "작성자", "댓글 내용", 2L, true, createdAt);
+    CursorPageResponseDto<CommentDto> response = new CursorPageResponseDto<>(
+        List.of(comment), createdAt.toString(), createdAt.toString(), commentId.toString(), 1, 1L, false);
+
+    given(commentService.search(argThat(command -> command != null
+        && articleId.equals(command.articleId())
+        && command.orderBy() == CommentOrderBy.CREATED_AT
+        && command.direction().isDescending()
+        && command.cursor() == null
+        && command.after() == null
+        && command.idAfter() == null
+        && command.limit() == 10
+        && requestUserId.equals(command.requestUserId())))).willReturn(response);
+
+    // when & then
+    mockMvc.perform(get("/api/comments")
+            .param("articleId", articleId.toString())
+            .param("orderBy", "createdAt")
+            .param("direction", "DESC")
+            .param("limit", "10")
+            .header("Monew-Request-User-ID", requestUserId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content[0].id").value(commentId.toString()))
+        .andExpect(jsonPath("$.content[0].likeCount").value(2))
+        .andExpect(jsonPath("$.content[0].likedByMe").value(true))
+        .andExpect(jsonPath("$.nextCursor").value(createdAt.toString()))
+        .andExpect(jsonPath("$.nextAfter").value(createdAt.toString()))
+        .andExpect(jsonPath("$.nextIdAfter").value(commentId.toString()))
+        .andExpect(jsonPath("$.hasNext").value(false));
+  }
+
+  @Test
+  @DisplayName("완전한 cursor + after + idAfter 값으로 댓글 목록 조회 명령으로 전달한다")
+  void 댓글_목록_조회_명령으로_완전한_커서_값을_전달한다() throws Exception {
+    UUID articleId = UUID.randomUUID();
+    UUID requestUserId = UUID.randomUUID();
+    UUID idAfter = UUID.randomUUID();
+    LocalDateTime after = LocalDateTime.of(2026, 8, 25, 10, 30);
+    CursorPageResponseDto<CommentDto> response = new CursorPageResponseDto<>(
+        List.of(), null, null, null, 0, 0L, false);
+
+    given(commentService.search(argThat(command -> command != null
+        && articleId.equals(command.articleId())
+        && command.orderBy() == CommentOrderBy.CREATED_AT
+        && command.direction().isAscending()
+        && after.toString().equals(command.cursor())
+        && after.equals(command.after())
+        && idAfter.equals(command.idAfter())
+        && command.limit() == 10
+        && requestUserId.equals(command.requestUserId())))).willReturn(response);
+
+    mockMvc.perform(get("/api/comments")
+            .param("articleId", articleId.toString())
+            .param("orderBy", "createdAt")
+            .param("direction", "ASC")
+            .param("cursor", after.toString())
+            .param("after", after.toString())
+            .param("idAfter", idAfter.toString())
+            .param("limit", "10")
+            .header("Monew-Request-User-ID", requestUserId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content").isEmpty())
+        .andExpect(jsonPath("$.hasNext").value(false));
+  }
+
+
+  @Test
+  @DisplayName("커서 값 일부만 전달하면 댓글 목록 조회에 실패한다")
+  void 커서_값_일부_전달시_댓글_목록_조회_실패() throws Exception {
+    mockMvc.perform(get("/api/comments")
+            .param("articleId", UUID.randomUUID().toString())
+            .param("orderBy", "likeCount")
+            .param("direction", "DESC")
+            .param("cursor", "3")
+            .param("limit", "10")
+            .header("Monew-Request-User-ID", UUID.randomUUID()))
+        .andExpect(status().isBadRequest());
+
+    then(commentService).shouldHaveNoInteractions();
+  }
+
+  @Test
+  @DisplayName("idAfter 없이 cursor와 after만 전달하면 댓글 목록 조회에 실패한다")
+  void cursor와_after만_전달하면_댓글_목록_조회_실패() throws Exception {
+    LocalDateTime after = LocalDateTime.of(2026, 8, 25, 10, 30);
+    mockMvc.perform(get("/api/comments")
+            .param("articleId", UUID.randomUUID().toString())
+            .param("orderBy", "likeCount")
+            .param("direction", "DESC")
+            .param("cursor", "3")
+            .param("after", after.toString())
+            .param("limit", "10")
+            .header("Monew-Request-User-ID", UUID.randomUUID()))
+        .andExpect(status().isBadRequest());
+
+    then(commentService).shouldHaveNoInteractions();
+  }
+
+  @Test
+  @DisplayName("articleId 없이 댓글 목록을 조회하면 실패한다")
+  void articleId_없이_댓글_목록_조회시_실패() throws Exception {
+    mockMvc.perform(commentSearchRequestWithRequestUserHeader()
+            .param("orderBy", "createdAt")
+            .param("direction", "DESC")
+            .param("limit", "10"))
+        .andExpect(status().isBadRequest());
+
+    then(commentService).shouldHaveNoInteractions();
+  }
+
+  @Test
+  @DisplayName("orderBy 없이 댓글 목록을 조회하면 실패한다")
+  void orderBy_없이_댓글_목록_조회시_실패() throws Exception {
+    mockMvc.perform(commentSearchRequestWithRequestUserHeader()
+            .param("articleId", UUID.randomUUID().toString())
+            .param("direction", "DESC")
+            .param("limit", "10"))
+        .andExpect(status().isBadRequest());
+
+    then(commentService).shouldHaveNoInteractions();
+  }
+
+  @Test
+  @DisplayName("direction 없이 댓글 목록을 조회하면 실패한다")
+  void direction_없이_댓글_목록_조회시_실패() throws Exception {
+    mockMvc.perform(commentSearchRequestWithRequestUserHeader()
+            .param("articleId", UUID.randomUUID().toString())
+            .param("orderBy", "createdAt")
+            .param("limit", "10"))
+        .andExpect(status().isBadRequest());
+
+    then(commentService).shouldHaveNoInteractions();
+  }
+
+  @Test
+  @DisplayName("limit이 0이면 댓글 목록 조회에 실패한다")
+  void limit이_0이면_댓글_목록_조회시_실패() throws Exception {
+    mockMvc.perform(commentSearchRequestWithRequestUserHeader()
+            .param("articleId", UUID.randomUUID().toString())
+            .param("orderBy", "createdAt")
+            .param("direction", "DESC")
+            .param("limit", "0"))
+        .andExpect(status().isBadRequest());
+
+    then(commentService).shouldHaveNoInteractions();
+  }
+
+  @Test
+  @DisplayName("지원하지 않는 정렬 기준이면 댓글 목록 조회에 실패한다")
+  void 지원하지_않는_정렬_기준이면_댓글_목록_조회_실패() throws Exception {
+    mockMvc.perform(get("/api/comments")
+            .param("articleId", UUID.randomUUID().toString())
+            .param("orderBy", "unknown")
+            .param("direction", "DESC")
+            .param("limit", "10")
+            .header("Monew-Request-User-ID", UUID.randomUUID()))
+        .andExpect(status().isBadRequest());
+
+    then(commentService).shouldHaveNoInteractions();
+  }
+
 }

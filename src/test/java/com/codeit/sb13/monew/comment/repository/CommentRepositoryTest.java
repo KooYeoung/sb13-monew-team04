@@ -4,11 +4,19 @@ import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.repository.ArticleRepository;
 import com.codeit.sb13.monew.comment.domain.Comment;
+
+import com.codeit.sb13.monew.comment.domain.CommentLike;
+import com.codeit.sb13.monew.comment.repository.dto.CommentSearchCondition;
+import com.codeit.sb13.monew.comment.repository.dto.CommentSearchProjection;
+import com.codeit.sb13.monew.comment.repository.dto.CommentSearchResult;
 import com.codeit.sb13.monew.comment.repository.dto.RecentCommentActivityProjection;
+import com.codeit.sb13.monew.comment.service.CommentOrderBy;
 import com.codeit.sb13.monew.global.config.JpaAuditingConfig;
 import com.codeit.sb13.monew.global.config.QueryDslConfig;
+import com.codeit.sb13.monew.global.exception.comment.CommentSearchConditionInvalidException;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.repository.UserRepository;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +28,7 @@ import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.data.domain.Sort.Direction;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -35,6 +44,9 @@ class CommentRepositoryTest {
 
     @Autowired
     private ArticleRepository articleRepository;
+
+    @Autowired
+    private CommentLikeRepository commentLikeRepository;
 
     @Autowired
     private TestEntityManager em;
@@ -273,5 +285,374 @@ class CommentRepositoryTest {
 
     private Article createArticle(String title, String summary, String link) {
         return Article.create(title, summary, link, LocalDateTime.now(), ArticleSource.NAVER);
+    }
+
+
+
+    // 댓글 목록 조회 ---------
+    @Test
+    @DisplayName("생성일 기준 오름차순으로 댓글 조회한다 - GREEN")
+    void search_orderByCreatedAtAscending() {
+        // given
+        User requestUser = userRepository.saveAndFlush(new User("request@email.com", "요청자", "testPassword!"));
+        User writer = userRepository.saveAndFlush(new User("writer@email.com", "작성자", "testPassword?"));
+        Article article = articleRepository.saveAndFlush(createArticle("테스트 기사", "테스트 기사 내용", "testLink"));
+
+        Comment oldest = commentRepository.saveAndFlush(new Comment(article, writer, "오래된 댓글"));
+        Comment newest = commentRepository.saveAndFlush(new Comment(article, writer, "최신 댓글"));
+
+        LocalDateTime baseTime = LocalDateTime.of(2026, 8, 25, 12, 0);
+        updateCommentCreatedAt(oldest.getId(), baseTime);
+        updateCommentCreatedAt(newest.getId(), baseTime.plusMinutes(2));
+
+        em.clear();
+
+        CommentSearchCondition condition = new CommentSearchCondition(
+                article.getId(),
+                CommentOrderBy.CREATED_AT,
+                Direction.ASC,
+                null,
+                null,
+                null,
+                10,
+                requestUser.getId()
+        );
+
+        // when
+        CommentSearchResult result = commentRepository.search(condition);
+
+        // then
+        Assertions.assertAll(
+            ()->assertThat(result.rows())
+                .hasSize(2)
+                .extracting(CommentSearchProjection::content)
+                .containsExactly("오래된 댓글", "최신 댓글"),
+            ()->assertThat(result.hasNext()).isFalse(),
+            ()->assertThat(result.totalElements()).isEqualTo(2)
+        );
+    }
+
+
+    @Test
+    @DisplayName("생성일 기준 내림차순으로 댓글 조회한다 - GREEN")
+    void search_orderByCreatedAtDescending() {
+        // given
+        User requestUser = userRepository.saveAndFlush(new User("request@email.com", "요청자", "testPassword!"));
+        User writer = userRepository.saveAndFlush(new User("writer@email.com", "작성자", "testPassword?"));
+        Article article = articleRepository.saveAndFlush(createArticle("테스트 기사", "테스트 기사 내용", "testLink"));
+
+        Comment oldest = commentRepository.saveAndFlush(new Comment(article, writer, "오래된 댓글"));
+        Comment newest = commentRepository.saveAndFlush(new Comment(article, writer, "최신 댓글"));
+
+        LocalDateTime baseTime = LocalDateTime.of(2026, 8, 25, 12, 0);
+        updateCommentCreatedAt(oldest.getId(), baseTime);
+        updateCommentCreatedAt(newest.getId(), baseTime.plusMinutes(2));
+
+        em.clear();
+
+        CommentSearchCondition condition = new CommentSearchCondition(
+            article.getId(),
+            CommentOrderBy.CREATED_AT,
+            Direction.DESC,
+            null,
+            null,
+            null,
+            10,
+            requestUser.getId()
+        );
+
+        // when
+        CommentSearchResult result = commentRepository.search(condition);
+
+        // then
+        Assertions.assertAll(
+            ()->assertThat(result.rows())
+                .hasSize(2)
+                .extracting(CommentSearchProjection::content)
+                .containsExactly("최신 댓글", "오래된 댓글"),
+            ()->assertThat(result.hasNext()).isFalse(),
+            ()->assertThat(result.totalElements()).isEqualTo(2)
+        );
+    }
+
+    @Test
+    @DisplayName("생성일 커서로 다음 페이지를 중복 없이 조회한다")
+    void search_next_page_by_created_at_cursor() {
+        User requestUser = userRepository.saveAndFlush(new User("request@email.com", "요청자", "testPassword!"));
+        User writer = userRepository.saveAndFlush(new User("writer@email.com", "작성자", "testPassword?"));
+        Article article = articleRepository.saveAndFlush(createArticle("테스트 기사", "테스트 기사 내용", "testLink"));
+
+        Comment first = commentRepository.saveAndFlush(new Comment(article, writer, "첫 번째 댓글"));
+        Comment second = commentRepository.saveAndFlush(new Comment(article, writer, "두 번째 댓글"));
+        Comment third = commentRepository.saveAndFlush(new Comment(article, writer, "세 번째 댓글"));
+        LocalDateTime baseTime = LocalDateTime.of(2026, 8, 25, 12, 0);
+        updateCommentCreatedAt(first.getId(), baseTime);
+        updateCommentCreatedAt(second.getId(), baseTime.plusMinutes(1));
+        updateCommentCreatedAt(third.getId(), baseTime.plusMinutes(2));
+        em.clear();
+
+        CommentSearchResult firstPage = commentRepository.search(new CommentSearchCondition(
+            article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
+            null, null, null, 2, requestUser.getId()));
+        CommentSearchProjection last = firstPage.rows().get(1);
+        CommentSearchResult secondPage = commentRepository.search(new CommentSearchCondition(
+            article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
+            last.createdAt().toString(), last.createdAt(), last.id(), 2, requestUser.getId()));
+
+        Assertions.assertAll(
+            () -> assertThat(firstPage.rows()).extracting(CommentSearchProjection::content)
+                .containsExactly("첫 번째 댓글", "두 번째 댓글"),
+            () -> assertThat(firstPage.hasNext()).isTrue(),
+            () -> assertThat(secondPage.rows()).extracting(CommentSearchProjection::content)
+                .containsExactly("세 번째 댓글"),
+            () -> assertThat(secondPage.hasNext()).isFalse(),
+            () -> assertThat(secondPage.totalElements()).isEqualTo(3L)
+        );
+    }
+
+    @Test
+    @DisplayName("완전하지 않은 커서 조건은 첫 페이지 조회 조건으로 처리한다")
+    void search_treats_incomplete_cursor_condition_as_first_page() {
+        User writer = userRepository.saveAndFlush(new User("partial-cursor-writer@email.com", "작성자", "testPassword?"));
+        Article article = articleRepository.saveAndFlush(createArticle("테스트 기사", "테스트 기사 내용", "testLink"));
+        Comment comment = commentRepository.saveAndFlush(new Comment(article, writer, "댓글"));
+        LocalDateTime after = LocalDateTime.of(2026, 8, 25, 12, 0);
+        updateCommentCreatedAt(comment.getId(), after);
+        em.clear();
+
+        CommentSearchResult withoutAfter = commentRepository.search(new CommentSearchCondition(
+            article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
+            after.toString(), null, UUID.randomUUID(), 10, null));
+        CommentSearchResult withoutIdAfter = commentRepository.search(new CommentSearchCondition(
+            article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
+            after.toString(), after, null, 10, null));
+
+        Assertions.assertAll(
+            () -> assertThat(withoutAfter.rows()).extracting(CommentSearchProjection::id)
+                .containsExactly(comment.getId()),
+            () -> assertThat(withoutIdAfter.rows()).extracting(CommentSearchProjection::id)
+                .containsExactly(comment.getId())
+        );
+    }
+
+    @Test
+    @DisplayName("생성일 내림차순 커서로 다음 페이지를 조회한다")
+    void search_next_page_by_created_at_desc_cursor() {
+        User requestUser = userRepository.saveAndFlush(new User("request-desc@email.com", "요청자", "testPassword!"));
+        User writer = userRepository.saveAndFlush(new User("writer-desc@email.com", "작성자", "testPassword?"));
+        Article article = articleRepository.saveAndFlush(createArticle("테스트 기사", "테스트 기사 내용", "testLink"));
+        Comment oldest = commentRepository.saveAndFlush(new Comment(article, writer, "오래된 댓글"));
+        Comment middle = commentRepository.saveAndFlush(new Comment(article, writer, "중간 댓글"));
+        Comment newest = commentRepository.saveAndFlush(new Comment(article, writer, "최신 댓글"));
+        LocalDateTime baseTime = LocalDateTime.of(2026, 8, 25, 12, 0);
+        updateCommentCreatedAt(oldest.getId(), baseTime);
+        updateCommentCreatedAt(middle.getId(), baseTime.plusMinutes(1));
+        updateCommentCreatedAt(newest.getId(), baseTime.plusMinutes(2));
+        em.clear();
+
+        CommentSearchResult firstPage = commentRepository.search(new CommentSearchCondition(
+            article.getId(), CommentOrderBy.CREATED_AT, Direction.DESC,
+            null, null, null, 2, requestUser.getId()));
+        CommentSearchProjection last = firstPage.rows().get(1);
+        CommentSearchResult secondPage = commentRepository.search(new CommentSearchCondition(
+            article.getId(), CommentOrderBy.CREATED_AT, Direction.DESC,
+            last.createdAt().toString(), last.createdAt(), last.id(), 2, requestUser.getId()));
+
+        assertThat(secondPage.rows())
+            .extracting(CommentSearchProjection::content)
+            .containsExactly("오래된 댓글");
+    }
+
+    @Test
+    @DisplayName("생성일이 같은 댓글도 id 커서로 다음 페이지를 조회한다")
+    void search_next_page_with_same_created_at_uses_id_tiebreaker() {
+        User requestUser = userRepository.saveAndFlush(new User("request@email.com", "요청자", "testPassword!"));
+        User writer = userRepository.saveAndFlush(new User("writer@email.com", "작성자", "testPassword?"));
+        Article article = articleRepository.saveAndFlush(createArticle("테스트 기사", "테스트 기사 내용", "testLink"));
+        Comment first = commentRepository.saveAndFlush(new Comment(article, writer, "동일 시각 댓글 1"));
+        Comment second = commentRepository.saveAndFlush(new Comment(article, writer, "동일 시각 댓글 2"));
+        LocalDateTime createdAt = LocalDateTime.of(2026, 8, 25, 12, 0);
+        updateCommentCreatedAt(first.getId(), createdAt);
+        updateCommentCreatedAt(second.getId(), createdAt);
+        em.clear();
+
+        CommentSearchResult firstPage = commentRepository.search(new CommentSearchCondition(
+            article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
+            null, null, null, 1, requestUser.getId()));
+        CommentSearchProjection last = firstPage.rows().get(0);
+        CommentSearchResult secondPage = commentRepository.search(new CommentSearchCondition(
+            article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
+            last.createdAt().toString(), last.createdAt(), last.id(), 1, requestUser.getId()));
+
+        assertThat(secondPage.rows())
+            .hasSize(1)
+            .extracting(CommentSearchProjection::id)
+            .doesNotContain(last.id());
+    }
+
+    @Test
+    @DisplayName("좋아요 수 기준 오름차순으로 댓글 조회한다 - GREEN")
+    void search_orderByLikeCountAscending() {
+        // given
+        User requestUser = userRepository.saveAndFlush(new User("request@email.com", "요청자", "testPassword!"));
+        User writer = userRepository.saveAndFlush(new User("writer@email.com", "작성자", "testPassword?"));
+        User likedUser1 = userRepository.saveAndFlush(new User("liked1@email.com", "좋아요한 사용자1", "testPassword!"));
+        User likedUser2 = userRepository.saveAndFlush(new User("liked2@email.com", "좋아요한 사용자2", "testPassword@"));
+
+        Article article = articleRepository.saveAndFlush(createArticle("테스트 기사", "테스트 기사 내용", "testLink"));
+
+        Comment zeroLikes = commentRepository.saveAndFlush(new Comment(article, writer, "좋아요 없는 댓글"));
+        Comment sevenLikes = commentRepository.saveAndFlush(new Comment(article, writer, "좋아요 있는 댓글"));
+        commentLikeRepository.saveAndFlush(CommentLike.builder()
+            .comment(sevenLikes)
+            .likedBy(likedUser2)
+            .build());
+
+        em.clear();
+
+        CommentSearchCondition condition = new CommentSearchCondition(
+            article.getId(),
+            CommentOrderBy.LIKE_COUNT,
+            Direction.ASC,
+            null,
+            null,
+            null,
+            10,
+            likedUser1.getId()
+        );
+
+        // when
+        CommentSearchResult result = commentRepository.search(condition);
+
+        // then
+        Assertions.assertAll(
+            ()->assertThat(result.rows())
+                .hasSize(2)
+                .extracting(CommentSearchProjection::content)
+                .containsExactly("좋아요 없는 댓글", "좋아요 있는 댓글"),
+            ()->assertThat(result.rows()).extracting(CommentSearchProjection::likeCount).containsExactly(0L, 1L),
+            ()->assertThat(result.hasNext()).isFalse(),
+            ()->assertThat(result.totalElements()).isEqualTo(2L)
+        );
+    }
+
+
+    @Test
+    @DisplayName("좋아요 수 기준 내림차순으로 댓글 조회한다 - RED")
+    void search_orderByLikeCountDescending() {
+        // given
+        User requestUser = userRepository.saveAndFlush(new User("request@email.com", "요청자", "testPassword!"));
+        User writer = userRepository.saveAndFlush(new User("writer@email.com", "작성자", "testPassword?"));
+        User likedUser1 = userRepository.saveAndFlush(new User("liked1@email.com", "좋아요한 사용자1", "testPassword!"));
+        User likedUser2 = userRepository.saveAndFlush(new User("liked2@email.com", "좋아요한 사용자2", "testPassword@"));
+
+        Article article = articleRepository.saveAndFlush(createArticle("테스트 기사", "테스트 기사 내용", "testLink"));
+
+        Comment zeroLikes = commentRepository.saveAndFlush(new Comment(article, writer, "좋아요 없는 댓글"));
+        Comment sevenLikes = commentRepository.saveAndFlush(new Comment(article, writer, "좋아요 있는 댓글"));
+        commentLikeRepository.saveAndFlush(CommentLike.builder()
+            .comment(sevenLikes)
+            .likedBy(likedUser2)
+            .build());
+
+        em.clear();
+
+        CommentSearchCondition condition = new CommentSearchCondition(
+            article.getId(),
+            CommentOrderBy.LIKE_COUNT,
+            Direction.DESC,
+            null,
+            null,
+            null,
+            10,
+            requestUser.getId()
+        );
+
+        // when
+        CommentSearchResult result = commentRepository.search(condition);
+
+        // then
+        Assertions.assertAll(
+            ()->assertThat(result.rows())
+                .hasSize(2)
+                .extracting(CommentSearchProjection::content)
+                .containsExactly("좋아요 있는 댓글", "좋아요 없는 댓글"),
+            ()->assertThat(result.rows()).extracting(CommentSearchProjection::likeCount).containsExactly(1L, 0L),
+            ()->assertThat(result.hasNext()).isFalse(),
+            ()->assertThat(result.totalElements()).isEqualTo(2L)
+        );
+    }
+
+    @Test
+    @DisplayName("좋아요 수 커서로 오름차순과 내림차순 다음 페이지를 조회한다")
+    void search_next_page_by_like_count_cursor() {
+        User requestUser = userRepository.saveAndFlush(new User("cursor-request@email.com", "요청자", "testPassword!"));
+        User writer = userRepository.saveAndFlush(new User("cursor-writer@email.com", "작성자", "testPassword?"));
+        User liker = userRepository.saveAndFlush(new User("cursor-liker@email.com", "좋아요 사용자", "testPassword@"));
+        Article article = articleRepository.saveAndFlush(createArticle("테스트 기사", "테스트 기사 내용", "testLink"));
+        Comment zeroLikes = commentRepository.saveAndFlush(new Comment(article, writer, "좋아요 없는 댓글"));
+        Comment oneLike = commentRepository.saveAndFlush(new Comment(article, writer, "좋아요 한 개 댓글"));
+        commentLikeRepository.saveAndFlush(CommentLike.builder().comment(oneLike).likedBy(liker).build());
+        LocalDateTime baseTime = LocalDateTime.of(2026, 8, 25, 12, 0);
+        updateCommentCreatedAt(zeroLikes.getId(), baseTime);
+        updateCommentCreatedAt(oneLike.getId(), baseTime.plusMinutes(1));
+        em.clear();
+
+        CommentSearchResult firstAscendingPage = commentRepository.search(new CommentSearchCondition(
+            article.getId(), CommentOrderBy.LIKE_COUNT, Direction.ASC,
+            null, null, null, 1, requestUser.getId()));
+        CommentSearchProjection ascendingCursor = firstAscendingPage.rows().get(0);
+        CommentSearchResult nextAscendingPage = commentRepository.search(new CommentSearchCondition(
+            article.getId(), CommentOrderBy.LIKE_COUNT, Direction.ASC,
+            String.valueOf(ascendingCursor.likeCount()), ascendingCursor.createdAt(), ascendingCursor.id(), 1, requestUser.getId()));
+
+        CommentSearchResult firstDescendingPage = commentRepository.search(new CommentSearchCondition(
+            article.getId(), CommentOrderBy.LIKE_COUNT, Direction.DESC,
+            null, null, null, 1, requestUser.getId()));
+        CommentSearchProjection descendingCursor = firstDescendingPage.rows().get(0);
+        CommentSearchResult nextDescendingPage = commentRepository.search(new CommentSearchCondition(
+            article.getId(), CommentOrderBy.LIKE_COUNT, Direction.DESC,
+            String.valueOf(descendingCursor.likeCount()), descendingCursor.createdAt(), descendingCursor.id(), 1, requestUser.getId()));
+
+        Assertions.assertAll(
+            () -> assertThat(nextAscendingPage.rows()).extracting(CommentSearchProjection::content)
+                .containsExactly("좋아요 한 개 댓글"),
+            () -> assertThat(nextDescendingPage.rows()).extracting(CommentSearchProjection::content)
+                .containsExactly("좋아요 없는 댓글")
+        );
+    }
+
+    @Test
+    @DisplayName("요청자 ID가 없으면 likedByMe를 false로 반환한다")
+    void search_returns_false_for_liked_by_me_when_request_user_is_absent() {
+        User writer = userRepository.saveAndFlush(new User("anonymous-writer@email.com", "작성자", "testPassword?"));
+        Article article = articleRepository.saveAndFlush(createArticle("테스트 기사", "테스트 기사 내용", "testLink"));
+        commentRepository.saveAndFlush(new Comment(article, writer, "댓글"));
+        em.clear();
+
+        CommentSearchResult result = commentRepository.search(new CommentSearchCondition(
+            article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
+            null, null, null, 10, null));
+
+        // allSatisfy는 result.rows()가 비어 있어도 통과하기 때문에 댓글 수나 댓글 내용을 먼저 검증한 뒤 likedByMe()를 확인하는 방향으로 개선
+        assertThat(result.rows()).hasSize(1).allSatisfy(row->assertThat(row.likedByMe()).isFalse());
+    }
+
+    @Test
+    @DisplayName("잘못된 커서 형식이면 목록 조회에 실패한다")
+    void search_fails_when_cursor_format_is_invalid() {
+        User writer = userRepository.saveAndFlush(new User("invalid-cursor-writer@email.com", "작성자", "testPassword?"));
+        Article article = articleRepository.saveAndFlush(createArticle("테스트 기사", "테스트 기사 내용", "testLink"));
+        Comment comment = commentRepository.saveAndFlush(new Comment(article, writer, "댓글"));
+        em.clear();
+
+        assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> commentRepository.search(
+            new CommentSearchCondition(article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
+                "invalid-date", LocalDateTime.now(), comment.getId(), 10, null))))
+            .isInstanceOf(CommentSearchConditionInvalidException.class);
+        assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> commentRepository.search(
+            new CommentSearchCondition(article.getId(), CommentOrderBy.LIKE_COUNT, Direction.ASC,
+                "invalid-like-count", LocalDateTime.now(), comment.getId(), 10, null))))
+            .isInstanceOf(CommentSearchConditionInvalidException.class);
     }
 }
