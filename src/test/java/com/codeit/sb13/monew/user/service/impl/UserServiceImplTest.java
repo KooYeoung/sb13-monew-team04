@@ -1,11 +1,6 @@
 package com.codeit.sb13.monew.user.service.impl;
 
-import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
-import com.codeit.sb13.monew.comment.repository.CommentLikeRepository;
-import com.codeit.sb13.monew.comment.repository.CommentRepository;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
-import com.codeit.sb13.monew.interest.repository.SubscribeRepository;
-import com.codeit.sb13.monew.notification.repository.NotificationRepository;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.exception.AlreadyDeletedUserException;
 import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
@@ -13,6 +8,7 @@ import com.codeit.sb13.monew.user.exception.InvalidPasswordException;
 import com.codeit.sb13.monew.user.exception.LoginUserNotFoundException;
 import com.codeit.sb13.monew.user.mapper.UserMapper;
 import com.codeit.sb13.monew.user.repository.UserRepository;
+import com.codeit.sb13.monew.user.service.UserHardDeleteExecutor;
 import com.codeit.sb13.monew.user.service.dto.UserCreateCommand;
 import com.codeit.sb13.monew.user.service.dto.UserCreateResult;
 import com.codeit.sb13.monew.user.service.dto.UserLoginCommand;
@@ -20,6 +16,7 @@ import com.codeit.sb13.monew.user.service.dto.UserLoginResult;
 import com.codeit.sb13.monew.user.service.dto.UserUpdateNicknameCommand;
 import com.codeit.sb13.monew.user.service.dto.UserUpdateNicknameResult;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -32,6 +29,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
@@ -43,22 +41,15 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
+
 @ExtendWith(MockitoExtension.class)
 public class UserServiceImplTest {
 
   @Mock
   UserRepository userRepository;
-  @Mock
-  CommentLikeRepository commentLikeRepository;
-  @Mock
-  CommentRepository commentRepository;
-  @Mock
-  ArticleViewRepository articleViewRepository;
-  @Mock
-  SubscribeRepository subscribeRepository;
-  @Mock
-  NotificationRepository notificationRepository;
 
+  @Mock
+  UserHardDeleteExecutor userHardDeleteExecutor;
 
   @Mock
   PasswordEncoder passwordEncoder;
@@ -427,44 +418,53 @@ public class UserServiceImplTest {
   }
 
   @Test
-  @DisplayName("존재하지 않는 userId로 물리 삭제 요청시 예외를 터트린다.")
-  void 존재하지_않는_userId로_물리삭제_요청_시_예외를_던진다() {
+  @DisplayName("물리 삭제 요청 시 UserHardDeleteExecutor에게 위임한다")
+  void 물리_삭제_요청시_executor에게_위임한다() {
     // given
     UUID userId = UUID.randomUUID();
-    when(userRepository.findById(userId))
-        .thenReturn(Optional.empty());
 
-    // when & then
-    assertThatThrownBy(() -> userServiceImpl.hardDeleteUser(userId))
-        .isInstanceOf(UserNotFoundException.class);
+    // when
+    userServiceImpl.hardDeleteUser(userId);
+    // then
+    verify(userHardDeleteExecutor).hardDeleteUser(userId);
 
 
   }
 
   @Test
-  @DisplayName("존재하는_userId로_물리삭제_요청_시에_정상장동")
-  void 존재하는_userId로_물리삭제_요청_시에_정상작() {
+  @DisplayName("논리 삭제 후 1일이 지난 사용자를 찾아서 물리 삭제한다.")
+  void 논리삭제_후_1일이_지난_사용자는_물리_삭제한다() {
     // given
-    UUID userId = UUID.randomUUID();
     User user = User.builder()
         .email("email@email.com")
         .nickname("닉네임")
-        .password("PassWord")
+        .password("PassWord123!")
         .build();
-    when(userRepository.findById(userId))
-        .thenReturn(Optional.of(user));
+    ReflectionTestUtils.setField(user, "id", UUID.randomUUID());
+    user.softDelete();
+
+    when(userRepository.findByDeletedAtBefore(any(LocalDateTime.class)))
+        .thenReturn(List.of(user));
 
     // when
-    userServiceImpl.hardDeleteUser(userId);
+    userServiceImpl.autoDeleteExpiredUsers();
 
     // then
-    verify(commentLikeRepository).deleteByComment_User_Id(userId);
-    verify(commentLikeRepository).deleteByLikedBy_Id(userId);
-    verify(commentRepository).deleteByUser_Id(userId);
-    verify(articleViewRepository).deleteByUser_Id(userId);
-    verify(subscribeRepository).deleteByUserId(userId);
-    verify(notificationRepository).deleteByUser_Id(userId);
-    verify(userRepository).deleteById(userId);
+    verify(userHardDeleteExecutor).hardDeleteUser(user.getId());
+  }
+
+  @Test
+  @DisplayName("논리 삭제 후 1일이 지나지 않은 사용자는 물리 삭제되지 않는다.")
+  void 논리_삭제_후_1일이_지나지_않으면_물리_삭제되지_않는다() {
+    // given
+    when(userRepository.findByDeletedAtBefore(any(LocalDateTime.class)))
+        .thenReturn(List.of());
+
+    // when
+    userServiceImpl.autoDeleteExpiredUsers();
+
+    // then
+    verify(userHardDeleteExecutor, never()).hardDeleteUser(any());
   }
 
 

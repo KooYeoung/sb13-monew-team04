@@ -26,5 +26,7 @@ public interface UserService {
 
    void hardDeleteUser(UUID userId);
 
+   void autoDeleteExpiredUsers();
+
 
 }

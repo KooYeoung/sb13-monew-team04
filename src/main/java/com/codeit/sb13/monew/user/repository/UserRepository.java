@@ -2,6 +2,7 @@ package com.codeit.sb13.monew.user.repository;
 
 import com.codeit.sb13.monew.user.domain.User;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -18,4 +19,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
   @Modifying(clearAutomatically = true)
   @Query("UPDATE User u SET u.deletedAt = :now WHERE u.id = :userId AND u.deletedAt IS NULL")
   int softDeleteIfNotDeleted(@Param("userId") UUID userId, @Param("now") LocalDateTime now);
+
+  List<User> findByDeletedAtBefore(LocalDateTime threshold);
+
 }

@@ -13,6 +13,7 @@ import com.codeit.sb13.monew.user.exception.InvalidPasswordException;
 import com.codeit.sb13.monew.user.exception.LoginUserNotFoundException;
 import com.codeit.sb13.monew.user.mapper.UserMapper;
 import com.codeit.sb13.monew.user.repository.UserRepository;
+import com.codeit.sb13.monew.user.service.UserHardDeleteExecutor;
 import com.codeit.sb13.monew.user.service.UserService;
 import com.codeit.sb13.monew.user.service.dto.UserCreateCommand;
 import com.codeit.sb13.monew.user.service.dto.UserCreateResult;
@@ -21,8 +22,10 @@ import com.codeit.sb13.monew.user.service.dto.UserLoginResult;
 import com.codeit.sb13.monew.user.service.dto.UserUpdateNicknameCommand;
 import com.codeit.sb13.monew.user.service.dto.UserUpdateNicknameResult;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -30,14 +33,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 @RequiredArgsConstructor
 @Service
+@Slf4j
 public class UserServiceImpl implements UserService {
 
   private final UserRepository userRepository;
-  private final CommentLikeRepository commentLikeRepository;
-  private final CommentRepository commentRepository;
-  private final ArticleViewRepository articleViewRepository;
-  private final SubscribeRepository subscribeRepository;
-  private final NotificationRepository notificationRepository;
+
+  private final UserHardDeleteExecutor userHardDeleteExecutor;
 
   private final PasswordEncoder passwordEncoder;
   private final UserMapper userMapper;
@@ -129,17 +130,23 @@ public class UserServiceImpl implements UserService {
   @Override
   @Transactional
   public void hardDeleteUser(UUID userId) {
-    userRepository.findById(userId)
-        .orElseThrow(() -> new UserNotFoundException(userId));
-    // FK 제약 순서 고려
-    // CommentLike→ Comment → ArticleView → Subscribe → Notification → User
-    commentLikeRepository.deleteByComment_User_Id(userId);
-    commentLikeRepository.deleteByLikedBy_Id(userId);
-    commentRepository.deleteByUser_Id(userId);
-    articleViewRepository.deleteByUser_Id(userId);
-    subscribeRepository.deleteByUserId(userId);
-    notificationRepository.deleteByUser_Id(userId);
-    userRepository.deleteById(userId);
+    userHardDeleteExecutor.hardDeleteUser(userId);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public void autoDeleteExpiredUsers() {
+    LocalDateTime threshold = LocalDateTime.now().minusDays(1);
+    List<User> expiredUsers = userRepository.findByDeletedAtBefore(threshold);
+
+    for (User user : expiredUsers) {
+      try {
+        userHardDeleteExecutor.hardDeleteUser(user.getId());
+      } catch (Exception e) {
+        log.error("사용자 자동 물리 삭제 실패 - userId: {}, 사유: {}", user.getId(), e.getMessage());
+      }
+    }
+
   }
 
   private boolean isEmailUniqueViolation(DataIntegrityViolationException e) {
