@@ -306,4 +306,26 @@ class CommentLikeRepositoryTest {
     }
     throw new IllegalArgumentException("Unsupported UUID value type: " + value.getClass());
   }
+
+
+  @Test
+  @DisplayName("활성되어 있는 사용자의 좋아요만 집계하고 likedByMe 여부를 확인한다")
+  void countActiveLikesAndExistsActiveLike_excludeSoftDeletedLiker() {
+    User writer = persistUser("writer");
+    User activeLiker = persistUser("active-liker");
+    User deletedLiker = persistUser("deleted-liker");
+    Article article = persistArticle("article");
+    Comment comment = persistComment(article, writer, "comment");
+    persistCommentLike(comment, activeLiker);
+    persistCommentLike(comment, deletedLiker);
+    deletedLiker.softDelete();
+    em.flush();
+    em.clear();
+
+    assertThat(commentLikeRepository.countActiveLikesByCommentId(comment.getId())).isEqualTo(1L);
+    assertThat(commentLikeRepository.existsActiveByCommentIdAndLikedById(
+        comment.getId(), activeLiker.getId())).isTrue();
+    assertThat(commentLikeRepository.existsActiveByCommentIdAndLikedById(
+        comment.getId(), deletedLiker.getId())).isFalse();
+  }
 }

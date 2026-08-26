@@ -11,7 +11,17 @@ import org.springframework.data.repository.query.Param;
 
 public interface CommentRepository extends JpaRepository<Comment, UUID>, CommentRepositoryCustom {
 
-  Optional<Comment> findByIdAndDeletedAtIsNull(UUID commentId);
+  @Query("""
+      SELECT C
+      FROM Comment C
+      JOIN FETCH C.user U
+      JOIN FETCH C.article A
+      WHERE C.id = :commentId
+          AND C.deletedAt IS NULL
+          AND U.deletedAt IS NULL
+          AND A.deletedAt IS NULL
+      """) // 댓글, 작성자, 기사 모두 활성 상태인 경우에만 조회
+  Optional<Comment> findActiveById(@Param("commentId") UUID commentId);
 
   @Query("""
       SELECT new com.codeit.sb13.monew.comment.repository.dto.RecentCommentActivityProjection(

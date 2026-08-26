@@ -16,6 +16,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
   Optional<User> findByEmail(String email);
 
+  Optional<User> findByIdAndDeletedAtIsNull(UUID userId); // 활성화된 사용자만 반환
+
   @Modifying(clearAutomatically = true)
   @Query("UPDATE User u SET u.deletedAt = :now WHERE u.id = :userId AND u.deletedAt IS NULL")
   int softDeleteIfNotDeleted(@Param("userId") UUID userId, @Param("now") LocalDateTime now);

@@ -1,12 +1,14 @@
 package com.codeit.sb13.monew.comment.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.*;
 
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.repository.ArticleRepository;
+import com.codeit.sb13.monew.comment.repository.CommentLikeRepository;
 import com.codeit.sb13.monew.comment.repository.dto.CommentSearchCondition;
 import com.codeit.sb13.monew.comment.repository.dto.CommentSearchProjection;
 import com.codeit.sb13.monew.comment.repository.dto.CommentSearchResult;
@@ -15,8 +17,12 @@ import com.codeit.sb13.monew.comment.domain.Comment;
 import com.codeit.sb13.monew.comment.repository.CommentRepository;
 import com.codeit.sb13.monew.comment.service.dto.CommentRegisterCommand;
 import com.codeit.sb13.monew.comment.service.dto.CommentSearchCommand;
+import com.codeit.sb13.monew.comment.service.dto.CommentUpdateCommand;
 import com.codeit.sb13.monew.comment.service.impl.CommentServiceImpl;
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
+import com.codeit.sb13.monew.global.exception.comment.CommentNotFoundException;
+import com.codeit.sb13.monew.global.exception.comment.CommentPermissionDeniedException;
+import com.codeit.sb13.monew.global.exception.comment.InvalidCommentException;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.repository.UserRepository;
 import java.time.LocalDateTime;
@@ -46,6 +52,9 @@ public class CommentServiceTest {
   @Mock
   ArticleRepository articleRepository;
 
+  @Mock
+  CommentLikeRepository commentLikeRepository;
+
   @InjectMocks
   private CommentServiceImpl commentService;
 
@@ -65,8 +74,8 @@ public class CommentServiceTest {
     UUID commentId = UUID.randomUUID();
 
     CommentRegisterCommand command=new CommentRegisterCommand(article.getId(), user.getId(), "테스트 댓글");
-    given(userRepository.findById(user.getId())).willReturn(java.util.Optional.of(user));
-    given(articleRepository.findById(article.getId())).willReturn(java.util.Optional.of(article));
+    given(userRepository.findByIdAndDeletedAtIsNull(user.getId())).willReturn(java.util.Optional.of(user));
+    given(articleRepository.findByIdAndDeletedAtIsNull(article.getId())).willReturn(java.util.Optional.of(article));
     given(commentRepository.save(any(Comment.class))).willAnswer(invocation -> {
       Comment comment = invocation.getArgument(0);
       ReflectionTestUtils.setField(comment, "id", commentId);
@@ -249,5 +258,113 @@ public class CommentServiceTest {
         && condition.idAfter() == null
         && condition.limit() == 50
         && condition.requestUserId().equals(requestUserId)));
+  }
+
+  @Test
+  @DisplayName("댓글 작성자가 댓글 내용을 수정하면 수정된 댓글 정보를 반환한다 - GREEN")
+  void 댓글_수정_성공 () {
+    // given
+    LocalDateTime createdAt = LocalDateTime.of(2024, 6, 1, 12, 0);
+    User user = User.builder()
+        .email("test@test.com")
+        .nickname("테스트 사용자")
+        .password("Abcd!")
+        .build();
+    Article article = Article.create("기사 제목",
+        "기사 요약",
+        "https://test.com/article",
+        createdAt,
+        ArticleSource.NAVER);
+    ReflectionTestUtils.setField(user, "id", UUID.randomUUID());
+    ReflectionTestUtils.setField(article, "id", UUID.randomUUID());
+    Comment comment=Comment.builder()
+        .article(article)
+        .user(user)
+        .content("테스트 댓글")
+        .build();
+    ReflectionTestUtils.setField(comment, "id", UUID.randomUUID());
+    ReflectionTestUtils.setField(comment, "createdAt", createdAt);
+
+    CommentUpdateCommand command=new CommentUpdateCommand(comment.getId(), user.getId(), "수정된 테스트 댓글");
+    given(commentRepository.findActiveById(comment.getId())).willReturn(java.util.Optional.of(comment));
+    given(commentLikeRepository.countActiveLikesByCommentId(comment.getId())).willReturn(0L);
+    given(commentLikeRepository.existsActiveByCommentIdAndLikedById(comment.getId(), user.getId())).willReturn(false);
+
+    // when
+    CommentDto result=commentService.update(command);
+
+    // then
+    Assertions.assertAll(
+        () -> assertThat(comment.getContent()).isEqualTo("수정된 테스트 댓글"),
+        () -> assertThat(result.id()).isEqualTo(comment.getId()),
+        () -> assertThat(result.articleId()).isEqualTo(article.getId()),
+        () -> assertThat(result.userId()).isEqualTo(user.getId()),
+        () -> assertThat(result.userNickname()).isEqualTo("테스트 사용자"),
+        () -> assertThat(result.content()).isEqualTo("수정된 테스트 댓글"),
+        () -> assertThat(result.likeCount()).isEqualTo(0L),
+        () -> assertThat(result.likedByMe()).isFalse(),
+        () -> assertThat(result.createdAt()).isEqualTo(createdAt)
+    );
+    then(commentRepository).should(times(1)).findActiveById(comment.getId());
+    then(commentLikeRepository).should(times(1)).countActiveLikesByCommentId(comment.getId());
+    then(commentLikeRepository).should(times(1))
+        .existsActiveByCommentIdAndLikedById(comment.getId(), user.getId());
+        
+  }
+
+  @Test
+  @DisplayName("존재하지 않는 댓글은 수정할 수 없다")
+  void 존재하지_않는_댓글_수정_실패() {
+    CommentUpdateCommand command = new CommentUpdateCommand(
+        UUID.randomUUID(), UUID.randomUUID(), "수정된 댓글");
+    given(commentRepository.findActiveById(command.commentId()))
+        .willReturn(java.util.Optional.empty());
+
+    assertThatThrownBy(() -> commentService.update(command))
+        .isInstanceOf(CommentNotFoundException.class);
+
+    then(commentLikeRepository).shouldHaveNoInteractions();
+  }
+
+  @Test
+  @DisplayName("댓글 작성자 본인이 아니면 댓글을 수정할 수 없다")
+  void 댓글_작성자가_아니면_수정_실패() {
+    User writer = User.builder()
+        .email("writer@test.com")
+        .nickname("작성자")
+        .password("Abcd!")
+        .build();
+    ReflectionTestUtils.setField(writer, "id", UUID.randomUUID());
+
+    Article article = Article.create("기사 제목", "기사 요약", "https://test.com/article",
+        LocalDateTime.now(), ArticleSource.NAVER);
+
+    Comment comment = Comment.builder().article(article).user(writer).content("댓글").build();
+
+    ReflectionTestUtils.setField(comment, "id", UUID.randomUUID());
+
+    CommentUpdateCommand command = new CommentUpdateCommand(
+        comment.getId(), UUID.randomUUID(), "수정된 댓글");
+
+    given(commentRepository.findActiveById(comment.getId()))
+        .willReturn(java.util.Optional.of(comment));
+
+    assertThatThrownBy(() -> commentService.update(command))
+        .isInstanceOf(CommentPermissionDeniedException.class);
+
+    then(commentLikeRepository).shouldHaveNoInteractions();
+  }
+
+  @Test
+  @DisplayName("댓글 내용은 비어 있거나 500자를 초과할 수 없다")
+  void 댓글_내용_도메인_검증() {
+    Comment comment = Comment.builder().content("기존 댓글").build();
+
+    assertThatThrownBy(() -> comment.changeContent(null))
+        .isInstanceOf(InvalidCommentException.class);
+    assertThatThrownBy(() -> comment.changeContent(" "))
+        .isInstanceOf(InvalidCommentException.class);
+    assertThatThrownBy(() -> comment.changeContent("a".repeat(501)))
+        .isInstanceOf(InvalidCommentException.class);
   }
 }

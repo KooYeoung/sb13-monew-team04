@@ -42,12 +42,12 @@ public class CommentLikeServiceImpl implements CommentLikeService {
 
     log.debug("댓글 좋아요 등록 시작 - 댓글 아이디: {}", commentId);
 
-    Comment comment = commentRepository.findByIdAndDeletedAtIsNull(commentId)
+    Comment comment = commentRepository.findActiveById(commentId)
             .orElseThrow(() -> new CommentNotFoundException(commentId));
-    User likedByUser = userRepository.findById(likedById)
+    User likedByUser = userRepository.findByIdAndDeletedAtIsNull(likedById)
             .orElseThrow(() -> new UserNotFoundException(likedById));
 
-    return commentLikeRepository.findByCommentAndLikedBy(commentId, likedById)
+    return commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(commentId, likedById)
         .map(this::toDto)
         .orElseGet(() -> createOrReturnExisting(comment, likedByUser));
   }
@@ -59,7 +59,8 @@ public class CommentLikeServiceImpl implements CommentLikeService {
       log.info("댓글 좋아요 등록 완료 - 댓글 아이디: {}", comment.getId());
 
     } catch (DataIntegrityViolationException e) {
-      return commentLikeRepository.findByCommentAndLikedBy(comment.getId(), likedByUser.getId())
+      return commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(
+              comment.getId(), likedByUser.getId())
           .map(existingLike -> {
             log.debug("댓글 좋아요 중복 감지 -> 기존 댓글 좋아요 반환 - 댓글 아이디: {}", comment.getId());
             return toDto(existingLike);
@@ -74,7 +75,8 @@ public class CommentLikeServiceImpl implements CommentLikeService {
               comment.getId(), likedByUser.getId(), comment.getUser().getId(), e);
     }
 
-    return commentLikeRepository.findByCommentAndLikedBy(comment.getId(), likedByUser.getId())
+    return commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(
+            comment.getId(), likedByUser.getId())
         .map(this::toDto)
         .orElseThrow(()->new IllegalStateException("댓글 좋아요 등록 후 조회 실패 - 댓글 아이디: " + comment.getId()));
   }
@@ -87,8 +89,9 @@ public class CommentLikeServiceImpl implements CommentLikeService {
 
     log.debug("댓글 좋아요 취소 시작 - 댓글 아이디: {}", commentId);
 
-    commentRepository.findByIdAndDeletedAtIsNull(commentId).orElseThrow(()-> new CommentNotFoundException(commentId));
-    userRepository.findById(requestUserId).orElseThrow(()->new UserNotFoundException(requestUserId));
+    commentRepository.findActiveById(commentId).orElseThrow(()-> new CommentNotFoundException(commentId));
+    userRepository.findByIdAndDeletedAtIsNull(requestUserId)
+        .orElseThrow(()->new UserNotFoundException(requestUserId));
 
     Long deletedCount = commentLikeRepository.deleteByCommentIdAndLikedById(commentId, requestUserId);
     if (deletedCount == 0L) {
@@ -100,7 +103,7 @@ public class CommentLikeServiceImpl implements CommentLikeService {
 
   // 댓글 좋아요가 성공적으로 등록되면 재조회하여 좋아요 수를 포함한 DTO 반환
   private CommentLikeDto toDto(CommentLike commentLike) {
-    Long likeCount = commentLikeRepository.countByCommentId(commentLike.getComment().getId());
+    Long likeCount = commentLikeRepository.countActiveLikesByCommentId(commentLike.getComment().getId());
     return CommentLikeDto.from(commentLike, likeCount);
   }
 }

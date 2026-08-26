@@ -2,6 +2,7 @@ package com.codeit.sb13.monew.comment.controller;
 
 import com.codeit.sb13.monew.comment.controller.dto.CommentRegisterRequest;
 import com.codeit.sb13.monew.comment.controller.dto.CommentSearchRequest;
+import com.codeit.sb13.monew.comment.controller.dto.CommentUpdateRequest;
 import com.codeit.sb13.monew.comment.service.dto.CommentDto;
 import com.codeit.sb13.monew.global.MonewHttpHeaders;
 import com.codeit.sb13.monew.global.dto.ApiErrorResponse;
@@ -19,6 +20,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.PathVariable;
 
 @Tag(name = "댓글 관리", description = "댓글 관련 API")
 public interface CommentApi {
@@ -74,6 +76,32 @@ public interface CommentApi {
   ResponseEntity<CursorPageResponseDto<CommentDto>> searchComments(
       @ModelAttribute CommentSearchRequest request,
       @RequestHeader(MonewHttpHeaders.REQUEST_USER_ID) UUID requestUserId
+  );
+
+
+  @Operation(
+      summary = "댓글 정보 수정",
+      description = "댓글 작성자만 본인의 댓글 내용을 수정할 수 있습니다.")
+  @Parameters({
+      @Parameter(name = "commentId", description = "댓글 ID", required = true),
+      @Parameter(name = MonewHttpHeaders.REQUEST_USER_ID, description = "요청자 ID", required = true)
+  })
+  @ApiResponses({
+      @ApiResponse(responseCode = "200", description = "댓글 수정 성공",
+          content = @Content(schema = @Schema(implementation = CommentDto.class))),
+      @ApiResponse(responseCode = "400", description = "잘못된 요청(입력값 검증 실패)",
+          content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+      @ApiResponse(responseCode = "403", description = "댓글 수정 권한 없음",
+          content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+      @ApiResponse(responseCode = "404", description = "댓글 정보를 찾을 수 없음",
+          content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
+      @ApiResponse(responseCode = "500", description = "서버 내부 오류",
+          content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+  })
+  ResponseEntity<CommentDto> updateComment(
+      @PathVariable UUID commentId,
+      @RequestHeader(MonewHttpHeaders.REQUEST_USER_ID) UUID requestUserId,
+      @RequestBody CommentUpdateRequest request
   );
 
 }

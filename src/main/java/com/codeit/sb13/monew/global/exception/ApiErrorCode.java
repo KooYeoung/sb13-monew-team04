@@ -46,6 +46,8 @@ public enum ApiErrorCode {
     COMMENT_NOT_FOUND("CMT_001", HttpStatus.NOT_FOUND, "댓글을 찾을 수 없습니다."),
     COMMENT_LIKE_NOT_FOUND("CMT_002", HttpStatus.NOT_FOUND, "댓글 좋아요를 찾을 수 없습니다."),
     COMMENT_SEARCH_CONDITION_INVALID("CMT_003", HttpStatus.BAD_REQUEST, "댓글 목록 조회 조건이 올바르지 않습니다."),
+    COMMENT_INVALID("CMT_004", HttpStatus.BAD_REQUEST, "댓글 내용이 올바르지 않습니다."),
+    COMMENT_PERMISSION_DENIED("CMT_005", HttpStatus.FORBIDDEN, "댓글 수정 권한이 없습니다."),
 
     // GLOBAL/COMMON GLB
     INVALID_REQUEST("GLB_001", HttpStatus.BAD_REQUEST, "요청 데이터가 올바르지 않습니다."),

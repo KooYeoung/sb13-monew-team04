@@ -2,6 +2,7 @@ package com.codeit.sb13.monew.comment.domain;
 
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.global.domain.DeletedAtEntity;
+import com.codeit.sb13.monew.global.exception.comment.InvalidCommentException;
 import com.codeit.sb13.monew.user.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -42,6 +43,16 @@ public class Comment extends DeletedAtEntity { // DeletedAtEntity를 상속받�
   public Comment(Article article, User user, String content) {
     this.article = article;
     this.user = user;
+    this.content = content;
+  }
+
+  public void changeContent(String content) {
+    if (content == null || content.isBlank()) {
+      throw new InvalidCommentException("댓글 내용은 비어있을 수 없습니다.");
+    }
+    if (content.length() > 500) {
+      throw new InvalidCommentException("댓글 내용은 500자를 초과할 수 없습니다.");
+    }
     this.content = content;
   }
 }
