@@ -8,6 +8,7 @@ import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
 import com.codeit.sb13.monew.article.service.dto.ArticleViewDto;
 import com.codeit.sb13.monew.article.service.impl.ArticleViewSaveService;
 import com.codeit.sb13.monew.article.service.impl.ArticleViewServiceImpl;
+import com.codeit.sb13.monew.comment.repository.CommentRepository;
 import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
 import com.codeit.sb13.monew.global.exception.article.ArticleViewConflictException;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
@@ -54,6 +55,9 @@ class ArticleViewServiceTest {
 
     @Mock
     private ArticleMapper articleMapper;
+
+    @Mock
+    private CommentRepository commentRepository;
 
     @Mock
     private ArticleViewSaveService articleViewSaveService;
@@ -113,7 +117,10 @@ class ArticleViewServiceTest {
         when(articleViewRepository.findByArticleAndUser(testArticle, testUser))
                 .thenReturn(Optional.empty(), Optional.of(savedView));
         when(articleViewRepository.countByArticleAndUser_DeletedAtIsNull(testArticle)).thenReturn(1L);
-        when(articleMapper.toViewDto(savedView, 0L, 1L)).thenReturn(testViewDto);
+        when(commentRepository
+                .countByArticle_IdAndDeletedAtIsNullAndUser_DeletedAtIsNull(testArticleId))
+                .thenReturn(4L);
+        when(articleMapper.toViewDto(savedView, 4L, 1L)).thenReturn(testViewDto);
 
         // when
         ArticleViewDto result = articleViewService.recordView(testArticleId, testUserId);
@@ -140,7 +147,10 @@ class ArticleViewServiceTest {
         when(articleViewRepository.save(any(ArticleView.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(articleViewRepository.countByArticleAndUser_DeletedAtIsNull(testArticle)).thenReturn(3L);
-        when(articleMapper.toViewDto(any(ArticleView.class), eq(0L), eq(3L)))
+        when(commentRepository
+                .countByArticle_IdAndDeletedAtIsNullAndUser_DeletedAtIsNull(testArticleId))
+                .thenReturn(4L);
+        when(articleMapper.toViewDto(any(ArticleView.class), eq(4L), eq(3L)))
                 .thenReturn(testViewDto);
 
         // when
@@ -204,7 +214,10 @@ class ArticleViewServiceTest {
         when(articleViewRepository.save(any(ArticleView.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(articleViewRepository.countByArticleAndUser_DeletedAtIsNull(testArticle)).thenReturn(1L);
-        when(articleMapper.toViewDto(concurrentView, 0L, 1L)).thenReturn(testViewDto);
+        when(commentRepository
+                .countByArticle_IdAndDeletedAtIsNullAndUser_DeletedAtIsNull(testArticleId))
+                .thenReturn(4L);
+        when(articleMapper.toViewDto(concurrentView, 4L, 1L)).thenReturn(testViewDto);
 
         // when
         ArticleViewDto result = articleViewService.recordView(testArticleId, testUserId);

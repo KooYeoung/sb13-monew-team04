@@ -1,6 +1,8 @@
 package com.codeit.sb13.monew.article.service.impl;
 
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchCondition;
+import com.codeit.sb13.monew.article.repository.dto.ArticleSearchPage;
+import com.codeit.sb13.monew.article.repository.dto.ArticleSearchRow;
 import com.codeit.sb13.monew.article.s3.service.dto.ArticleBackupItem;
 import com.codeit.sb13.monew.article.service.dto.ArticleDto;
 import com.codeit.sb13.monew.article.domain.Article;
@@ -9,10 +11,12 @@ import com.codeit.sb13.monew.article.mapper.ArticleMapper;
 import com.codeit.sb13.monew.article.repository.ArticleRepository;
 import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
 import com.codeit.sb13.monew.article.service.ArticleService;
+import com.codeit.sb13.monew.article.service.dto.ArticleOrderBy;
 import com.codeit.sb13.monew.article.service.dto.ArticleRequest;
 import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
 import com.codeit.sb13.monew.comment.repository.CommentLikeRepository;
 import com.codeit.sb13.monew.comment.repository.CommentRepository;
+import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
 import com.codeit.sb13.monew.global.exception.article.ArticleDuplicateException;
 import com.codeit.sb13.monew.global.exception.article.ArticleBackupDateInvalidException;
@@ -59,8 +63,10 @@ public class ArticleServiceImpl implements ArticleService {
                 .existsByArticle_IdAndUser_Id(articleId, requestUserId);
         long viewCount = articleViewRepository.countByArticle_IdAndUser_DeletedAtIsNull(articleId);
 
-        // commentCount는 댓글 파트 집계 방식 확정 전까지 0 (MID4-147)
-        return articleMapper.toDto(article, viewedByMe, 0L, viewCount);
+        long commentCount = commentRepository
+                .countByArticle_IdAndDeletedAtIsNullAndUser_DeletedAtIsNull(articleId);
+
+        return articleMapper.toDto(article, viewedByMe, commentCount, viewCount);
     }
 
     @Override
@@ -69,7 +75,7 @@ public class ArticleServiceImpl implements ArticleService {
     }
 
     @Override
-    public List<ArticleDto> searchArticles(ArticleSearchCommand command) {
+    public CursorPageResponseDto<ArticleDto> searchArticles(ArticleSearchCommand command) {
         userService.validateExists(command.requestUserId());
 
         ArticleSearchCondition condition = new ArticleSearchCondition(
@@ -77,13 +83,31 @@ public class ArticleServiceImpl implements ArticleService {
                 command.sourceIn(),
                 command.publishDateFrom(),
                 command.publishDateTo(),
+                command.orderBy(),
+                command.direction(),
+                command.cursor(),
+                command.after(),
+                command.idAfter(),
+                command.limit(),
                 command.requestUserId()
         );
 
-        // commentCount는 댓글 집계 방식 확정 전까지 0 (MID4-163 → MID4-147)
-        return articleRepository.search(condition).stream()
-                .map(row -> articleMapper.toDto(row.article(), row.viewedByMe(), 0L, row.viewCount()))
+        ArticleSearchPage page = articleRepository.search(condition);
+
+        List<ArticleDto> content = page.rows().stream()
+                .map(row -> articleMapper.toDto(
+                        row.article(), row.viewedByMe(), row.commentCount(), row.viewCount()))
                 .toList();
+
+        return new CursorPageResponseDto<>(
+                content,
+                nextCursor(page.rows(), command.orderBy()),
+                nextAfter(page.rows()),
+                nextIdAfter(page.rows()),
+                content.size(),
+                page.totalElements(),
+                page.hasNext()
+        );
     }
 
     /**
@@ -164,5 +188,42 @@ public class ArticleServiceImpl implements ArticleService {
                 .stream()
                 .map(ArticleBackupItem::from)
                 .toList();
+    }
+
+
+    /**
+     * 다음 페이지 조회 시 {@code cursor} 파라미터로 돌려보낼 값을 만든다.
+     *
+     * <p>응답 DTO가 아니라 {@code ArticleSearchRow}에서 뽑는다. keyset의 보조 기준이
+     * {@code article.createdAt}인데 {@code ArticleDto}에는 그 필드가 없기 때문이다.
+     * 세 커서를 모두 같은 출처에서 만들어야 한 항목의 값끼리 어긋나지 않는다.
+     */
+    private String nextCursor(List<ArticleSearchRow> rows, ArticleOrderBy orderBy) {
+        if (rows.isEmpty()) {
+            return null;
+        }
+
+        ArticleSearchRow last = rows.get(rows.size() - 1);
+        return switch (orderBy) {
+            case COMMENT_COUNT -> String.valueOf(last.commentCount());
+            case VIEW_COUNT -> String.valueOf(last.viewCount());
+            case PUBLISH_DATE -> last.article().getDate().toString();
+        };
+    }
+
+    private String nextAfter(List<ArticleSearchRow> rows) {
+        if (rows.isEmpty()) {
+            return null;
+        }
+
+        return rows.get(rows.size() - 1).article().getCreatedAt().toString();
+    }
+
+    private String nextIdAfter(List<ArticleSearchRow> rows) {
+        if (rows.isEmpty()) {
+            return null;
+        }
+
+        return rows.get(rows.size() - 1).article().getId().toString();
     }
 }

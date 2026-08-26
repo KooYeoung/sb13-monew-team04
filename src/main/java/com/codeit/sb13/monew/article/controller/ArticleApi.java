@@ -8,6 +8,7 @@ import com.codeit.sb13.monew.article.service.dto.ArticleDto;
 import com.codeit.sb13.monew.article.service.dto.ArticleViewDto;
 import com.codeit.sb13.monew.global.MonewHttpHeaders;
 import com.codeit.sb13.monew.global.dto.ApiErrorResponse;
+import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -36,7 +37,7 @@ public interface ArticleApi {
             @ApiResponse(
                     responseCode = "200",
                     description = "조회 성공",
-                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = ArticleDto.class)))
+                    content = @Content(schema = @Schema(implementation = CursorPageResponseDto.class))
             ),
             @ApiResponse(
                     responseCode = "400",
@@ -54,7 +55,7 @@ public interface ArticleApi {
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
             )
     })
-    ResponseEntity<List<ArticleDto>> getArticles(
+    ResponseEntity<CursorPageResponseDto<ArticleDto>> getArticles(
             @ModelAttribute ArticleSearchRequest request,
             @Parameter(
                     name = MonewHttpHeaders.REQUEST_USER_ID,

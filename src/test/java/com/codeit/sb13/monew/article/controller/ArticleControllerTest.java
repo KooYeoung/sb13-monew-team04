@@ -7,8 +7,10 @@ import com.codeit.sb13.monew.article.s3.service.ArticleRestoreService;
 import com.codeit.sb13.monew.article.s3.service.dto.ArticleRestoreCommand;
 import com.codeit.sb13.monew.article.s3.service.dto.ArticleRestoreResult;
 import com.codeit.sb13.monew.article.service.ArticleService;
+import com.codeit.sb13.monew.article.service.dto.ArticleOrderBy;
 import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
 import com.codeit.sb13.monew.article.service.dto.ArticleViewDto;
+import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.article.ArticleRestoreFailedException;
 import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
 import com.codeit.sb13.monew.global.exception.article.ArticleViewConflictException;
@@ -19,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.data.domain.Sort;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -260,23 +263,33 @@ class ArticleControllerTest {
     }
 
     @Test
-    @DisplayName("목록 조회 성공 시 200과 ArticleDto 배열을 반환한다")
+    @DisplayName("목록 조회 성공 시 200과 커서 페이지 응답을 반환한다")
     void getArticlesSuccess() throws Exception {
         // given
         when(articleService.searchArticles(any(ArticleSearchCommand.class)))
-                .thenReturn(List.of(articleDto));
+                .thenReturn(new CursorPageResponseDto<>(
+                        List.of(articleDto), "2026-08-20T12:00", "2026-08-20T09:00",
+                        articleId.toString(), 1, 42L, true));
 
         // when & then
         mockMvc.perform(get("/api/articles")
-                        .header(REQUEST_USER_ID, userId))
+                        .header(REQUEST_USER_ID, userId)
+                        .param("orderBy", "publishDate")
+                        .param("direction", "DESC")
+                        .param("limit", "50"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].id").value(articleId.toString()))
-                .andExpect(jsonPath("$[0].source").value("NAVER"))
-                .andExpect(jsonPath("$[0].title").value("Test Article"))
-                .andExpect(jsonPath("$[0].viewCount").value(7))
-                .andExpect(jsonPath("$[0].commentCount").value(0))
-                .andExpect(jsonPath("$[0].viewedByMe").value(true));
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(articleId.toString()))
+                .andExpect(jsonPath("$.content[0].source").value("NAVER"))
+                .andExpect(jsonPath("$.content[0].title").value("Test Article"))
+                .andExpect(jsonPath("$.content[0].viewCount").value(7))
+                .andExpect(jsonPath("$.content[0].commentCount").value(0))
+                .andExpect(jsonPath("$.content[0].viewedByMe").value(true))
+                .andExpect(jsonPath("$.nextCursor").value("2026-08-20T12:00"))
+                .andExpect(jsonPath("$.nextIdAfter").value(articleId.toString()))
+                .andExpect(jsonPath("$.size").value(1))
+                .andExpect(jsonPath("$.totalElements").value(42))
+                .andExpect(jsonPath("$.hasNext").value(true));
     }
 
     @Test
@@ -284,7 +297,8 @@ class ArticleControllerTest {
     void getArticlesBindsQueryParameters() throws Exception {
         // given
         when(articleService.searchArticles(any(ArticleSearchCommand.class)))
-                .thenReturn(List.of());
+                .thenReturn(new CursorPageResponseDto<>(
+                        List.of(), null, null, null, 0, 0L, false));
 
         // when
         mockMvc.perform(get("/api/articles")
@@ -292,7 +306,13 @@ class ArticleControllerTest {
                         .param("keyword", "반도체")
                         .param("sourceIn", "NAVER", "CHOSUN")
                         .param("publishDateFrom", "2026-08-01T00:00:00")
-                        .param("publishDateTo", "2026-08-31T00:00:00"))
+                        .param("publishDateTo", "2026-08-31T00:00:00")
+                        .param("orderBy", "viewCount")
+                        .param("direction", "ASC")
+                        .param("cursor", "10")
+                        .param("after", "2026-08-20T12:00:00")
+                        .param("idAfter", "11111111-1111-1111-1111-111111111111")
+                        .param("limit", "30"))
                 .andExpect(status().isOk());
 
         // then
@@ -309,6 +329,16 @@ class ArticleControllerTest {
         org.assertj.core.api.Assertions.assertThat(command.publishDateTo())
                 .isEqualTo(LocalDateTime.of(2026, 8, 31, 0, 0));
         org.assertj.core.api.Assertions.assertThat(command.requestUserId()).isEqualTo(userId);
+        org.assertj.core.api.Assertions.assertThat(command.orderBy())
+                .isEqualTo(ArticleOrderBy.VIEW_COUNT);
+        org.assertj.core.api.Assertions.assertThat(command.direction())
+                .isEqualTo(Sort.Direction.ASC);
+        org.assertj.core.api.Assertions.assertThat(command.cursor()).isEqualTo("10");
+        org.assertj.core.api.Assertions.assertThat(command.after())
+                .isEqualTo(LocalDateTime.of(2026, 8, 20, 12, 0));
+        org.assertj.core.api.Assertions.assertThat(command.idAfter())
+                .isEqualTo(UUID.fromString("11111111-1111-1111-1111-111111111111"));
+        org.assertj.core.api.Assertions.assertThat(command.limit()).isEqualTo(30);
     }
 
     @Test
@@ -434,5 +464,74 @@ class ArticleControllerTest {
                 .andExpect(jsonPath("$.code").value("GLB_001"));
 
         verify(articleService, never()).softDelete(any(UUID.class));
+    }
+
+
+    @Test
+    @DisplayName("목록 조회 시 orderBy가 없으면 400과 ART_016을 반환한다")
+    void getArticlesWithoutOrderBy() throws Exception {
+        mockMvc.perform(get("/api/articles")
+                        .header(REQUEST_USER_ID, userId)
+                        .param("direction", "DESC")
+                        .param("limit", "50"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("ART_016"));
+
+        verify(articleService, never()).searchArticles(any());
+    }
+
+    @Test
+    @DisplayName("목록 조회 시 direction이 없으면 400과 ART_016을 반환한다")
+    void getArticlesWithoutDirection() throws Exception {
+        mockMvc.perform(get("/api/articles")
+                        .header(REQUEST_USER_ID, userId)
+                        .param("orderBy", "publishDate")
+                        .param("limit", "50"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("ART_016"));
+
+        verify(articleService, never()).searchArticles(any());
+    }
+
+    @Test
+    @DisplayName("목록 조회 시 limit이 1 미만이면 400과 ART_016을 반환한다")
+    void getArticlesWithInvalidLimit() throws Exception {
+        mockMvc.perform(get("/api/articles")
+                        .header(REQUEST_USER_ID, userId)
+                        .param("orderBy", "publishDate")
+                        .param("direction", "DESC")
+                        .param("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("ART_016"));
+
+        verify(articleService, never()).searchArticles(any());
+    }
+
+    @Test
+    @DisplayName("목록 조회 시 정의되지 않은 orderBy 값은 400을 반환한다")
+    void getArticlesWithUnknownOrderBy() throws Exception {
+        mockMvc.perform(get("/api/articles")
+                        .header(REQUEST_USER_ID, userId)
+                        .param("orderBy", "randomField")
+                        .param("direction", "DESC")
+                        .param("limit", "50"))
+                .andExpect(status().isBadRequest());
+
+        verify(articleService, never()).searchArticles(any());
+    }
+
+
+    @Test
+    @DisplayName("목록 조회 시 limit이 상한을 넘으면 400과 ART_016을 반환한다")
+    void getArticlesWithLimitAboveMax() throws Exception {
+        mockMvc.perform(get("/api/articles")
+                        .header(REQUEST_USER_ID, userId)
+                        .param("orderBy", "publishDate")
+                        .param("direction", "DESC")
+                        .param("limit", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("ART_016"));
+
+        verify(articleService, never()).searchArticles(any());
     }
 }

@@ -11,6 +11,8 @@ import com.codeit.sb13.monew.article.service.dto.ArticleDto;
 import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
 import com.codeit.sb13.monew.article.service.dto.ArticleViewDto;
 import com.codeit.sb13.monew.global.MonewHttpHeaders;
+import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
+import com.codeit.sb13.monew.global.exception.article.ArticleSearchConditionInvalidException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
@@ -32,21 +34,47 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ArticleController implements ArticleApi {
 
+    /**
+     * 집계값 정렬은 기사 한 건마다 상관 서브쿼리를 평가한다. 상한이 없으면
+     * limit=1000000 같은 요청이 그대로 리포지토리에 도달해 DB에 과부하를 준다.
+     */
+    private static final int MAX_LIMIT = 100;
+
     private final ArticleService articleService;
     private final ArticleViewService articleViewService;
     private final ArticleRestoreService articleRestoreService;
 
     @Override
     @GetMapping
-    public ResponseEntity<List<ArticleDto>> getArticles(
+    public ResponseEntity<CursorPageResponseDto<ArticleDto>> getArticles(
             @ModelAttribute ArticleSearchRequest request,
             @RequestHeader(MonewHttpHeaders.REQUEST_USER_ID) UUID requestUserId
     ) {
+        if (request.orderBy() == null) {
+            throw new ArticleSearchConditionInvalidException("orderBy는 필수입니다.");
+        }
+        if (request.direction() == null) {
+            throw new ArticleSearchConditionInvalidException("direction은 필수입니다.");
+        }
+        if (request.limit() < 1) {
+            throw new ArticleSearchConditionInvalidException("limit은 1 이상이어야 합니다: " + request.limit());
+        }
+        if (request.limit() > MAX_LIMIT) {
+            throw new ArticleSearchConditionInvalidException(
+                    "limit은 " + MAX_LIMIT + " 이하여야 합니다: " + request.limit());
+        }
+
         ArticleSearchCommand command = new ArticleSearchCommand(
                 request.keyword(),
                 request.sourceIn(),
                 request.publishDateFrom(),
                 request.publishDateTo(),
+                request.orderBy(),
+                request.direction(),
+                request.cursor(),
+                request.after(),
+                request.idAfter(),
+                request.limit(),
                 requestUserId
         );
 

@@ -44,4 +44,7 @@ public interface CommentRepository extends JpaRepository<Comment, UUID>, Comment
 
   // 기사 물리 삭제 시 댓글 정리 (MID4-146)
   void deleteByArticle_Id(UUID articleId);
+
+  // 기사 댓글 수 집계. 논리 삭제된 댓글과 탈퇴 사용자의 댓글을 제외한다. (MID4-163)
+  long countByArticle_IdAndDeletedAtIsNullAndUser_DeletedAtIsNull(UUID articleId);
 }

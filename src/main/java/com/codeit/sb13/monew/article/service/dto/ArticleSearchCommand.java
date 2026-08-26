@@ -1,6 +1,7 @@
 package com.codeit.sb13.monew.article.service.dto;
 
 import com.codeit.sb13.monew.article.domain.ArticleSource;
+import org.springframework.data.domain.Sort;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -12,6 +13,12 @@ public record ArticleSearchCommand(
         List<ArticleSource> sourceIn,
         LocalDateTime publishDateFrom,
         LocalDateTime publishDateTo,
+        ArticleOrderBy orderBy,
+        Sort.Direction direction,
+        String cursor,
+        LocalDateTime after,
+        UUID idAfter,
+        int limit,
         UUID requestUserId
 ) {
 }

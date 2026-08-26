@@ -1,6 +1,7 @@
 package com.codeit.sb13.monew.article.service;
 
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchCondition;
+import com.codeit.sb13.monew.article.repository.dto.ArticleSearchPage;
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchRow;
 import com.codeit.sb13.monew.article.s3.service.dto.ArticleBackupItem;
 import com.codeit.sb13.monew.article.service.dto.ArticleDto;
@@ -9,11 +10,13 @@ import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.mapper.ArticleMapper;
 import com.codeit.sb13.monew.article.repository.ArticleRepository;
 import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
+import com.codeit.sb13.monew.article.service.dto.ArticleOrderBy;
 import com.codeit.sb13.monew.article.service.dto.ArticleRequest;
 import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
 import com.codeit.sb13.monew.article.service.impl.ArticleServiceImpl;
 import com.codeit.sb13.monew.comment.repository.CommentLikeRepository;
 import com.codeit.sb13.monew.comment.repository.CommentRepository;
+import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.ApiErrorCode;
 import com.codeit.sb13.monew.global.exception.article.ArticleBackupDateInvalidException;
 import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
@@ -29,6 +32,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Sort;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
@@ -297,7 +301,10 @@ class ArticleServiceTest {
                 .thenReturn(true);
         when(articleViewRepository.countByArticle_IdAndUser_DeletedAtIsNull(testArticleId))
                 .thenReturn(7L);
-        when(articleMapper.toDto(testArticle, true, 0L, 7L))
+        when(commentRepository
+                .countByArticle_IdAndDeletedAtIsNullAndUser_DeletedAtIsNull(testArticleId))
+                .thenReturn(6L);
+        when(articleMapper.toDto(testArticle, true, 6L, 7L))
                 .thenReturn(expectedDto);
 
         // when
@@ -305,7 +312,7 @@ class ArticleServiceTest {
 
         // then
         assertThat(result).isEqualTo(expectedDto);
-        verify(articleMapper).toDto(testArticle, true, 0L, 7L);
+        verify(articleMapper).toDto(testArticle, true, 6L, 7L);
     }
 
     @Test
@@ -345,14 +352,22 @@ class ArticleServiceTest {
     void testSearchArticlesPassesCondition() {
         // given
         UUID userId = UUID.randomUUID();
+        UUID idAfter = UUID.randomUUID();
         ArticleSearchCommand command = new ArticleSearchCommand(
                 "반도체",
                 List.of(ArticleSource.NAVER, ArticleSource.CHOSUN),
                 LocalDateTime.of(2026, 8, 1, 0, 0),
                 LocalDateTime.of(2026, 8, 31, 0, 0),
+                ArticleOrderBy.VIEW_COUNT,
+                Sort.Direction.ASC,
+                "10",
+                LocalDateTime.of(2026, 8, 20, 12, 0),
+                idAfter,
+                30,
                 userId
         );
-        when(articleRepository.search(any(ArticleSearchCondition.class))).thenReturn(List.of());
+        when(articleRepository.search(any(ArticleSearchCondition.class)))
+                .thenReturn(new ArticleSearchPage(List.of(), false, 0L));
 
         // when
         articleService.searchArticles(command);
@@ -369,31 +384,53 @@ class ArticleServiceTest {
         assertThat(condition.publishDateFrom()).isEqualTo(LocalDateTime.of(2026, 8, 1, 0, 0));
         assertThat(condition.publishDateTo()).isEqualTo(LocalDateTime.of(2026, 8, 31, 0, 0));
         assertThat(condition.requestUserId()).isEqualTo(userId);
+        assertThat(condition.orderBy()).isEqualTo(ArticleOrderBy.VIEW_COUNT);
+        assertThat(condition.direction()).isEqualTo(Sort.Direction.ASC);
+        assertThat(condition.cursor()).isEqualTo("10");
+        assertThat(condition.after()).isEqualTo(LocalDateTime.of(2026, 8, 20, 12, 0));
+        assertThat(condition.idAfter()).isEqualTo(idAfter);
+        assertThat(condition.limit()).isEqualTo(30);
     }
 
     @Test
-    @DisplayName("목록 조회 - 조회 결과를 ArticleDto로 변환하고 commentCount는 0으로 채운다")
+    @DisplayName("목록 조회 - 조회 결과의 집계값을 그대로 ArticleDto로 옮긴다")
     void testSearchArticlesMapsRows() {
         // given
         UUID userId = UUID.randomUUID();
-        ArticleSearchCommand command =
-                new ArticleSearchCommand(null, null, null, null, userId);
+        ArticleSearchCommand command = new ArticleSearchCommand(
+                null, null, null, null,
+                ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC, null, null, null, 50, userId);
 
         Article article = Article.create("제목", "요약", "https://example.com/1",
                 LocalDateTime.now(), ArticleSource.NAVER);
-        ArticleSearchRow row = new ArticleSearchRow(article, 5L, true);
-        ArticleDto dto = new ArticleDto(UUID.randomUUID(), ArticleSource.NAVER,
-                "https://example.com/1", "제목", LocalDateTime.now(), "요약", 0L, 5L, true);
+        // 다음 커서는 마지막 행의 id와 createdAt에서 뽑는다. 영속화되지 않은 엔티티는
+        // @GeneratedValue와 @CreatedDate가 채워지지 않아 둘 다 null이므로 직접 넣어준다.
+        UUID lastArticleId = UUID.randomUUID();
+        LocalDateTime lastCreatedAt = LocalDateTime.of(2026, 8, 20, 9, 0);
+        ReflectionTestUtils.setField(article, "id", lastArticleId);
+        ReflectionTestUtils.setField(article, "createdAt", lastCreatedAt);
 
-        when(articleRepository.search(any(ArticleSearchCondition.class))).thenReturn(List.of(row));
-        when(articleMapper.toDto(article, true, 0L, 5L)).thenReturn(dto);
+        ArticleSearchRow row = new ArticleSearchRow(article, 3L, 5L, true);
+        ArticleDto dto = new ArticleDto(UUID.randomUUID(), ArticleSource.NAVER,
+                "https://example.com/1", "제목", LocalDateTime.now(), "요약", 3L, 5L, true);
+
+        when(articleRepository.search(any(ArticleSearchCondition.class)))
+                .thenReturn(new ArticleSearchPage(List.of(row), true, 42L));
+        when(articleMapper.toDto(article, true, 3L, 5L)).thenReturn(dto);
 
         // when
-        List<ArticleDto> result = articleService.searchArticles(command);
+        CursorPageResponseDto<ArticleDto> result = articleService.searchArticles(command);
 
         // then
-        assertThat(result).containsExactly(dto);
-        verify(articleMapper).toDto(article, true, 0L, 5L);
+        assertThat(result.content()).containsExactly(dto);
+        assertThat(result.size()).isEqualTo(1);
+        assertThat(result.totalElements()).isEqualTo(42L);
+        assertThat(result.hasNext()).isTrue();
+        // publishDate 정렬이므로 nextCursor는 발행일이어야 한다.
+        assertThat(result.nextCursor()).isEqualTo(article.getDate().toString());
+        assertThat(result.nextAfter()).isEqualTo(lastCreatedAt.toString());
+        assertThat(result.nextIdAfter()).isEqualTo(lastArticleId.toString());
+        verify(articleMapper).toDto(article, true, 3L, 5L);
     }
 
     @Test
@@ -401,9 +438,11 @@ class ArticleServiceTest {
     void testSearchArticlesValidatesUserFirst() {
         // given
         UUID userId = UUID.randomUUID();
-        ArticleSearchCommand command =
-                new ArticleSearchCommand(null, null, null, null, userId);
-        when(articleRepository.search(any(ArticleSearchCondition.class))).thenReturn(List.of());
+        ArticleSearchCommand command = new ArticleSearchCommand(
+                null, null, null, null,
+                ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC, null, null, null, 50, userId);
+        when(articleRepository.search(any(ArticleSearchCondition.class)))
+                .thenReturn(new ArticleSearchPage(List.of(), false, 0L));
 
         // when
         articleService.searchArticles(command);

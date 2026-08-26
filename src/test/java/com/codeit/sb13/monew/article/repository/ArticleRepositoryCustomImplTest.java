@@ -1,13 +1,19 @@
 package com.codeit.sb13.monew.article.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.domain.ArticleView;
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchCondition;
+import com.codeit.sb13.monew.article.repository.dto.ArticleSearchPage;
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchRow;
+import com.codeit.sb13.monew.article.service.dto.ArticleOrderBy;
+import com.codeit.sb13.monew.comment.domain.Comment;
 import com.codeit.sb13.monew.global.config.JpaAuditingConfig;
+import com.codeit.sb13.monew.global.exception.article.ArticleSearchConditionInvalidException;
+import org.springframework.data.domain.Sort;
 import com.codeit.sb13.monew.global.config.QueryDslConfig;
 import com.codeit.sb13.monew.user.domain.User;
 import org.junit.jupiter.api.DisplayName;
@@ -19,6 +25,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -67,18 +74,72 @@ class ArticleRepositoryCustomImplTest {
         em.persist(ArticleView.create(article, user, LocalDateTime.now()));
     }
 
+    private Comment comment(Article article, User user) {
+        Comment comment = Comment.builder()
+                .article(article)
+                .user(user)
+                .content("댓글")
+                .build();
+        em.persist(comment);
+        return comment;
+    }
+
+    /**
+     * 커서를 넘겨 다음 페이지를 조회하는 조건을 만든다.
+     */
+    private ArticleSearchCondition page(ArticleOrderBy orderBy, Sort.Direction direction,
+                                        String cursor, LocalDateTime after, UUID idAfter,
+                                        int limit) {
+        return new ArticleSearchCondition(null, null, null, null,
+                orderBy, direction, cursor, after, idAfter, limit, null);
+    }
+
+    /**
+     * 한 페이지를 조회한 뒤 그 결과의 마지막 행에서 다음 커서를 뽑아 다시 조회한다.
+     * 서비스가 하는 커서 계산과 같은 방식이라, 실제 페이지 넘김을 그대로 재현한다.
+     */
+    private ArticleSearchPage nextPage(ArticleSearchPage current, ArticleOrderBy orderBy,
+                                       Sort.Direction direction, int limit) {
+        List<ArticleSearchRow> rows = current.rows();
+        ArticleSearchRow last = rows.get(rows.size() - 1);
+
+        String cursor = switch (orderBy) {
+            case COMMENT_COUNT -> String.valueOf(last.commentCount());
+            case VIEW_COUNT -> String.valueOf(last.viewCount());
+            case PUBLISH_DATE -> last.article().getDate().toString();
+        };
+
+        em.flush();
+        em.clear();
+        return articleRepository.search(page(orderBy, direction, cursor,
+                last.article().getCreatedAt(), last.article().getId(), limit));
+    }
+
+    private ArticleSearchPage firstPage(ArticleOrderBy orderBy, Sort.Direction direction, int limit) {
+        em.flush();
+        em.clear();
+        return articleRepository.search(page(orderBy, direction, null, null, null, limit));
+    }
+
     /**
      * 1차 캐시가 아니라 실제 쿼리 결과를 검증하도록 flush/clear 후 조회한다.
      */
     private List<ArticleSearchRow> search(ArticleSearchCondition condition) {
         em.flush();
         em.clear();
-        return articleRepository.search(condition);
+        return articleRepository.search(condition).rows();
     }
 
     private ArticleSearchCondition condition(String keyword, List<ArticleSource> sourceIn,
                                              LocalDateTime from, LocalDateTime to, UUID userId) {
-        return new ArticleSearchCondition(keyword, sourceIn, from, to, userId);
+        // 이 헬퍼의 기본값: 발행일 내림차순, 커서 없음.
+        return new ArticleSearchCondition(keyword, sourceIn, from, to,
+                ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC, null, null, null, 100, userId);
+    }
+
+    private ArticleSearchCondition sortedBy(ArticleOrderBy orderBy, Sort.Direction direction) {
+        return new ArticleSearchCondition(null, null, null, null,
+                orderBy, direction, null, null, null, 100, null);
     }
 
     private List<String> titlesOf(List<ArticleSearchRow> rows) {
@@ -264,5 +325,222 @@ class ArticleRepositoryCustomImplTest {
 
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).viewCount()).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("publishDate 오름차순 정렬")
+    void searchOrderByPublishDateAsc() {
+        persistArticle("가장 오래된 기사", "요약", D1, ArticleSource.NAVER);
+        persistArticle("중간 기사", "요약", D2, ArticleSource.CHOSUN);
+        persistArticle("가장 최신 기사", "요약", D3, ArticleSource.HANKYUNG);
+
+        List<ArticleSearchRow> rows =
+                search(sortedBy(ArticleOrderBy.PUBLISH_DATE, Sort.Direction.ASC));
+
+        assertThat(titlesOf(rows))
+                .containsExactly("가장 오래된 기사", "중간 기사", "가장 최신 기사");
+    }
+
+    @Test
+    @DisplayName("publishDate 내림차순 정렬")
+    void searchOrderByPublishDateDesc() {
+        persistArticle("가장 오래된 기사", "요약", D1, ArticleSource.NAVER);
+        persistArticle("중간 기사", "요약", D2, ArticleSource.CHOSUN);
+        persistArticle("가장 최신 기사", "요약", D3, ArticleSource.HANKYUNG);
+
+        List<ArticleSearchRow> rows =
+                search(sortedBy(ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC));
+
+        assertThat(titlesOf(rows))
+                .containsExactly("가장 최신 기사", "중간 기사", "가장 오래된 기사");
+    }
+
+
+    @Test
+    @DisplayName("commentCount는 논리 삭제된 댓글과 탈퇴 사용자의 댓글을 제외한다")
+    void commentCountExcludesDeletedCommentsAndWithdrawnUsers() {
+        Article article = persistArticle("기사", "요약", D1, ArticleSource.NAVER);
+        User active = persistUser();
+        User withdrawn = persistUser();
+
+        comment(article, active);              // 집계 대상
+        comment(article, active);              // 집계 대상
+        Comment deleted = comment(article, active);
+        deleted.softDelete();                  // 논리 삭제 -> 제외
+        comment(article, withdrawn);
+        withdrawn.softDelete();                // 탈퇴 사용자 -> 제외
+
+        List<ArticleSearchRow> rows = search(condition(null, null, null, null, null));
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).commentCount()).isEqualTo(2L);
+    }
+
+    @Test
+    @DisplayName("viewCount 내림차순 정렬")
+    void searchOrderByViewCountDesc() {
+        Article few = persistArticle("조회 적음", "요약", D1, ArticleSource.NAVER);
+        Article many = persistArticle("조회 많음", "요약", D2, ArticleSource.CHOSUN);
+        User u1 = persistUser();
+        User u2 = persistUser();
+
+        view(few, u1);
+        view(many, u1);
+        view(many, u2);
+
+        List<ArticleSearchRow> rows =
+                search(sortedBy(ArticleOrderBy.VIEW_COUNT, Sort.Direction.DESC));
+
+        assertThat(titlesOf(rows)).containsExactly("조회 많음", "조회 적음");
+    }
+
+    @Test
+    @DisplayName("commentCount 오름차순 정렬")
+    void searchOrderByCommentCountAsc() {
+        Article many = persistArticle("댓글 많음", "요약", D1, ArticleSource.NAVER);
+        Article few = persistArticle("댓글 적음", "요약", D2, ArticleSource.CHOSUN);
+        User user = persistUser();
+
+        comment(many, user);
+        comment(many, user);
+        comment(few, user);
+
+        List<ArticleSearchRow> rows =
+                search(sortedBy(ArticleOrderBy.COMMENT_COUNT, Sort.Direction.ASC));
+
+        assertThat(titlesOf(rows)).containsExactly("댓글 적음", "댓글 많음");
+    }
+
+    @Test
+    @DisplayName("커서로 페이지를 끝까지 넘겨도 중복이나 누락이 없다")
+    void cursorPagingCoversAllRowsWithoutDuplicates() {
+        for (int i = 1; i <= 7; i++) {
+            persistArticle("기사" + i, "요약", D1.plusDays(i), ArticleSource.NAVER);
+        }
+
+        List<String> collected = new ArrayList<>();
+        ArticleSearchPage page = firstPage(ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC, 3);
+        collected.addAll(titlesOf(page.rows()));
+
+        while (page.hasNext()) {
+            page = nextPage(page, ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC, 3);
+            collected.addAll(titlesOf(page.rows()));
+        }
+
+        assertThat(collected).containsExactly(
+                "기사7", "기사6", "기사5", "기사4", "기사3", "기사2", "기사1");
+        assertThat(page.hasNext()).isFalse();
+        assertThat(page.totalElements()).isEqualTo(7L);
+    }
+
+    @Test
+    @DisplayName("정렬 값이 모두 동점이어도 커서 페이지네이션이 안정적으로 동작한다")
+    void cursorPagingIsStableWhenPrimaryKeyTies() {
+        // 발행일이 전부 같아 주 기준으로는 순서가 갈리지 않는다.
+        // createdAt까지 같아지면 id 타이브레이커가 순서를 확정해야 한다.
+        for (int i = 1; i <= 6; i++) {
+            persistArticle("동점" + i, "요약", D1, ArticleSource.NAVER);
+        }
+
+        List<String> collected = new ArrayList<>();
+        ArticleSearchPage page = firstPage(ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC, 2);
+        collected.addAll(titlesOf(page.rows()));
+
+        while (page.hasNext()) {
+            page = nextPage(page, ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC, 2);
+            collected.addAll(titlesOf(page.rows()));
+        }
+
+        assertThat(collected).hasSize(6);
+        assertThat(collected).doesNotHaveDuplicates();
+        assertThat(collected).containsExactlyInAnyOrder(
+                "동점1", "동점2", "동점3", "동점4", "동점5", "동점6");
+    }
+
+    @Test
+    @DisplayName("마지막 페이지에서는 hasNext가 false다")
+    void lastPageHasNoNext() {
+        persistArticle("기사1", "요약", D1, ArticleSource.NAVER);
+        persistArticle("기사2", "요약", D2, ArticleSource.CHOSUN);
+
+        ArticleSearchPage page = firstPage(ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC, 5);
+
+        assertThat(page.rows()).hasSize(2);
+        assertThat(page.hasNext()).isFalse();
+        assertThat(page.totalElements()).isEqualTo(2L);
+    }
+
+
+    @Test
+    @DisplayName("커서 세 값 중 일부만 오면 예외를 던진다")
+    void partialCursorIsRejected() {
+        persistArticle("기사", "요약", D1, ArticleSource.NAVER);
+
+        // cursor만 있고 after, idAfter가 없다.
+        assertThatThrownBy(() -> articleRepository.search(
+                page(ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC,
+                        D1.toString(), null, null, 10)))
+                .isInstanceOf(ArticleSearchConditionInvalidException.class);
+    }
+
+    @Test
+    @DisplayName("viewCount 정렬에서도 커서로 페이지를 끝까지 넘길 수 있다")
+    void cursorPagingWorksForViewCountOrdering() {
+        User u1 = persistUser();
+        User u2 = persistUser();
+        User u3 = persistUser();
+
+        Article three = persistArticle("조회3", "요약", D1, ArticleSource.NAVER);
+        Article two = persistArticle("조회2", "요약", D2, ArticleSource.CHOSUN);
+        Article one = persistArticle("조회1", "요약", D3, ArticleSource.HANKYUNG);
+        Article zero = persistArticle("조회0", "요약", D1, ArticleSource.NAVER);
+
+        view(three, u1);
+        view(three, u2);
+        view(three, u3);
+        view(two, u1);
+        view(two, u2);
+        view(one, u1);
+
+        List<String> collected = new ArrayList<>();
+        ArticleSearchPage p = firstPage(ArticleOrderBy.VIEW_COUNT, Sort.Direction.DESC, 2);
+        collected.addAll(titlesOf(p.rows()));
+
+        while (p.hasNext()) {
+            p = nextPage(p, ArticleOrderBy.VIEW_COUNT, Sort.Direction.DESC, 2);
+            collected.addAll(titlesOf(p.rows()));
+        }
+
+        assertThat(collected).containsExactly("조회3", "조회2", "조회1", "조회0");
+        assertThat(zero).isNotNull();
+    }
+
+    @Test
+    @DisplayName("commentCount 정렬에서도 커서로 페이지를 끝까지 넘길 수 있다")
+    void cursorPagingWorksForCommentCountOrdering() {
+        User user = persistUser();
+
+        Article three = persistArticle("댓글3", "요약", D1, ArticleSource.NAVER);
+        Article two = persistArticle("댓글2", "요약", D2, ArticleSource.CHOSUN);
+        Article one = persistArticle("댓글1", "요약", D3, ArticleSource.HANKYUNG);
+        persistArticle("댓글0", "요약", D1, ArticleSource.NAVER);
+
+        comment(three, user);
+        comment(three, user);
+        comment(three, user);
+        comment(two, user);
+        comment(two, user);
+        comment(one, user);
+
+        List<String> collected = new ArrayList<>();
+        ArticleSearchPage p = firstPage(ArticleOrderBy.COMMENT_COUNT, Sort.Direction.ASC, 2);
+        collected.addAll(titlesOf(p.rows()));
+
+        while (p.hasNext()) {
+            p = nextPage(p, ArticleOrderBy.COMMENT_COUNT, Sort.Direction.ASC, 2);
+            collected.addAll(titlesOf(p.rows()));
+        }
+
+        assertThat(collected).containsExactly("댓글0", "댓글1", "댓글2", "댓글3");
     }
 }

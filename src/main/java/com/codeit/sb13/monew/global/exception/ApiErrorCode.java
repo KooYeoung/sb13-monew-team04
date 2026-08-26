@@ -28,6 +28,7 @@ public enum ApiErrorCode {
     ARTICLE_ADVISORY_LOCK_FAILED("ART_013", HttpStatus.INTERNAL_SERVER_ERROR, "기사 백업 락 처리에 실패했습니다."),
     ARTICLE_RESTORE_DATE_INVALID("ART_014", HttpStatus.BAD_REQUEST, "기사 복구 날짜 조건이 올바르지 않습니다."),
     ARTICLE_RESTORE_FAILED("ART_015", HttpStatus.INTERNAL_SERVER_ERROR, "기사 복구 처리에 실패했습니다."),
+    ARTICLE_SEARCH_CONDITION_INVALID("ART_016", HttpStatus.BAD_REQUEST, "기사 목록 조회 조건이 올바르지 않습니다."),
 
     // INTEREST INT
     INTEREST_NOT_FOUND("INT_001", HttpStatus.NOT_FOUND, "관심사를 찾을 수 없습니다."),

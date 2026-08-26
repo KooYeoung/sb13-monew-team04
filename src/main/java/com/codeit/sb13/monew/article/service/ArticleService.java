@@ -6,6 +6,7 @@ import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.service.dto.ArticleRequest;
 import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
+import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -37,8 +38,8 @@ public interface ArticleService {
     // 출처 목록 조회
     List<ArticleSource> getSources();
 
-    // 목록 조회 (필터 적용, 요청자 기준 viewedByMe 포함)
-    List<ArticleDto> searchArticles(ArticleSearchCommand command);
+    // 목록 조회 (필터·정렬·커서 페이지네이션, 요청자 기준 viewedByMe 포함)
+    CursorPageResponseDto<ArticleDto> searchArticles(ArticleSearchCommand command);
 
     List<ArticleBackupItem> findArticleBackupItemsByDateRange(LocalDate fromInclusive,
                                                               LocalDate toExclusive);

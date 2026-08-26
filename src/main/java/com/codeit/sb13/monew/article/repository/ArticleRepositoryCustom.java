@@ -1,11 +1,9 @@
 package com.codeit.sb13.monew.article.repository;
 
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchCondition;
-import com.codeit.sb13.monew.article.repository.dto.ArticleSearchRow;
-
-import java.util.List;
+import com.codeit.sb13.monew.article.repository.dto.ArticleSearchPage;
 
 public interface ArticleRepositoryCustom {
 
-    List<ArticleSearchRow> search(ArticleSearchCondition condition);
+    ArticleSearchPage search(ArticleSearchCondition condition);
 }

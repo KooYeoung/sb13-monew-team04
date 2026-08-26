@@ -7,6 +7,7 @@ import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
 import com.codeit.sb13.monew.article.service.ArticleService;
 import com.codeit.sb13.monew.article.service.ArticleViewService;
 import com.codeit.sb13.monew.article.service.dto.ArticleViewDto;
+import com.codeit.sb13.monew.comment.repository.CommentRepository;
 import com.codeit.sb13.monew.global.exception.article.ArticleViewConflictException;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.service.UserService;
@@ -30,6 +31,7 @@ public class ArticleViewServiceImpl implements ArticleViewService {
     private final UserService userService;
     private final ArticleMapper articleMapper;
     private final ArticleViewSaveService articleViewSaveService;
+    private final CommentRepository commentRepository;
 
     @Override
     @Transactional
@@ -43,8 +45,10 @@ public class ArticleViewServiceImpl implements ArticleViewService {
 
         long viewCount = articleViewRepository.countByArticleAndUser_DeletedAtIsNull(article);
 
-        // commentCount는 댓글 집계 방식 확정 전까지 0 (MID4-163 → MID4-147)
-        return articleMapper.toViewDto(articleView, 0L, viewCount);
+        long commentCount = commentRepository
+                .countByArticle_IdAndDeletedAtIsNullAndUser_DeletedAtIsNull(articleId);
+
+        return articleMapper.toViewDto(articleView, commentCount, viewCount);
     }
 
     @Override
