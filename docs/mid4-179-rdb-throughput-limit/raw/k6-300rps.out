@@ -1,0 +1,217 @@
+time="2026-08-26T02:22:28+09:00" level=warning msg="Found orphan containers ([sb13-monew-team04-postgres-1]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+
+         /\      Grafana   /?얄?
+    /\  /  \     |\  __   /  /
+   /  \/    \    | |/ /  /   ?얄?
+  /          \   |   (  |  (??  |
+ / __________ \  |_|\_\  \_____/
+
+     execution: local
+        script: /scripts/activity-history-baseline.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 500 max VUs, 1m30s max duration (incl. graceful stop):
+              * baseline: 300.00 iterations/s for 1m0s (maxVUs: 500, gracefulStop: 30s)
+
+
+running (0m01.0s), 101/500 VUs, 189 complete and 0 interrupted iterations
+baseline   [   2% ] 101/500 VUs  0m01.0s/1m0s  300.00 iters/s
+
+running (0m02.0s), 217/500 VUs, 373 complete and 0 interrupted iterations
+baseline   [   3% ] 217/500 VUs  0m02.0s/1m0s  300.00 iters/s
+
+running (0m03.0s), 283/500 VUs, 607 complete and 0 interrupted iterations
+baseline   [   5% ] 283/500 VUs  0m03.0s/1m0s  300.00 iters/s
+
+running (0m04.0s), 345/500 VUs, 845 complete and 0 interrupted iterations
+baseline   [   7% ] 345/500 VUs  0m04.0s/1m0s  300.00 iters/s
+
+running (0m05.0s), 421/500 VUs, 1069 complete and 0 interrupted iterations
+baseline   [   8% ] 421/500 VUs  0m05.0s/1m0s  300.00 iters/s
+
+running (0m06.0s), 486/500 VUs, 1304 complete and 0 interrupted iterations
+baseline   [  10% ] 486/500 VUs  0m06.0s/1m0s  300.00 iters/s
+time="2026-08-25T17:22:35Z" level=warning msg="Insufficient VUs, reached 500 active VUs and cannot initialize more" executor=constant-arrival-rate scenario=baseline
+
+running (0m07.0s), 500/500 VUs, 1548 complete and 0 interrupted iterations
+baseline   [  12% ] 500/500 VUs  0m07.0s/1m0s  300.00 iters/s
+
+running (0m08.0s), 500/500 VUs, 1778 complete and 0 interrupted iterations
+baseline   [  13% ] 500/500 VUs  0m08.0s/1m0s  300.00 iters/s
+
+running (0m09.0s), 495/500 VUs, 2017 complete and 0 interrupted iterations
+baseline   [  15% ] 495/500 VUs  0m09.0s/1m0s  300.00 iters/s
+
+running (0m10.0s), 500/500 VUs, 2251 complete and 0 interrupted iterations
+baseline   [  17% ] 500/500 VUs  0m10.0s/1m0s  300.00 iters/s
+
+running (0m09.1s), 498/500 VUs, 2493 complete and 0 interrupted iterations
+baseline   [  18% ] 498/500 VUs  0m11.0s/1m0s  300.00 iters/s
+
+running (0m10.1s), 500/500 VUs, 2733 complete and 0 interrupted iterations
+baseline   [  20% ] 500/500 VUs  0m12.0s/1m0s  300.00 iters/s
+
+running (0m11.1s), 499/500 VUs, 2971 complete and 0 interrupted iterations
+baseline   [  22% ] 499/500 VUs  0m13.0s/1m0s  300.00 iters/s
+
+running (0m12.1s), 497/500 VUs, 3198 complete and 0 interrupted iterations
+baseline   [  23% ] 497/500 VUs  0m14.0s/1m0s  300.00 iters/s
+
+running (0m13.1s), 500/500 VUs, 3429 complete and 0 interrupted iterations
+baseline   [  25% ] 500/500 VUs  0m15.0s/1m0s  300.00 iters/s
+
+running (0m14.1s), 500/500 VUs, 3655 complete and 0 interrupted iterations
+baseline   [  27% ] 500/500 VUs  0m16.0s/1m0s  300.00 iters/s
+
+running (0m15.1s), 499/500 VUs, 3897 complete and 0 interrupted iterations
+baseline   [  28% ] 499/500 VUs  0m17.0s/1m0s  300.00 iters/s
+
+running (0m16.1s), 497/500 VUs, 4132 complete and 0 interrupted iterations
+baseline   [  30% ] 497/500 VUs  0m18.0s/1m0s  300.00 iters/s
+
+running (0m17.1s), 500/500 VUs, 4359 complete and 0 interrupted iterations
+baseline   [  32% ] 500/500 VUs  0m19.0s/1m0s  300.00 iters/s
+
+running (0m18.1s), 498/500 VUs, 4575 complete and 0 interrupted iterations
+baseline   [  33% ] 498/500 VUs  0m20.0s/1m0s  300.00 iters/s
+
+running (0m19.1s), 500/500 VUs, 4780 complete and 0 interrupted iterations
+baseline   [  35% ] 500/500 VUs  0m21.0s/1m0s  300.00 iters/s
+
+running (0m20.1s), 500/500 VUs, 4996 complete and 0 interrupted iterations
+baseline   [  37% ] 500/500 VUs  0m22.0s/1m0s  300.00 iters/s
+
+running (0m21.1s), 499/500 VUs, 5219 complete and 0 interrupted iterations
+baseline   [  38% ] 499/500 VUs  0m23.0s/1m0s  300.00 iters/s
+
+running (0m22.1s), 496/500 VUs, 5458 complete and 0 interrupted iterations
+baseline   [  40% ] 496/500 VUs  0m24.0s/1m0s  300.00 iters/s
+
+running (0m23.1s), 499/500 VUs, 5695 complete and 0 interrupted iterations
+baseline   [  42% ] 499/500 VUs  0m25.0s/1m0s  300.00 iters/s
+
+running (0m24.1s), 498/500 VUs, 5924 complete and 0 interrupted iterations
+baseline   [  43% ] 498/500 VUs  0m26.0s/1m0s  300.00 iters/s
+
+running (0m25.1s), 500/500 VUs, 6153 complete and 0 interrupted iterations
+baseline   [  45% ] 500/500 VUs  0m27.0s/1m0s  300.00 iters/s
+
+running (0m26.1s), 498/500 VUs, 6395 complete and 0 interrupted iterations
+baseline   [  47% ] 498/500 VUs  0m28.0s/1m0s  300.00 iters/s
+
+running (0m27.1s), 500/500 VUs, 6624 complete and 0 interrupted iterations
+baseline   [  48% ] 500/500 VUs  0m29.0s/1m0s  300.00 iters/s
+
+running (0m28.1s), 499/500 VUs, 6860 complete and 0 interrupted iterations
+baseline   [  50% ] 499/500 VUs  0m30.0s/1m0s  300.00 iters/s
+
+running (0m29.1s), 499/500 VUs, 7097 complete and 0 interrupted iterations
+baseline   [  52% ] 499/500 VUs  0m31.0s/1m0s  300.00 iters/s
+
+running (0m30.1s), 498/500 VUs, 7328 complete and 0 interrupted iterations
+baseline   [  53% ] 498/500 VUs  0m32.0s/1m0s  300.00 iters/s
+
+running (0m31.1s), 499/500 VUs, 7553 complete and 0 interrupted iterations
+baseline   [  55% ] 499/500 VUs  0m33.0s/1m0s  300.00 iters/s
+
+running (0m32.1s), 500/500 VUs, 7783 complete and 0 interrupted iterations
+baseline   [  57% ] 500/500 VUs  0m34.0s/1m0s  300.00 iters/s
+
+running (0m33.1s), 498/500 VUs, 8016 complete and 0 interrupted iterations
+baseline   [  58% ] 498/500 VUs  0m35.0s/1m0s  300.00 iters/s
+
+running (0m34.1s), 499/500 VUs, 8242 complete and 0 interrupted iterations
+baseline   [  60% ] 499/500 VUs  0m36.0s/1m0s  300.00 iters/s
+
+running (0m35.1s), 499/500 VUs, 8474 complete and 0 interrupted iterations
+baseline   [  62% ] 499/500 VUs  0m37.0s/1m0s  300.00 iters/s
+
+running (0m36.1s), 499/500 VUs, 8708 complete and 0 interrupted iterations
+baseline   [  63% ] 499/500 VUs  0m38.0s/1m0s  300.00 iters/s
+
+running (0m37.1s), 496/500 VUs, 8929 complete and 0 interrupted iterations
+baseline   [  65% ] 496/500 VUs  0m39.0s/1m0s  300.00 iters/s
+
+running (0m38.1s), 499/500 VUs, 9161 complete and 0 interrupted iterations
+baseline   [  67% ] 499/500 VUs  0m40.0s/1m0s  300.00 iters/s
+
+running (0m37.2s), 498/500 VUs, 9401 complete and 0 interrupted iterations
+baseline   [  68% ] 498/500 VUs  0m41.0s/1m0s  300.00 iters/s
+
+running (0m38.2s), 498/500 VUs, 9626 complete and 0 interrupted iterations
+baseline   [  70% ] 498/500 VUs  0m42.0s/1m0s  300.00 iters/s
+
+running (0m39.2s), 497/500 VUs, 9870 complete and 0 interrupted iterations
+baseline   [  72% ] 497/500 VUs  0m43.0s/1m0s  300.00 iters/s
+
+running (0m40.2s), 500/500 VUs, 10085 complete and 0 interrupted iterations
+baseline   [  73% ] 500/500 VUs  0m44.0s/1m0s  300.00 iters/s
+
+running (0m41.2s), 500/500 VUs, 10312 complete and 0 interrupted iterations
+baseline   [  75% ] 500/500 VUs  0m45.0s/1m0s  300.00 iters/s
+
+running (0m42.2s), 500/500 VUs, 10547 complete and 0 interrupted iterations
+baseline   [  77% ] 500/500 VUs  0m46.0s/1m0s  300.00 iters/s
+
+running (0m43.2s), 500/500 VUs, 10780 complete and 0 interrupted iterations
+baseline   [  78% ] 500/500 VUs  0m47.0s/1m0s  300.00 iters/s
+
+running (0m44.2s), 499/500 VUs, 11018 complete and 0 interrupted iterations
+baseline   [  80% ] 499/500 VUs  0m48.0s/1m0s  300.00 iters/s
+
+running (0m45.2s), 500/500 VUs, 11238 complete and 0 interrupted iterations
+baseline   [  82% ] 500/500 VUs  0m49.0s/1m0s  300.00 iters/s
+
+running (0m46.2s), 497/500 VUs, 11462 complete and 0 interrupted iterations
+baseline   [  83% ] 497/500 VUs  0m50.0s/1m0s  300.00 iters/s
+
+running (0m47.2s), 500/500 VUs, 11669 complete and 0 interrupted iterations
+baseline   [  85% ] 500/500 VUs  0m51.0s/1m0s  300.00 iters/s
+
+running (0m48.2s), 500/500 VUs, 11892 complete and 0 interrupted iterations
+baseline   [  87% ] 500/500 VUs  0m52.0s/1m0s  300.00 iters/s
+
+running (0m49.2s), 500/500 VUs, 12091 complete and 0 interrupted iterations
+baseline   [  88% ] 500/500 VUs  0m53.0s/1m0s  300.00 iters/s
+
+running (0m50.2s), 499/500 VUs, 12313 complete and 0 interrupted iterations
+baseline   [  90% ] 499/500 VUs  0m54.0s/1m0s  300.00 iters/s
+
+running (0m51.2s), 500/500 VUs, 12535 complete and 0 interrupted iterations
+baseline   [  92% ] 500/500 VUs  0m55.0s/1m0s  300.00 iters/s
+
+running (0m52.2s), 500/500 VUs, 12757 complete and 0 interrupted iterations
+baseline   [  93% ] 500/500 VUs  0m56.0s/1m0s  300.00 iters/s
+
+running (0m53.2s), 498/500 VUs, 12982 complete and 0 interrupted iterations
+baseline   [  95% ] 498/500 VUs  0m57.0s/1m0s  300.00 iters/s
+
+running (0m54.2s), 498/500 VUs, 13211 complete and 0 interrupted iterations
+baseline   [  97% ] 498/500 VUs  0m58.0s/1m0s  300.00 iters/s
+
+running (0m55.2s), 497/500 VUs, 13433 complete and 0 interrupted iterations
+baseline   [  98% ] 497/500 VUs  0m59.0s/1m0s  300.00 iters/s
+
+running (0m56.2s), 500/500 VUs, 13651 complete and 0 interrupted iterations
+baseline   [ 100% ] 500/500 VUs  1m00.0s/1m0s  300.00 iters/s
+
+running (0m57.2s), 275/500 VUs, 13883 complete and 0 interrupted iterations
+baseline ??[ 100% ] 499/500 VUs  1m0s  300.00 iters/s
+Activity history k6 summary
+scenario: baseline
+url: http://host.docker.internal:8080/api/user-activities/00000001-0000-4000-8000-000000000001
+targetUserId: 00000001-0000-4000-8000-000000000001
+summaryPath: /results/mid4-179-rdb-throughput-limit/activity-history-300rps-summary.json
+requests: 14158
+rps: 243.99
+droppedIterations: 3842
+errorRate: 0.00%
+duration.avg: 1918.65 ms
+duration.p95: 2406.79 ms
+duration.p99: 2557.73 ms
+checksRate: 100.00%
+
+running (0m58.0s), 000/500 VUs, 14158 complete and 0 interrupted iterations
+baseline ??[ 100% ] 000/500 VUs  1m0s  300.00 iters/s
+time="2026-08-25T17:23:27Z" level=error msg="thresholds on metrics 'dropped_iterations, http_req_duration' have been crossed"
+System.Management.Automation.RemoteException

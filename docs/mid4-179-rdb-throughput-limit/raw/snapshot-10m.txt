@@ -1,0 +1,22 @@
+db_size=3655 MB
+
+    relname    | n_live_tup | total_size
+---------------+------------+------------
+ article_views |    2999999 | 926 MB
+ articles      |    1999802 | 848 MB
+ comment_likes |    3000000 | 655 MB
+ comments      |    4000296 | 1027 MB
+ interests     |      50000 | 7976 kB
+ keywords      |     150000 | 27 MB
+ subscriptions |     500045 | 134 MB
+ users         |     100000 | 23 MB
+(8 rows)
+
+   tablename   |               indexname
+---------------+---------------------------------------
+ article_views | idx_article_views_user_viewed_id
+ comment_likes | idx_comment_likes_liked_by_created_id
+ comments      | idx_comments_article
+ comments      | idx_comments_user_created_id
+ subscriptions | idx_subscriptions_user_created_id
+(5 rows)

@@ -1,0 +1,20 @@
+{
+  "scenario": "smoke",
+  "url": "http://host.docker.internal:8080/api/user-activities/00000001-0000-4000-8000-000000000001",
+  "targetUserId": "00000001-0000-4000-8000-000000000001",
+  "expectedStatus": 200,
+  "requestedRate": null,
+  "duration": null,
+  "preAllocatedVUs": null,
+  "maxVUs": null,
+  "metrics": {
+    "requests": 1,
+    "rps": 0.9611873906166947,
+    "droppedIterations": 0,
+    "errorRate": 0,
+    "durationAvgMs": 34.49921,
+    "durationP95Ms": 34.49921,
+    "durationP99Ms": 34.49921,
+    "checksRate": 1
+  }
+}

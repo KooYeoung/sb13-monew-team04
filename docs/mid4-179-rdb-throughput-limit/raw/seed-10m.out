@@ -1,0 +1,17 @@
+CREATE FUNCTION
+CREATE FUNCTION
+NOTICE:  Seeding activity history data. scale=10000000, users=100000, interests=50000, articles=2000000, comments=4000000, likes=3000000, views=3000000
+             metric              |                value
+---------------------------------+--------------------------------------
+ scale_count                     | 10000000
+ target_user_id                  | 00000001-0000-4000-8000-000000000001
+ target_rows_per_recent_activity | 10000
+ users                           | 100000
+ interests                       | 50000
+ keywords                        | 150000
+ subscriptions                   | 500045
+ articles                        | 2000000
+ comments                        | 4000000
+ comment_likes                   | 3000000
+ article_views                   | 3000000
+(11 rows)

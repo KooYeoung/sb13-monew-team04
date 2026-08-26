@@ -1,0 +1,211 @@
+time="2026-08-26T02:21:23+09:00" level=warning msg="Found orphan containers ([sb13-monew-team04-postgres-1]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+
+         /\      Grafana   /?얄?
+    /\  /  \     |\  __   /  /
+   /  \/    \    | |/ /  /   ?얄?
+  /          \   |   (  |  (??  |
+ / __________ \  |_|\_\  \_____/
+
+     execution: local
+        script: /scripts/activity-history-baseline.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 500 max VUs, 1m30s max duration (incl. graceful stop):
+              * baseline: 200.00 iterations/s for 1m0s (maxVUs: 500, gracefulStop: 30s)
+
+
+running (0m01.0s), 005/500 VUs, 189 complete and 0 interrupted iterations
+baseline   [   2% ] 005/500 VUs  0m01.0s/1m0s  200.00 iters/s
+
+running (0m02.0s), 005/500 VUs, 389 complete and 0 interrupted iterations
+baseline   [   3% ] 005/500 VUs  0m02.0s/1m0s  200.00 iters/s
+
+running (0m03.0s), 004/500 VUs, 590 complete and 0 interrupted iterations
+baseline   [   5% ] 004/500 VUs  0m03.0s/1m0s  200.00 iters/s
+
+running (0m04.0s), 004/500 VUs, 790 complete and 0 interrupted iterations
+baseline   [   7% ] 004/500 VUs  0m04.0s/1m0s  200.00 iters/s
+
+running (0m05.0s), 004/500 VUs, 990 complete and 0 interrupted iterations
+baseline   [   8% ] 004/500 VUs  0m05.0s/1m0s  200.00 iters/s
+
+running (0m06.0s), 005/500 VUs, 1189 complete and 0 interrupted iterations
+baseline   [  10% ] 005/500 VUs  0m06.0s/1m0s  200.00 iters/s
+
+running (0m07.0s), 004/500 VUs, 1390 complete and 0 interrupted iterations
+baseline   [  12% ] 004/500 VUs  0m07.0s/1m0s  200.00 iters/s
+
+running (0m08.0s), 004/500 VUs, 1590 complete and 0 interrupted iterations
+baseline   [  13% ] 004/500 VUs  0m08.0s/1m0s  200.00 iters/s
+
+running (0m09.0s), 004/500 VUs, 1790 complete and 0 interrupted iterations
+baseline   [  15% ] 004/500 VUs  0m09.0s/1m0s  200.00 iters/s
+
+running (0m10.0s), 004/500 VUs, 1990 complete and 0 interrupted iterations
+baseline   [  17% ] 004/500 VUs  0m10.0s/1m0s  200.00 iters/s
+
+running (0m11.0s), 004/500 VUs, 2190 complete and 0 interrupted iterations
+baseline   [  18% ] 004/500 VUs  0m11.0s/1m0s  200.00 iters/s
+
+running (0m12.0s), 004/500 VUs, 2390 complete and 0 interrupted iterations
+baseline   [  20% ] 004/500 VUs  0m12.0s/1m0s  200.00 iters/s
+
+running (0m13.0s), 004/500 VUs, 2590 complete and 0 interrupted iterations
+baseline   [  22% ] 004/500 VUs  0m13.0s/1m0s  200.00 iters/s
+
+running (0m14.0s), 004/500 VUs, 2790 complete and 0 interrupted iterations
+baseline   [  23% ] 004/500 VUs  0m14.0s/1m0s  200.00 iters/s
+
+running (0m15.0s), 004/500 VUs, 2990 complete and 0 interrupted iterations
+baseline   [  25% ] 004/500 VUs  0m15.0s/1m0s  200.00 iters/s
+
+running (0m16.0s), 005/500 VUs, 3189 complete and 0 interrupted iterations
+baseline   [  27% ] 005/500 VUs  0m16.0s/1m0s  200.00 iters/s
+
+running (0m17.0s), 004/500 VUs, 3390 complete and 0 interrupted iterations
+baseline   [  28% ] 004/500 VUs  0m17.0s/1m0s  200.00 iters/s
+
+running (0m18.0s), 004/500 VUs, 3590 complete and 0 interrupted iterations
+baseline   [  30% ] 004/500 VUs  0m18.0s/1m0s  200.00 iters/s
+
+running (0m19.0s), 004/500 VUs, 3790 complete and 0 interrupted iterations
+baseline   [  32% ] 004/500 VUs  0m19.0s/1m0s  200.00 iters/s
+
+running (0m20.0s), 004/500 VUs, 3990 complete and 0 interrupted iterations
+baseline   [  33% ] 004/500 VUs  0m20.0s/1m0s  200.00 iters/s
+
+running (0m19.1s), 005/500 VUs, 4189 complete and 0 interrupted iterations
+baseline   [  35% ] 005/500 VUs  0m21.0s/1m0s  200.00 iters/s
+
+running (0m20.1s), 004/500 VUs, 4390 complete and 0 interrupted iterations
+baseline   [  37% ] 004/500 VUs  0m22.0s/1m0s  200.00 iters/s
+
+running (0m21.1s), 004/500 VUs, 4590 complete and 0 interrupted iterations
+baseline   [  38% ] 004/500 VUs  0m23.0s/1m0s  200.00 iters/s
+
+running (0m22.1s), 004/500 VUs, 4790 complete and 0 interrupted iterations
+baseline   [  40% ] 004/500 VUs  0m24.0s/1m0s  200.00 iters/s
+
+running (0m23.1s), 004/500 VUs, 4990 complete and 0 interrupted iterations
+baseline   [  42% ] 004/500 VUs  0m25.0s/1m0s  200.00 iters/s
+
+running (0m24.1s), 005/500 VUs, 5189 complete and 0 interrupted iterations
+baseline   [  43% ] 005/500 VUs  0m26.0s/1m0s  200.00 iters/s
+
+running (0m25.1s), 004/500 VUs, 5390 complete and 0 interrupted iterations
+baseline   [  45% ] 004/500 VUs  0m27.0s/1m0s  200.00 iters/s
+
+running (0m26.1s), 004/500 VUs, 5590 complete and 0 interrupted iterations
+baseline   [  47% ] 004/500 VUs  0m28.0s/1m0s  200.00 iters/s
+
+running (0m27.1s), 004/500 VUs, 5790 complete and 0 interrupted iterations
+baseline   [  48% ] 004/500 VUs  0m29.0s/1m0s  200.00 iters/s
+
+running (0m28.1s), 005/500 VUs, 5989 complete and 0 interrupted iterations
+baseline   [  50% ] 005/500 VUs  0m30.0s/1m0s  200.00 iters/s
+
+running (0m29.1s), 004/500 VUs, 6190 complete and 0 interrupted iterations
+baseline   [  52% ] 004/500 VUs  0m31.0s/1m0s  200.00 iters/s
+
+running (0m30.1s), 004/500 VUs, 6390 complete and 0 interrupted iterations
+baseline   [  53% ] 004/500 VUs  0m32.0s/1m0s  200.00 iters/s
+
+running (0m31.1s), 004/500 VUs, 6590 complete and 0 interrupted iterations
+baseline   [  55% ] 004/500 VUs  0m33.0s/1m0s  200.00 iters/s
+
+running (0m32.1s), 004/500 VUs, 6790 complete and 0 interrupted iterations
+baseline   [  57% ] 004/500 VUs  0m34.0s/1m0s  200.00 iters/s
+
+running (0m33.1s), 004/500 VUs, 6990 complete and 0 interrupted iterations
+baseline   [  58% ] 004/500 VUs  0m35.0s/1m0s  200.00 iters/s
+
+running (0m34.1s), 005/500 VUs, 7189 complete and 0 interrupted iterations
+baseline   [  60% ] 005/500 VUs  0m36.0s/1m0s  200.00 iters/s
+
+running (0m35.1s), 004/500 VUs, 7390 complete and 0 interrupted iterations
+baseline   [  62% ] 004/500 VUs  0m37.0s/1m0s  200.00 iters/s
+
+running (0m36.1s), 005/500 VUs, 7589 complete and 0 interrupted iterations
+baseline   [  63% ] 005/500 VUs  0m38.0s/1m0s  200.00 iters/s
+
+running (0m37.1s), 004/500 VUs, 7790 complete and 0 interrupted iterations
+baseline   [  65% ] 004/500 VUs  0m39.0s/1m0s  200.00 iters/s
+
+running (0m38.1s), 004/500 VUs, 7990 complete and 0 interrupted iterations
+baseline   [  67% ] 004/500 VUs  0m40.0s/1m0s  200.00 iters/s
+
+running (0m39.1s), 007/500 VUs, 8187 complete and 0 interrupted iterations
+baseline   [  68% ] 007/500 VUs  0m41.0s/1m0s  200.00 iters/s
+
+running (0m40.1s), 004/500 VUs, 8390 complete and 0 interrupted iterations
+baseline   [  70% ] 004/500 VUs  0m42.0s/1m0s  200.00 iters/s
+
+running (0m41.1s), 009/500 VUs, 8585 complete and 0 interrupted iterations
+baseline   [  72% ] 009/500 VUs  0m43.0s/1m0s  200.00 iters/s
+
+running (0m42.1s), 005/500 VUs, 8789 complete and 0 interrupted iterations
+baseline   [  73% ] 005/500 VUs  0m44.0s/1m0s  200.00 iters/s
+
+running (0m43.1s), 004/500 VUs, 8990 complete and 0 interrupted iterations
+baseline   [  75% ] 004/500 VUs  0m45.0s/1m0s  200.00 iters/s
+
+running (0m44.1s), 005/500 VUs, 9189 complete and 0 interrupted iterations
+baseline   [  77% ] 005/500 VUs  0m46.0s/1m0s  200.00 iters/s
+
+running (0m45.1s), 004/500 VUs, 9390 complete and 0 interrupted iterations
+baseline   [  78% ] 004/500 VUs  0m47.0s/1m0s  200.00 iters/s
+
+running (0m46.1s), 005/500 VUs, 9589 complete and 0 interrupted iterations
+baseline   [  80% ] 005/500 VUs  0m48.0s/1m0s  200.00 iters/s
+
+running (0m47.1s), 004/500 VUs, 9790 complete and 0 interrupted iterations
+baseline   [  82% ] 004/500 VUs  0m49.0s/1m0s  200.00 iters/s
+
+running (0m48.1s), 004/500 VUs, 9990 complete and 0 interrupted iterations
+baseline   [  83% ] 004/500 VUs  0m50.0s/1m0s  200.00 iters/s
+
+running (0m47.2s), 004/500 VUs, 10190 complete and 0 interrupted iterations
+baseline   [  85% ] 004/500 VUs  0m51.0s/1m0s  200.00 iters/s
+
+running (0m48.2s), 004/500 VUs, 10390 complete and 0 interrupted iterations
+baseline   [  87% ] 004/500 VUs  0m52.0s/1m0s  200.00 iters/s
+
+running (0m49.2s), 004/500 VUs, 10590 complete and 0 interrupted iterations
+baseline   [  88% ] 004/500 VUs  0m53.0s/1m0s  200.00 iters/s
+
+running (0m50.2s), 004/500 VUs, 10790 complete and 0 interrupted iterations
+baseline   [  90% ] 004/500 VUs  0m54.0s/1m0s  200.00 iters/s
+
+running (0m51.2s), 004/500 VUs, 10990 complete and 0 interrupted iterations
+baseline   [  92% ] 004/500 VUs  0m55.0s/1m0s  200.00 iters/s
+
+running (0m52.2s), 004/500 VUs, 11190 complete and 0 interrupted iterations
+baseline   [  93% ] 004/500 VUs  0m56.0s/1m0s  200.00 iters/s
+
+running (0m53.2s), 004/500 VUs, 11390 complete and 0 interrupted iterations
+baseline   [  95% ] 004/500 VUs  0m57.0s/1m0s  200.00 iters/s
+
+running (0m54.2s), 009/500 VUs, 11585 complete and 0 interrupted iterations
+baseline   [  97% ] 009/500 VUs  0m58.0s/1m0s  200.00 iters/s
+
+running (0m55.2s), 012/500 VUs, 11782 complete and 0 interrupted iterations
+baseline   [  98% ] 012/500 VUs  0m59.0s/1m0s  200.00 iters/s
+
+running (0m56.2s), 004/500 VUs, 11990 complete and 0 interrupted iterations
+baseline   [ 100% ] 004/500 VUs  1m00.0s/1m0s  200.00 iters/s
+Activity history k6 summary
+scenario: baseline
+url: http://host.docker.internal:8080/api/user-activities/00000001-0000-4000-8000-000000000001
+targetUserId: 00000001-0000-4000-8000-000000000001
+summaryPath: /results/mid4-179-rdb-throughput-limit/activity-history-200rps-summary.json
+requests: 12001
+rps: 213.38
+droppedIterations: 0
+errorRate: 0.00%
+duration.avg: 21.97 ms
+duration.p95: 32.20 ms
+duration.p99: 88.07 ms
+checksRate: 100.00%
+
+running (0m56.2s), 000/500 VUs, 12001 complete and 0 interrupted iterations
+baseline ??[ 100% ] 000/500 VUs  1m0s  200.00 iters/s

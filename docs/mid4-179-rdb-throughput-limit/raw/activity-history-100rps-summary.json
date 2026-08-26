@@ -1,0 +1,20 @@
+{
+  "scenario": "baseline",
+  "url": "http://host.docker.internal:8080/api/user-activities/00000001-0000-4000-8000-000000000001",
+  "targetUserId": "00000001-0000-4000-8000-000000000001",
+  "expectedStatus": 200,
+  "requestedRate": 100,
+  "duration": "1m",
+  "preAllocatedVUs": 500,
+  "maxVUs": 500,
+  "metrics": {
+    "requests": 6001,
+    "rps": 106.5979860850407,
+    "droppedIterations": 0,
+    "errorRate": 0,
+    "durationAvgMs": 19.49114302082988,
+    "durationP95Ms": 25.110763,
+    "durationP99Ms": 29.375848,
+    "checksRate": 1
+  }
+}

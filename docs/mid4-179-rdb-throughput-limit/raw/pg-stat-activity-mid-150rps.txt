@@ -1,0 +1,5 @@
+ state  | wait_event_type | wait_event | count
+--------+-----------------+------------+-------
+ active |                 |            |     1
+ idle   | Client          | ClientRead |    10
+(2 rows)

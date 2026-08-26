@@ -34,12 +34,14 @@ if (!scenarioConfigs[SCENARIO]) {
   throw new Error(`K6_SCENARIO must be one of: smoke, baseline. value=${SCENARIO}`);
 }
 
+const ACTIVE_SCENARIO_CONFIG = scenarioConfigs[SCENARIO];
+
 http.setResponseCallback(http.expectedStatuses(EXPECTED_STATUS));
 
 export const options = {
   summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
   scenarios: {
-    [SCENARIO]: scenarioConfigs[SCENARIO],
+    [SCENARIO]: ACTIVE_SCENARIO_CONFIG,
   },
   thresholds: {
     http_req_failed: [`rate<${__ENV.K6_HTTP_REQ_FAILED_RATE_THRESHOLD || '0.01'}`],
@@ -73,6 +75,10 @@ export function handleSummary(data) {
     url: ACTIVITY_HISTORY_URL,
     targetUserId: TARGET_USER_ID,
     expectedStatus: EXPECTED_STATUS,
+    requestedRate: scenarioInputValue('rate'),
+    duration: scenarioInputValue('duration'),
+    preAllocatedVUs: scenarioInputValue('preAllocatedVUs'),
+    maxVUs: scenarioInputValue('maxVUs'),
     metrics: {
       requests: metricValue(data, 'http_reqs', 'count'),
       rps: metricValue(data, 'http_reqs', 'rate'),
@@ -238,6 +244,11 @@ function httpStatusEnv(name, defaultValue) {
 
 function isBodylessStatus(status) {
   return (status >= 100 && status < 200) || status === 204 || status === 205 || status === 304;
+}
+
+function scenarioInputValue(name) {
+  const value = ACTIVE_SCENARIO_CONFIG[name];
+  return value === undefined ? null : value;
 }
 
 function metricValue(data, metricName, statName) {
