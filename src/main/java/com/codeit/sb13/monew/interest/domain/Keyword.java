@@ -79,7 +79,7 @@ public class Keyword extends BaseEntity {
         this.interest = null;
     }
 
-    private static String validateKeyword(String keyword) {
+    static String validateKeyword(String keyword) {
         if (!StringUtils.hasText(keyword)) {
             throw new InterestKeywordInvalidException(keyword);
         }

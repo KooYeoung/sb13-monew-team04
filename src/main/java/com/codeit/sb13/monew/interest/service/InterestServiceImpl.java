@@ -116,8 +116,8 @@ public class InterestServiceImpl implements InterestService{
     /**
      * {@inheritDoc}
      *
-     * <p>{@link Interest#changeKeywords}에 새 키워드 목록을 그대로 넘겨 기존
-     * 키워드 전체를 교체한다. 이 관심사는 이미 존재하던 관심사라 구독자가
+     * <p>{@link Interest#changeKeywords}에 새 키워드 목록을 그대로 넘겨, 달라진
+     * 키워드만 반영해 목록을 갱신한다. 이 관심사는 이미 존재하던 관심사라 구독자가
      * 있을 수 있으므로, 생성과 달리 {@link SubscribeRepository#countByInterest_Id}로
      * 실제 구독자 수를 세어 응답에 채운다. 다만 이 요청에는 요청자 정보가
      * 없어 구독 여부까지는 판단할 수 없으므로 항상 false로 응답한다.</p>

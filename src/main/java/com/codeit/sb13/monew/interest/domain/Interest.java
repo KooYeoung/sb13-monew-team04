@@ -6,7 +6,10 @@ import com.codeit.sb13.monew.global.exception.interest.InterestNameInvalidExcept
 import jakarta.persistence.*;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -127,15 +130,20 @@ public class Interest extends UpdatedAtEntity {
     }
 
     /**
-     * 키워드 목록을 통째로 새 목록으로 교체한다.
+     * 키워드 목록을 새 목록과 비교해 달라진 부분만 갱신한다.
      *
-     * <p>기존 키워드는 모두 제거되고, 전달받은 텍스트로 새 키워드가 다시
-     * 추가된다. 새 키워드는 기존 목록을 지우기 전에 먼저 전부 만들어보고,
-     * 하나라도 공백이거나 50자를 넘어 {@link Keyword}의 생성자가 예외를
-     * 던지면 기존 키워드는 전혀 건드리지 않은 채 그대로 전파한다. 그렇지
-     * 않고 기존 키워드를 먼저 지운 뒤 새 키워드를 하나씩 추가하다 중간에
-     * 실패하면, 관심사가 새 키워드도 옛 키워드도 아닌 어중간한 상태로
-     * 남는다.</p>
+     * <p>새 목록에 없는 기존 키워드만 제거하고, 기존에 없던 새 키워드만
+     * 추가한다. 두 목록에 공통으로 존재하는 키워드는 건드리지 않고 그대로
+     * 유지되므로, 같은 트랜잭션 안에서 동일한 키워드가 삭제와 동시에
+     * 재삽입되며 {@code uk_keywords_interest_keyword} 유니크 제약을
+     * 일시적으로 위반하는 상황이 생기지 않는다.</p>
+     *
+     * <p>새 키워드는 기존 키워드를 지우거나 추가하기 전에 먼저 전부
+     * 검증한다. 하나라도 공백이거나 50자를 넘어 {@link Keyword}의 생성자가
+     * 예외를 던지면 기존 키워드는 전혀 건드리지 않은 채 그대로 전파한다.
+     * 그렇지 않고 검증 없이 기존 키워드를 먼저 지운 뒤 새 키워드를 하나씩
+     * 추가하다 중간에 실패하면, 관심사가 새 키워드도 옛 키워드도 아닌
+     * 어중간한 상태로 남는다.</p>
      *
      * <p>관심사는 항상 최소 1개의 키워드를 유지해야 하므로, 빈 목록이
      * 전달되면 예외를 던지고 교체를 거부한다.</p>
@@ -148,14 +156,25 @@ public class Interest extends UpdatedAtEntity {
             throw new InterestKeywordRequiredException(this.getId());
         }
 
-        List<Keyword> newKeywords = keywords.stream()
-                .map(text -> new Keyword(this, text))
+        LinkedHashSet<String> newTexts = keywords.stream()
+                .map(Keyword::validateKeyword)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        Set<String> existingTexts = this.keywords.stream()
+                .map(Keyword::getKeyword)
+                .collect(Collectors.toSet());
+
+        List<Keyword> toRemove = this.keywords.stream()
+                .filter(k -> !newTexts.contains(k.getKeyword()))
                 .toList();
+        toRemove.forEach(k -> {
+            this.keywords.remove(k);
+            k.detachInterest();
+        });
 
-        List<Keyword> oldKeywords = new ArrayList<>(this.keywords);
-        oldKeywords.forEach(Keyword::detachInterest);
-
-        this.keywords.clear();
-        this.keywords.addAll(newKeywords);
+        // 기존에 없던 텍스트만 새로 추가한다.
+        newTexts.stream()
+                .filter(text -> !existingTexts.contains(text))
+                .forEach(this::addKeyword);
     }
 }
