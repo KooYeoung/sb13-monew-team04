@@ -1,4 +1,4 @@
-package com.codeit.sb13.monew.user.service.impl;
+package com.codeit.sb13.monew.user.service;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
@@ -13,7 +13,6 @@ import com.codeit.sb13.monew.interest.repository.SubscribeRepository;
 import com.codeit.sb13.monew.notification.repository.NotificationRepository;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.repository.UserRepository;
-import com.codeit.sb13.monew.user.service.UserHardDeleteExecutor;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
