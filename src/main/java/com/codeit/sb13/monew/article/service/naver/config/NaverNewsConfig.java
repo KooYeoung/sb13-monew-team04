@@ -10,8 +10,8 @@ import org.springframework.web.client.RestClient;
 @EnableConfigurationProperties(NaverNewsProperties.class)
 public class NaverNewsConfig {
 
-    private static final String CLIENT_ID_HEADER = "X-Naver-Client-Id";
-    private static final String CLIENT_SECRET_HEADER = "X-Naver-Client-Secret";
+    private static final String CLIENT_ID_HEADER = "X-NCP-APIGW-API-KEY-ID";
+    private static final String CLIENT_SECRET_HEADER = "X-NCP-APIGW-API-KEY";
 
     @Bean
     public RestClient naverNewsRestClient(NaverNewsProperties properties) {

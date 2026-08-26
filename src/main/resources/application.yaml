@@ -20,8 +20,8 @@ springdoc:
 monew:
   news:
     naver:
-      base-url: https://openapi.naver.com
-      path: /v1/search/news.json
+      base-url: https://naverapihub.apigw.ntruss.com
+      path: /search/v1/news
       client-id: ${MONEW_NAVER_CLIENT_ID:}
       client-secret: ${MONEW_NAVER_CLIENT_SECRET:}
       connect-timeout: ${MONEW_NAVER_CONNECT_TIMEOUT:3s}

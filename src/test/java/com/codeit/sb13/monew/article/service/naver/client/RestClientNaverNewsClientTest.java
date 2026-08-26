@@ -37,12 +37,12 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 @DisplayName("RestClientNaverNewsClient 단위 테스트")
 class RestClientNaverNewsClientTest {
 
-    private static final String BASE_URL = "https://openapi.naver.com";
-    private static final String PATH = "/v1/search/news.json";
+    private static final String BASE_URL = "https://naverapihub.apigw.ntruss.com";
+    private static final String PATH = "/search/v1/news";
     private static final String CLIENT_ID = "client-id";
     private static final String CLIENT_SECRET = "client-secret";
-    private static final String CLIENT_ID_HEADER = "X-Naver-Client-Id";
-    private static final String CLIENT_SECRET_HEADER = "X-Naver-Client-Secret";
+    private static final String CLIENT_ID_HEADER = "X-NCP-APIGW-API-KEY-ID";
+    private static final String CLIENT_SECRET_HEADER = "X-NCP-APIGW-API-KEY";
 
     private MockRestServiceServer server;
     private RestClientNaverNewsClient client;
@@ -73,6 +73,7 @@ class RestClientNaverNewsClientTest {
                 .andExpect(queryParam("display", "7"))
                 .andExpect(queryParam("start", "3"))
                 .andExpect(queryParam("sort", "date"))
+                .andExpect(queryParam("format", "json"))
                 .andExpect(header(CLIENT_ID_HEADER, CLIENT_ID))
                 .andExpect(header(CLIENT_SECRET_HEADER, CLIENT_SECRET))
                 .andRespond(withSuccess(successJson(), MediaType.APPLICATION_JSON));

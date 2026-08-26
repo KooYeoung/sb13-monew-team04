@@ -22,6 +22,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RestClientNaverNewsClient implements NaverNewsClient {
     private static final String SOURCE = ArticleSource.NAVER.name();
+    private static final String RESPONSE_FORMAT = "json";
 
     private final RestClient naverNewsRestClient;
     private final NaverNewsProperties props;
@@ -38,6 +39,7 @@ public class RestClientNaverNewsClient implements NaverNewsClient {
                             .queryParam("display", request.display())
                             .queryParam("start", request.start())
                             .queryParam("sort", request.sort().getValue())
+                            .queryParam("format", RESPONSE_FORMAT)
                             .build()
                     )
                     .retrieve()

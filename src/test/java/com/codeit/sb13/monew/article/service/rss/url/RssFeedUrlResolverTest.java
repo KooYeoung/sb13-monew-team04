@@ -93,7 +93,7 @@ class RssFeedUrlResolverTest {
     void throwsInvalidRequestWhenSourceIsNotRssSource() {
         assertThatThrownBy(() -> resolver.resolve(
                 ArticleSource.NAVER,
-                "https://openapi.naver.com",
+                "https://naverapihub.apigw.ntruss.com",
                 HankyungRssCategory.ALL_NEWS
         )).isInstanceOf(ArticleFetchRequestInvalidException.class);
     }

@@ -68,18 +68,18 @@ docker compose down
 
 ## 7. NAVER API 설정
 
-NAVER 뉴스 검색 API를 사용하려면 NAVER Developers에서 애플리케이션을 등록하고 검색 API 사용 권한을 준비합니다.
+NAVER 뉴스 검색 API를 사용하려면 NAVER API Hub에서 검색 API 사용 권한을 준비합니다.
 
-- 공식 문서: https://developers.naver.com/docs/serviceapi/search/news/news.md
-- 요청 URL: `https://openapi.naver.com/v1/search/news.json`
-- 인증 헤더: `X-Naver-Client-Id`, `X-Naver-Client-Secret`
-- 요청 파라미터: `query`, `display`, `start`, `sort`
+- 공식 문서: https://api.ncloud-docs.com/docs/naver-api-hub-search-news
+- 요청 URL: `https://naverapihub.apigw.ntruss.com/search/v1/news`
+- 인증 헤더: `X-NCP-APIGW-API-KEY-ID`, `X-NCP-APIGW-API-KEY`
+- 요청 파라미터: `query`, `display`, `start`, `sort`, `format`
 
 발급받은 인증 값은 `.env.dev`에만 입력합니다. `.env.dev`는 개인 로컬 설정 파일이므로 Git에 올리지 않습니다.
 
 ```properties
-MONEW_NAVER_CLIENT_ID=발급받은-client-id
-MONEW_NAVER_CLIENT_SECRET=발급받은-client-secret
+MONEW_NAVER_CLIENT_ID=발급받은-api-hub-client-id
+MONEW_NAVER_CLIENT_SECRET=발급받은-api-hub-client-secret
 MONEW_NAVER_CONNECT_TIMEOUT=3s
 MONEW_NAVER_READ_TIMEOUT=5s
 ```
@@ -92,8 +92,8 @@ MONEW_NAVER_READ_TIMEOUT=5s
 monew:
   news:
     naver:
-      base-url: https://openapi.naver.com
-      path: /v1/search/news.json
+      base-url: https://naverapihub.apigw.ntruss.com
+      path: /search/v1/news
       client-id: ${MONEW_NAVER_CLIENT_ID:}
       client-secret: ${MONEW_NAVER_CLIENT_SECRET:}
       connect-timeout: ${MONEW_NAVER_CONNECT_TIMEOUT:3s}
@@ -102,7 +102,7 @@ monew:
 
 timeout 값은 선택 설정이며 지정하지 않으면 연결 timeout은 3초, 읽기 timeout은 5초를 사용합니다.
 
-`display`는 최대 100, `start`는 최대 1000까지 사용할 수 있습니다. `sort`는 정확도순 `sim` 또는 날짜순 `date`를 사용합니다.
+`display`는 최대 100, `start`는 최대 1000까지 사용할 수 있습니다. `sort`는 정확도순 `sim` 또는 날짜순 `date`를 사용합니다. JSON 응답은 `format=json` 요청 파라미터로 명시합니다.
 
 ## 8. 외부 호출 smoke 테스트
 
@@ -124,4 +124,4 @@ NAVER 뉴스 검색 API 실제 호출은 별도 task로 실행합니다.
 .\gradlew.bat --no-daemon naverExternalTest
 ```
 
-`naverExternalTest`는 먼저 `MONEW_NAVER_CLIENT_ID`, `MONEW_NAVER_CLIENT_SECRET` 환경변수를 확인하고, 없으면 로컬 `.env.dev` 값을 읽습니다. 인증 값이 없으면 테스트를 실패시키지 않고 skip합니다.
+`naverExternalTest`는 먼저 `MONEW_NAVER_CLIENT_ID`, `MONEW_NAVER_CLIENT_SECRET` 환경변수를 확인하고, 없으면 로컬 `.env.dev` 값을 읽습니다. 두 값은 NAVER API Hub의 Client ID와 Client Secret입니다. 인증 값이 없으면 테스트를 실패시키지 않고 skip합니다.

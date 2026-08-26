@@ -15,8 +15,8 @@ class NaverNewsConfigTest {
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withUserConfiguration(NaverNewsConfig.class)
             .withPropertyValues(
-                    "monew.news.naver.base-url=https://openapi.naver.com",
-                    "monew.news.naver.path=/v1/search/news.json",
+                    "monew.news.naver.base-url=https://naverapihub.apigw.ntruss.com",
+                    "monew.news.naver.path=/search/v1/news",
                     "monew.news.naver.client-id=client-id",
                     "monew.news.naver.client-secret=client-secret",
                     "monew.news.naver.connect-timeout=2s",
@@ -31,8 +31,8 @@ class NaverNewsConfigTest {
             NaverNewsProperties properties = context.getBean(NaverNewsProperties.class);
 
             // then
-            assertThat(properties.baseUrl()).isEqualTo("https://openapi.naver.com");
-            assertThat(properties.path()).isEqualTo("/v1/search/news.json");
+            assertThat(properties.baseUrl()).isEqualTo("https://naverapihub.apigw.ntruss.com");
+            assertThat(properties.path()).isEqualTo("/search/v1/news");
             assertThat(properties.clientId()).isEqualTo("client-id");
             assertThat(properties.clientSecret()).isEqualTo("client-secret");
             assertThat(properties.connectTimeout()).isEqualTo(Duration.ofSeconds(2));

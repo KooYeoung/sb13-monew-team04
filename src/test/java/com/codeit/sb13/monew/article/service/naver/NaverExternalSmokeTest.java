@@ -30,12 +30,12 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @DisplayName("NAVER 뉴스 외부 호출 smoke 테스트")
 class NaverExternalSmokeTest {
 
-    private static final String BASE_URL = "https://openapi.naver.com";
-    private static final String PATH = "/v1/search/news.json";
+    private static final String BASE_URL = "https://naverapihub.apigw.ntruss.com";
+    private static final String PATH = "/search/v1/news";
     private static final String CLIENT_ID_ENV = "MONEW_NAVER_CLIENT_ID";
     private static final String CLIENT_SECRET_ENV = "MONEW_NAVER_CLIENT_SECRET";
-    private static final String CLIENT_ID_HEADER = "X-Naver-Client-Id";
-    private static final String CLIENT_SECRET_HEADER = "X-Naver-Client-Secret";
+    private static final String CLIENT_ID_HEADER = "X-NCP-APIGW-API-KEY-ID";
+    private static final String CLIENT_SECRET_HEADER = "X-NCP-APIGW-API-KEY";
 
     @Test
     @DisplayName("NAVER 뉴스 API를 실제로 호출해 기사 목록을 반환한다")
