@@ -1,5 +1,6 @@
 package com.codeit.sb13.monew.interest.controller;
 
+import com.codeit.sb13.monew.global.MonewHttpHeaders;
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.interest.InterestNotFoundException;
 import com.codeit.sb13.monew.global.exception.interest.InterestSearchConditionInvalidException;
@@ -101,7 +102,7 @@ public class InterestController {
     @GetMapping
     public ResponseEntity<CursorPageResponseDto<InterestResponse>> search(
             @ModelAttribute InterestSearchRequest request,
-            @RequestHeader("Monew-Request-User-ID") UUID requestUserId
+            @RequestHeader(MonewHttpHeaders.REQUEST_USER_ID) UUID requestUserId
     ) {
         if (request.orderBy() == null) {
             throw new InterestSearchConditionInvalidException("orderBy는 필수입니다.");
