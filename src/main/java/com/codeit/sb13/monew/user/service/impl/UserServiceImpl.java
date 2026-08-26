@@ -141,7 +141,7 @@ public class UserServiceImpl implements UserService {
 
     for (User user : expiredUsers) {
       try {
-        userHardDeleteExecutor.hardDeleteUser(user.getId());
+        userHardDeleteExecutor.hardDeleteExpiredUser(user.getId(), threshold);
       } catch (Exception e) {
         log.error("사용자 자동 물리 삭제 실패 - userId: {}, 사유: {}", user.getId(), e.getMessage());
       }

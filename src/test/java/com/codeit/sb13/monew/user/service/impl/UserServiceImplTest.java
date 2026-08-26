@@ -450,7 +450,7 @@ public class UserServiceImplTest {
     userServiceImpl.autoDeleteExpiredUsers();
 
     // then
-    verify(userHardDeleteExecutor).hardDeleteUser(user.getId());
+    verify(userHardDeleteExecutor).hardDeleteExpiredUser(eq(user.getId()), any(LocalDateTime.class));
   }
 
   @Test

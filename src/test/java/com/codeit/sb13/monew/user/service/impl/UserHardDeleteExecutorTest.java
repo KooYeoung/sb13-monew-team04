@@ -1,6 +1,7 @@
 package com.codeit.sb13.monew.user.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -13,6 +14,7 @@ import com.codeit.sb13.monew.notification.repository.NotificationRepository;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.repository.UserRepository;
 import com.codeit.sb13.monew.user.service.UserHardDeleteExecutor;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -80,10 +82,73 @@ public class UserHardDeleteExecutorTest {
     // when & then
     assertThatThrownBy(() -> userHardDeleteExecutor.hardDeleteUser(userId))
         .isInstanceOf(UserNotFoundException.class);
+  }
 
+  @Test
+  @DisplayName("threshold보다 이전에 삭제됐다면 물리 삭제된다.")
+  void threshold보다_이전에_삭제됐다면_물리삭제() {
+    // given
+    UUID uuid = UUID.randomUUID();
+    User user = User.builder()
+        .email("email@email.com")
+        .nickname("닉네임")
+        .password("PassWord123!")
+        .build();
+    user.softDelete();
+    LocalDateTime threshold = LocalDateTime.now().plusDays(1);
+    when(userRepository.findById(uuid))
+        .thenReturn(Optional.of(user));
+
+    // when
+    userHardDeleteExecutor.hardDeleteExpiredUser(uuid, threshold);
+
+    // then
+    verify(userRepository).deleteById(uuid);
 
   }
 
+  @Test
+  @DisplayName("threshold보다 이후에 삭제됐다면 물리 삭제되지 않는다.")
+  void threshold보다_이후에_삭제됐다면_물리_삭제되지_않는다() {
+    // given
+    UUID uuid = UUID.randomUUID();
+    User user = User.builder()
+        .email("email@email.com")
+        .nickname("닉네임")
+        .password("PassWord123!")
+        .build();
+    user.softDelete();
+    LocalDateTime threshold = LocalDateTime.now().minusDays(1);
+    when(userRepository.findById(uuid))
+        .thenReturn(Optional.of(user));
 
+    // when
+    userHardDeleteExecutor.hardDeleteExpiredUser(uuid, threshold);
+
+    // then
+    verify(userRepository, never()).deleteById(uuid);
+  }
+
+  @Test
+  @DisplayName("사용자가 복구되어 deletedAt이 null이면 물리 삭제되지 않는다.")
+  void deletedAt이_null이면_물리_삭제되지_않는다() {
+    // given
+    UUID uuid = UUID.randomUUID();
+    User user = User.builder()
+        .email("email@email.com")
+        .nickname("닉네임")
+        .password("PassWord123!")
+        .build();
+    LocalDateTime threshold = LocalDateTime.now().minusDays(1);
+    //softDelete를 호출하지 않아서 deletedAt은 null이다.
+    when(userRepository.findById(uuid))
+        .thenReturn(Optional.of(user));
+
+    // when
+    userHardDeleteExecutor.hardDeleteExpiredUser(uuid, threshold);
+
+    // then
+    verify(userRepository, never()).deleteById(uuid);
+  }
 
 }
