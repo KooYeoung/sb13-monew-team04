@@ -20,6 +20,7 @@
 -- SELECT min(created_at), max(created_at), count(DISTINCT created_at) FROM comments;
 -- SELECT min(created_at), max(created_at), count(DISTINCT created_at) FROM comment_likes;
 -- SELECT min(viewed_at), max(viewed_at), count(DISTINCT viewed_at) FROM article_views;
+-- SELECT min(created_at), max(created_at), count(DISTINCT created_at) FROM subscriptions;
 
 CREATE OR REPLACE FUNCTION perf_uuid(namespace_code integer, seq bigint)
 RETURNS uuid
@@ -139,18 +140,23 @@ BEGIN
     INSERT INTO subscriptions (
         id,
         interest_id,
-        user_id
+        user_id,
+        created_at
     )
     SELECT
         perf_uuid(4, g),
         perf_uuid(2, g),
-        target_user_id
+        target_user_id,
+        base_time - (((g - 1) / 2) * interval '1 minute')
     FROM generate_series(1, target_subscription_count) AS g
     UNION ALL
     SELECT
         perf_uuid(4, target_subscription_count + ((user_seq - 2) * subscription_per_user) + slot),
         perf_uuid(2, ((user_seq + slot - 2) % interest_count) + 1),
-        perf_uuid(1, user_seq)
+        perf_uuid(1, user_seq),
+        base_time
+            - ((user_seq % 365) * interval '1 day')
+            - ((slot * 17) * interval '1 minute')
     FROM generate_series(2, user_count) AS user_seq
     CROSS JOIN generate_series(1, subscription_per_user) AS slot;
 
