@@ -43,9 +43,9 @@
 | 순서 | 조회 | 주요 join 또는 subquery |
 | ---: | --- | --- |
 | 1 | 사용자 조회 | `users` PK 조회, `deleted_at` 확인 |
-| 2 | 최근 본 기사 | `article_views -> articles -> users`, 댓글 수 subquery, 조회수 subquery |
+| 2 | 최근 조회 기사 | `article_views -> articles -> users`, 댓글 수 subquery, 조회수 subquery |
 | 3 | 최근 작성 댓글 | `comments -> users -> articles`, 좋아요 수 subquery |
-| 4 | 최근 좋아요 댓글 | `comment_likes -> comments -> users -> articles`, 좋아요 수 subquery |
+| 4 | 최근 좋아요한 댓글 | `comment_likes -> comments -> users -> articles`, 좋아요 수 subquery |
 | 5 | 구독 관심사 main | `subscriptions -> interests -> users`, 관심사별 구독자 수 subquery |
 | 6 | 구독 관심사 keywords | `keywords.interest_id = any (?)` batch 조회 |
 
@@ -173,7 +173,7 @@ MySQL InnoDB는 PostgreSQL과 다르게 FK referencing column에 적절한 인�
 
 대량 데이터를 넣은 뒤 통계 정보가 갱신되어야 PostgreSQL optimizer가 실제 데이터 분포에 가까운 실행계획을 선택할 수 있으므로, seed 함수에서 `users`, `interests`, `keywords`, `subscriptions`, `articles`, `comments`, `comment_likes`, `article_views`를 `ANALYZE`했다.
 
-최근 작성 댓글, 최근 좋아요한 댓글, 최근 조회 기사 조회는 `test/MID4-77-activity-history-integration-check` 브랜치의 repository 메서드를 임시 Spring Boot test에서 실행한 뒤 Hibernate SQL 로그로 캡처한 actual SQL 기준으로 측정했다. 실제 SQL은 `LIMIT 10`이 아니라 `fetch first 10 rows only`로 렌더링된다.
+최근 작성 댓글, 최근 좋아요한 댓글, 최근 조회 기사는 `test/MID4-77-activity-history-integration-check` 브랜치의 repository 메서드를 임시 Spring Boot test에서 실행한 뒤 Hibernate SQL 로그로 캡처한 actual SQL 기준으로 측정했다. 실제 SQL은 `LIMIT 10`이 아니라 `fetch first 10 rows only`로 렌더링된다.
 
 구독 중인 관심사 조회는 `SubscribeRepository.findSubscribedInterestActivities()` JPQL을 임시 Spring Boot test에서 실행한 뒤 Hibernate SQL 로그로 캡처해 측정했다. `subscriptions.created_at` 컬럼과 `created_at DESC, id DESC` 정렬이 반영된 SQL 기준이다. API 조립 전 단계의 SQL baseline이므로 p95/p99, error rate는 이번 API baseline에서 별도로 기록한다.
 

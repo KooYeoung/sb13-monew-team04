@@ -151,14 +151,14 @@ baseline 직후 Docker stats:
 
 ## 요청 1건당 SQL
 
-코드 경로 기준 요청 1건은 6개 SQL로 구성된다. `UserActivityServiceImpl`은 사용자 조회 후 최근 조회 기사, 최근 작성 댓글, 최근 좋아요 댓글, 구독 관심사 조회를 순서대로 조립한다. 구독 관심사는 DTO 변환 중 `Interest.getKeywords()` batch load가 한 번 추가된다.
+코드 경로 기준 요청 1건은 6개 SQL로 구성된다. `UserActivityServiceImpl`은 사용자 조회 후 최근 조회 기사, 최근 작성 댓글, 최근 좋아요한 댓글, 구독 관심사 조회를 순서대로 조립한다. 구독 관심사는 DTO 변환 중 `Interest.getKeywords()` batch load가 한 번 추가된다.
 
 | 순서 | SQL | 주요 비용 |
 | ---: | --- | --- |
 | 1 | `users` PK 조회 | 사용자 존재 및 `deleted_at` 확인 |
 | 2 | 최근 조회 기사 | `article_views`, `articles`, `users` join, 댓글 수 subquery, 조회수 subquery |
 | 3 | 최근 작성 댓글 | `comments`, `users`, `articles` join, 좋아요 수 subquery |
-| 4 | 최근 좋아요 댓글 | `comment_likes`, `comments`, `users`, `articles` join, 좋아요 수 subquery |
+| 4 | 최근 좋아요한 댓글 | `comment_likes`, `comments`, `users`, `articles` join, 좋아요 수 subquery |
 | 5 | 구독 관심사 main | `subscriptions`, `interests`, `users` join, 관심사별 구독자 수 subquery |
 | 6 | 구독 관심사 keywords | `keywords.interest_id = any (?)` batch 조회 |
 
