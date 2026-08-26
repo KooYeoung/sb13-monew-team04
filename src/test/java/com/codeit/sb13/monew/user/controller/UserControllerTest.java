@@ -81,7 +81,7 @@ class UserControllerTest {
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isCreated())
-        .andExpect(jsonPath("$.userId").exists())
+        .andExpect(jsonPath("$.id").exists())
         .andExpect(jsonPath("$.email").value(request.email()))
         .andExpect(jsonPath("$.nickname").value(request.nickname()))
         .andExpect(jsonPath("$.createdAt").exists());
@@ -167,9 +167,9 @@ class UserControllerTest {
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(request)))
         .andExpect(header().string(
-            "MoNew-Request-User-ID", result.userId().toString()))
+            "MoNew-Request-User-ID", result.id().toString()))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.userId").exists())
+        .andExpect(jsonPath("$.id").exists())
         .andExpect(jsonPath("$.email").value(result.email()))
         .andExpect(jsonPath("$.nickname").value(result.nickname()));
 
@@ -252,18 +252,18 @@ class UserControllerTest {
         .thenReturn(result);
 
     //when & then
-    mockMvc.perform(patch("/api/users/{userId}", result.userId())
+    mockMvc.perform(patch("/api/users/{userId}", result.id())
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.userId").exists())
+        .andExpect(jsonPath("$.id").exists())
         .andExpect(jsonPath("$.nickname").value(result.nickname()))
         .andExpect(jsonPath("$.updatedAt").exists());
     ArgumentCaptor<UserUpdateNicknameCommand> commandCaptor =
         ArgumentCaptor.forClass(UserUpdateNicknameCommand.class);
     verify(userService).updateNickname(commandCaptor.capture());
     UserUpdateNicknameCommand capturedCommand = commandCaptor.getValue();
-    assertThat(capturedCommand.userId()).isEqualTo(result.userId());
+    assertThat(capturedCommand.userId()).isEqualTo(result.id());
     assertThat(capturedCommand.nickname()).isEqualTo(request.nickname());
   }
 

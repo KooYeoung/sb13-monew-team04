@@ -43,7 +43,7 @@ public class UserController {
         request.password());
     UserCreateResult result = userService.signUp(command);
     UserCreateResponse response = new UserCreateResponse(
-        result.userId(),
+        result.id(),
         result.email(),
         result.nickname(),
         result.createdAt());
@@ -60,11 +60,11 @@ public class UserController {
     UserLoginResult login = userService.login(command);
 
     UserLoginResponse response = new UserLoginResponse(
-        login.userId(),
+        login.id(),
         login.email(),
         login.nickname());
     return ResponseEntity.status(HttpStatus.OK)
-        .header(MonewHttpHeaders.REQUEST_USER_ID, login.userId().toString())
+        .header(MonewHttpHeaders.REQUEST_USER_ID, login.id().toString())
         .body(response);
   }
 
@@ -79,7 +79,7 @@ public class UserController {
     );
     UserUpdateNicknameResult result = userService.updateNickname(command);
     UserUpdateNicknameResponse response = new UserUpdateNicknameResponse
-        (result.userId(),
+        (result.id(),
             result.nickname(),
             result.updatedAt());
 

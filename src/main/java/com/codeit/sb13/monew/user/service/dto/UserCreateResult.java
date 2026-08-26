@@ -4,7 +4,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 public record UserCreateResult(
-    UUID userId,
+    UUID id,
     String email,
     String nickname,
     LocalDateTime createdAt

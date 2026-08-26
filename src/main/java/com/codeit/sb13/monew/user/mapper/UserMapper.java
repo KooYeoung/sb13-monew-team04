@@ -12,13 +12,10 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface UserMapper {
 
-  @Mapping(source = "id", target = "userId")
   UserCreateResult toResult(User user);
 
-  @Mapping(source = "id", target = "userId")
   UserLoginResult toLoginResult(User user);
 
-  @Mapping(source = "id", target = "userId")
   UserUpdateNicknameResult toUpdateNicknameResult(User user);
 
 }

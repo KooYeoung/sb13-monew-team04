@@ -4,7 +4,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 public record UserUpdateNicknameResponse(
-    UUID userId,
+    UUID id,
     String nickname,
     LocalDateTime updatedAt
 ) {
