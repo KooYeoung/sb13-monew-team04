@@ -22,6 +22,8 @@ import com.codeit.sb13.monew.comment.service.impl.CommentLikeServiceImpl;
 import com.codeit.sb13.monew.global.exception.comment.CommentNotFoundException;
 import com.codeit.sb13.monew.global.exception.comment.CommentLikeNotFoundException;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
+import com.codeit.sb13.monew.notification.service.NotificationService;
+import com.codeit.sb13.monew.notification.service.dto.CommentLikedDto;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.repository.UserRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -56,6 +58,9 @@ public class CommentLikeServiceTest {
 
   @Mock
   CommentLikeSaveService commentLikeSaveService;
+
+  @Mock
+  NotificationService notificationService;
 
   private Comment comment;
   private User likedBy;
@@ -139,6 +144,8 @@ public class CommentLikeServiceTest {
     then(commentLikeRepository).should(times(2)).findByCommentAndLikedBy(comment.getId(), likedBy.getId());
     then(commentLikeSaveService).should(times(1)).create(comment.getId(), likedBy.getId());
     then(commentLikeRepository).should(times(1)).countByCommentId(comment.getId());
+    then(notificationService).should(times(1))
+            .notifyCommentLiked(new CommentLikedDto(likedBy, commentUser, comment.getId()));
   }
 
   @Test
@@ -190,6 +197,7 @@ public class CommentLikeServiceTest {
     then(commentLikeRepository).should(times(2)).findByCommentAndLikedBy(comment.getId(), likedBy.getId());
     then(commentLikeRepository).should(times(1)).countByCommentId(comment.getId());
     then(commentLikeSaveService).should(times(1)).create(comment.getId(), likedBy.getId());
+    then(notificationService).should(never()).notifyCommentLiked(any(CommentLikedDto.class));
   }
 
   @Test
@@ -231,6 +239,7 @@ public class CommentLikeServiceTest {
     then(commentLikeRepository).should(times(1)).findByCommentAndLikedBy(comment.getId(), likedBy.getId());
     then(commentLikeSaveService).should(never()).create(any(UUID.class), any(UUID.class));
     then(commentLikeRepository).should(times(1)).countByCommentId(comment.getId());
+    then(notificationService).shouldHaveNoInteractions();
   }
 
   @Test
@@ -247,6 +256,7 @@ public class CommentLikeServiceTest {
     then(userRepository).shouldHaveNoInteractions();
     then(commentLikeRepository).shouldHaveNoInteractions();
     then(commentLikeSaveService).shouldHaveNoInteractions();
+    then(notificationService).shouldHaveNoInteractions();
   }
 
   @Test
@@ -264,6 +274,7 @@ public class CommentLikeServiceTest {
 
     then(commentLikeRepository).shouldHaveNoInteractions();
     then(commentLikeSaveService).shouldHaveNoInteractions();
+    then(notificationService).shouldHaveNoInteractions();
   }
 
   @Test
@@ -284,6 +295,7 @@ public class CommentLikeServiceTest {
     // then
     then(commentLikeRepository).should(times(1))
         .deleteByCommentIdAndLikedById(comment.getId(), likedBy.getId());
+    then(notificationService).shouldHaveNoInteractions();
   }
 
   @Test
@@ -299,5 +311,44 @@ public class CommentLikeServiceTest {
     // when & then
     assertThatThrownBy(() -> commentLikeService.unlikeComment(command))
         .isInstanceOf(CommentLikeNotFoundException.class);
+  }
+
+  @Test
+  @DisplayName("좋아요 저장은 성공했지만 알림 저장이 실패해도, 좋아요 등록 자체는 정상적으로 성공한다")
+  void 알림_저장_실패해도_좋아요_등록은_성공한다() {
+    // given
+    UUID commentLikeId = UUID.randomUUID();
+    CommentLikeRegisterCommand command = new CommentLikeRegisterCommand(comment.getId(), likedBy.getId());
+
+    CommentLike newCommentLike = CommentLike.builder()
+            .comment(comment)
+            .likedBy(likedBy)
+            .build();
+    ReflectionTestUtils.setField(newCommentLike, "id", commentLikeId);
+    ReflectionTestUtils.setField(newCommentLike, "createdAt", likeCreatedAt);
+
+    given(userRepository.findById(likedBy.getId())).willReturn(Optional.of(likedBy));
+    given(commentRepository.findByIdAndDeletedAtIsNull(comment.getId())).willReturn(Optional.of(comment));
+    given(commentLikeRepository.findByCommentAndLikedBy(comment.getId(), likedBy.getId()))
+            .willReturn(Optional.empty(), Optional.of(newCommentLike));
+    given(commentLikeRepository.countByCommentId(comment.getId())).willReturn(1L);
+
+    doThrow(new DataIntegrityViolationException("알림 저장 실패 - content 길이 초과 등"))
+            .when(notificationService)
+            .notifyCommentLiked(any(CommentLikedDto.class));
+
+    // when
+    CommentLikeDto result = commentLikeService.likeComment(command);
+
+    // then
+    Assertions.assertAll(
+            () -> assertThat(result.id()).isEqualTo(commentLikeId),
+            () -> assertThat(result.likedBy()).isEqualTo(likedBy.getId()),
+            () -> assertThat(result.commentId()).isEqualTo(comment.getId()),
+            () -> assertThat(result.commentLikeCount()).isEqualTo(1L)
+    );
+
+    then(commentLikeSaveService).should(times(1)).create(comment.getId(), likedBy.getId());
+    then(notificationService).should(times(1)).notifyCommentLiked(any(CommentLikedDto.class));
   }
 }
