@@ -1,7 +1,7 @@
 package com.codeit.sb13.monew.global.service.impl;
 
 import com.codeit.sb13.monew.global.exception.ApiErrorCode;
-import com.codeit.sb13.monew.global.exception.article.ArticleAdvisoryLockException;
+import com.codeit.sb13.monew.global.exception.AdvisoryLockException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -104,8 +104,8 @@ class PostgreSqlAdvisoryLockServiceTest {
         when(dataSource.getConnection()).thenThrow(cause);
 
         assertThatThrownBy(() -> service.executeWithLock(LOCK_KEY, () -> {
-        })).isInstanceOfSatisfying(ArticleAdvisoryLockException.class, e -> {
-            assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ARTICLE_ADVISORY_LOCK_FAILED);
+        })).isInstanceOfSatisfying(AdvisoryLockException.class, e -> {
+            assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ADVISORY_LOCK_FAILED);
             assertThat(e.getCause()).isSameAs(cause);
             assertThat(e.getDetails())
                     .containsEntry("lockKey", LOCK_KEY)
@@ -122,8 +122,8 @@ class PostgreSqlAdvisoryLockServiceTest {
         when(tryLockStatement.executeQuery()).thenThrow(cause);
 
         assertThatThrownBy(() -> service.executeWithLock(LOCK_KEY, () -> {
-        })).isInstanceOfSatisfying(ArticleAdvisoryLockException.class, e -> {
-            assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ARTICLE_ADVISORY_LOCK_FAILED);
+        })).isInstanceOfSatisfying(AdvisoryLockException.class, e -> {
+            assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ADVISORY_LOCK_FAILED);
             assertThat(e.getCause()).isSameAs(cause);
             assertThat(e.getDetails())
                     .containsEntry("lockKey", LOCK_KEY)
@@ -140,8 +140,8 @@ class PostgreSqlAdvisoryLockServiceTest {
         when(tryLockResultSet.next()).thenReturn(false);
 
         assertThatThrownBy(() -> service.executeWithLock(LOCK_KEY, () -> {
-        })).isInstanceOfSatisfying(ArticleAdvisoryLockException.class, e -> {
-            assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ARTICLE_ADVISORY_LOCK_FAILED);
+        })).isInstanceOfSatisfying(AdvisoryLockException.class, e -> {
+            assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ADVISORY_LOCK_FAILED);
             assertThat(e.getCause()).isNull();
             assertThat(e.getDetails())
                     .containsEntry("lockKey", LOCK_KEY)
@@ -158,8 +158,8 @@ class PostgreSqlAdvisoryLockServiceTest {
         when(unlockStatement.executeQuery()).thenThrow(cause);
 
         assertThatThrownBy(() -> service.executeWithLock(LOCK_KEY, () -> {
-        })).isInstanceOfSatisfying(ArticleAdvisoryLockException.class, e -> {
-            assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ARTICLE_ADVISORY_LOCK_FAILED);
+        })).isInstanceOfSatisfying(AdvisoryLockException.class, e -> {
+            assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.ADVISORY_LOCK_FAILED);
             assertThat(e.getCause()).isSameAs(cause);
             assertThat(e.getDetails())
                     .containsEntry("lockKey", LOCK_KEY)
@@ -180,7 +180,7 @@ class PostgreSqlAdvisoryLockServiceTest {
         })).isSameAs(taskFailure)
                 .satisfies(e -> assertThat(e.getSuppressed())
                         .singleElement()
-                        .isInstanceOfSatisfying(ArticleAdvisoryLockException.class, suppressed -> {
+                        .isInstanceOfSatisfying(AdvisoryLockException.class, suppressed -> {
                             assertThat(suppressed.getCause()).isSameAs(unlockFailure);
                             assertThat(suppressed.getDetails())
                                     .containsEntry("lockKey", LOCK_KEY)
@@ -201,7 +201,7 @@ class PostgreSqlAdvisoryLockServiceTest {
         })).isSameAs(taskFailure)
                 .satisfies(e -> assertThat(e.getSuppressed())
                         .singleElement()
-                        .isInstanceOfSatisfying(ArticleAdvisoryLockException.class, suppressed -> {
+                        .isInstanceOfSatisfying(AdvisoryLockException.class, suppressed -> {
                             assertThat(suppressed.getCause()).isSameAs(unlockFailure);
                             assertThat(suppressed.getDetails())
                                     .containsEntry("lockKey", LOCK_KEY)

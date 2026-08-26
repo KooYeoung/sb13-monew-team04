@@ -1,6 +1,6 @@
 package com.codeit.sb13.monew.global.service.impl;
 
-import com.codeit.sb13.monew.global.exception.article.ArticleAdvisoryLockException;
+import com.codeit.sb13.monew.global.exception.AdvisoryLockException;
 import com.codeit.sb13.monew.global.service.AdvisoryLockService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -36,7 +36,7 @@ public class PostgreSqlAdvisoryLockService implements AdvisoryLockService {
 
             return executeTaskAndUnlock(connection, lockId, lockKey, task);
         } catch (SQLException e) {
-            throw new ArticleAdvisoryLockException(lockKey, "connection", e);
+            throw new AdvisoryLockException(lockKey, "connection", e);
         }
     }
 
@@ -67,7 +67,7 @@ public class PostgreSqlAdvisoryLockService implements AdvisoryLockService {
     ) {
         try {
             unlock(connection, lockId, lockKey);
-        } catch (ArticleAdvisoryLockException e) {
+        } catch (AdvisoryLockException e) {
             if (runtimeFailure != null) {
                 runtimeFailure.addSuppressed(e);
                 return;
@@ -88,10 +88,10 @@ public class PostgreSqlAdvisoryLockService implements AdvisoryLockService {
                 if (resultSet.next()) {
                     return resultSet.getBoolean(1);
                 }
-                throw new ArticleAdvisoryLockException(lockKey, "tryLockEmptyResult");
+                throw new AdvisoryLockException(lockKey, "tryLockEmptyResult");
             }
         } catch (SQLException e) {
-            throw new ArticleAdvisoryLockException(lockKey, "tryLock", e);
+            throw new AdvisoryLockException(lockKey, "tryLock", e);
         }
     }
 
@@ -100,7 +100,7 @@ public class PostgreSqlAdvisoryLockService implements AdvisoryLockService {
             statement.setLong(1, lockId);
             statement.executeQuery();
         } catch (SQLException e) {
-            throw new ArticleAdvisoryLockException(lockKey, "unlock", e);
+            throw new AdvisoryLockException(lockKey, "unlock", e);
         }
     }
 
@@ -114,7 +114,7 @@ public class PostgreSqlAdvisoryLockService implements AdvisoryLockService {
             return MessageDigest.getInstance(HASH_ALGORITHM)
                     .digest(lockKey.getBytes(StandardCharsets.UTF_8));
         } catch (NoSuchAlgorithmException e) {
-            throw new ArticleAdvisoryLockException(lockKey, "hash", e);
+            throw new AdvisoryLockException(lockKey, "hash", e);
         }
     }
 }

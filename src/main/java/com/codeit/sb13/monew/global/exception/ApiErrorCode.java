@@ -8,7 +8,7 @@ public enum ApiErrorCode {
 
     // USER USR
     USER_NOT_FOUND("USR_001", HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
-    DUPLICATE_EMAIL("USR_002", HttpStatus.CONFLICT,"이미 사용 중인 이메일입니다."),
+    DUPLICATE_EMAIL("USR_002", HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다."),
     LOGIN_FAILED("USR_003", HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 일치하지 않습니다."),
     USER_ALREADY_DELETED("USR_004", HttpStatus.CONFLICT, "이미 삭제된 사용자입니다."),
 
@@ -25,7 +25,6 @@ public enum ApiErrorCode {
     ARTICLE_BACKUP_FILE_JSON_FAILED("ART_010", HttpStatus.BAD_GATEWAY, "기사 백업 파일 JSON 처리에 실패했습니다."),
     ARTICLE_BACKUP_DATE_INVALID("ART_011", HttpStatus.BAD_REQUEST, "기사 백업 날짜 조건이 올바르지 않습니다."),
     ARTICLE_BACKUP_FAILED("ART_012", HttpStatus.INTERNAL_SERVER_ERROR, "기사 백업 처리에 실패했습니다."),
-    ARTICLE_ADVISORY_LOCK_FAILED("ART_013", HttpStatus.INTERNAL_SERVER_ERROR, "기사 백업 락 처리에 실패했습니다."),
     ARTICLE_RESTORE_DATE_INVALID("ART_014", HttpStatus.BAD_REQUEST, "기사 복구 날짜 조건이 올바르지 않습니다."),
     ARTICLE_RESTORE_FAILED("ART_015", HttpStatus.INTERNAL_SERVER_ERROR, "기사 복구 처리에 실패했습니다."),
     ARTICLE_SEARCH_CONDITION_INVALID("ART_016", HttpStatus.BAD_REQUEST, "기사 목록 조회 조건이 올바르지 않습니다."),
@@ -50,6 +49,7 @@ public enum ApiErrorCode {
 
     // GLOBAL/COMMON GLB
     INVALID_REQUEST("GLB_001", HttpStatus.BAD_REQUEST, "요청 데이터가 올바르지 않습니다."),
+    ADVISORY_LOCK_FAILED("GLB_002", HttpStatus.INTERNAL_SERVER_ERROR, "DB락 처리에 실패했습니다."),
     INTERNAL_SERVER_ERROR("GLB_999", HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류");
 
     private final String code;
