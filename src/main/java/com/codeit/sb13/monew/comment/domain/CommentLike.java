@@ -4,6 +4,7 @@ import com.codeit.sb13.monew.global.domain.CreatedAtEntity;
 import com.codeit.sb13.monew.user.domain.User;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
@@ -22,6 +23,12 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(
     name = "comment_likes",
+    indexes = {
+        @Index(
+            name = "idx_comment_likes_liked_by_created_id",
+            columnList = "liked_by, created_at DESC, id DESC"
+        )
+    },
     uniqueConstraints = {
         @UniqueConstraint(
             name = "uk_comment_likes_comment_liked_by",

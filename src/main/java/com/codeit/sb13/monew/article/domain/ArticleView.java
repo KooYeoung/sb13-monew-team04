@@ -12,7 +12,8 @@ import java.time.LocalDateTime;
 @Table(
         name = "article_views",
         indexes = {
-                @Index(name = "idx_article_views_article_viewed", columnList = "article_id, viewed_at DESC")
+                @Index(name = "idx_article_views_article_viewed", columnList = "article_id, viewed_at DESC"),
+                @Index(name = "idx_article_views_user_viewed_id", columnList = "user_id, viewed_at DESC, id DESC")
         },
         uniqueConstraints = {
                 @UniqueConstraint(

@@ -4,6 +4,7 @@ import com.codeit.sb13.monew.global.domain.CreatedAtEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
@@ -19,6 +20,9 @@ import lombok.NoArgsConstructor;
 @Getter
 @Table(
         name = "subscriptions",
+        indexes = {
+                @Index(name = "idx_subscriptions_user_created_id", columnList = "user_id, created_at DESC, id DESC")
+        },
         uniqueConstraints = @UniqueConstraint(
                 name = "uk_subscriptions_interest_user",
                 columnNames = {"interest_id", "user_id"}
