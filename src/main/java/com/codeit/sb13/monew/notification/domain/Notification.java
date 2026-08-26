@@ -21,14 +21,14 @@ public class Notification extends UpdatedAtEntity {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 100)
     private String content;
 
     @Column(nullable = false)
     private UUID resourceId;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private ResourceType resourceType;
 
     @Column(nullable = false)
