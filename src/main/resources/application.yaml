@@ -48,6 +48,10 @@ monew:
     schedule:
       enabled: ${MONEW_ARTICLE_COLLECT_ENABLED:false}
       cron: "${MONEW_ARTICLE_COLLECT_CRON:0 0/10 * * * *}"
+  notification:
+    schedule:
+      enabled: ${MONEW_NOTIFICATION_DELETE_ENABLED:false}
+      cron: "${MONEW_NOTIFICATION_DELETE_CRON:0 0 0 * * *}"
 
   openapi:
     server-url: http://localhost:${server.port:8080}
