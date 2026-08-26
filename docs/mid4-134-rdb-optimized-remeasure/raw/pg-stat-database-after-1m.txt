@@ -1,0 +1,4 @@
+ xact_commit | xact_rollback | blks_read | blks_hit | cache_hit_pct | tup_returned | tup_fetched | temp_files | temp_bytes | deadlocks
+-------------+---------------+-----------+----------+---------------+--------------+-------------+------------+------------+-----------
+        5992 |             0 |        58 |  4125654 |        100.00 |      2005382 |     2004412 |          0 |          0 |         0
+(1 row)

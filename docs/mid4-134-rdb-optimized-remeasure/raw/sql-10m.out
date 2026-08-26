@@ -1,0 +1,259 @@
+Timing is on.
+Pager usage is off.
+scale=10m
+query=recent_comments explain
+                                                                                    QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=1.27..277.41 rows=10 width=138) (actual time=0.060..0.095 rows=10 loops=1)
+   Buffers: shared hit=128
+   ->  Nested Loop  (cost=1.27..263982.10 rows=9560 width=138) (actual time=0.059..0.093 rows=10 loops=1)
+         Buffers: shared hit=128
+         ->  Nested Loop  (cost=0.86..102336.42 rows=9560 width=115) (actual time=0.024..0.036 rows=10 loops=1)
+               Buffers: shared hit=44
+               ->  Index Scan using idx_comments_user_created_id on comments c1_0  (cost=0.43..38444.78 rows=9752 width=88) (actual time=0.017..0.020 rows=10 loops=1)
+                     Index Cond: (user_id = '00000001-0000-4000-8000-000000000001'::uuid)
+                     Filter: (deleted_at IS NULL)
+                     Buffers: shared hit=4
+               ->  Index Scan using pk_articles on articles a1_0  (cost=0.43..6.55 rows=1 width=43) (actual time=0.001..0.001 rows=1 loops=10)
+                     Index Cond: (id = c1_0.article_id)
+                     Filter: (deleted_at IS NULL)
+                     Buffers: shared hit=40
+         ->  Materialize  (cost=0.42..8.44 rows=1 width=31) (actual time=0.001..0.001 rows=1 loops=10)
+               Buffers: shared hit=4
+               ->  Index Scan using pk_users on users u1_0  (cost=0.42..8.44 rows=1 width=31) (actual time=0.005..0.006 rows=1 loops=1)
+                     Index Cond: (id = '00000001-0000-4000-8000-000000000001'::uuid)
+                     Filter: (deleted_at IS NULL)
+                     Buffers: shared hit=4
+         SubPlan 1
+           ->  Aggregate  (cost=16.89..16.90 rows=1 width=8) (actual time=0.004..0.004 rows=1 loops=10)
+                 Buffers: shared hit=80
+                 ->  Nested Loop  (cost=0.85..16.88 rows=1 width=16) (actual time=0.003..0.004 rows=1 loops=10)
+                       Buffers: shared hit=80
+                       ->  Index Scan using uk_comment_likes_comment_liked_by on comment_likes cl1_0  (cost=0.43..8.45 rows=1 width=32) (actual time=0.002..0.002 rows=1 loops=10)
+                             Index Cond: (comment_id = c1_0.id)
+                             Buffers: shared hit=40
+                       ->  Index Scan using pk_users on users lb1_0  (cost=0.42..8.44 rows=1 width=16) (actual time=0.001..0.001 rows=1 loops=10)
+                             Index Cond: (id = cl1_0.liked_by)
+                             Filter: (deleted_at IS NULL)
+                             Buffers: shared hit=40
+ Planning:
+   Buffers: shared hit=396 read=3
+ Planning Time: 1.214 ms
+ Execution Time: 0.155 ms
+(36 rows)
+
+Time: 2.570 ms
+query=recent_comments repeats
+Time: 0.910 ms
+Time: 0.580 ms
+Time: 0.646 ms
+Time: 0.594 ms
+Time: 0.450 ms
+query=recent_liked_comments explain
+                                                                                            QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=2.12..380.93 rows=10 width=162) (actual time=0.080..0.156 rows=10 loops=1)
+   Buffers: shared hit=338
+   ->  Nested Loop  (cost=2.12..349411.90 rows=9224 width=162) (actual time=0.079..0.155 rows=10 loops=1)
+         Buffers: shared hit=338
+         ->  Nested Loop  (cost=1.71..115435.21 rows=9224 width=170) (actual time=0.045..0.075 rows=10 loops=1)
+               Buffers: shared hit=124
+               ->  Nested Loop  (cost=1.29..111366.03 rows=9311 width=155) (actual time=0.042..0.064 rows=10 loops=1)
+                     Buffers: shared hit=84
+                     ->  Nested Loop  (cost=0.86..106542.86 rows=9498 width=128) (actual time=0.032..0.043 rows=10 loops=1)
+                           Buffers: shared hit=44
+                           ->  Index Scan using idx_comment_likes_liked_by_created_id on comment_likes cl1_0  (cost=0.43..34907.86 rows=10000 width=56) (actual time=0.020..0.022 rows=10 loops=1)
+                                 Index Cond: (liked_by = '00000001-0000-4000-8000-000000000001'::uuid)
+                                 Buffers: shared hit=4
+                           ->  Index Scan using pk_comments on comments c1_0  (cost=0.43..7.16 rows=1 width=88) (actual time=0.002..0.002 rows=1 loops=10)
+                                 Index Cond: (id = cl1_0.comment_id)
+                                 Filter: (deleted_at IS NULL)
+                                 Buffers: shared hit=40
+                     ->  Index Scan using pk_articles on articles a1_0  (cost=0.43..0.51 rows=1 width=43) (actual time=0.002..0.002 rows=1 loops=10)
+                           Index Cond: (id = c1_0.article_id)
+                           Filter: (deleted_at IS NULL)
+                           Buffers: shared hit=40
+               ->  Index Scan using pk_users on users u1_0  (cost=0.42..0.44 rows=1 width=31) (actual time=0.001..0.001 rows=1 loops=10)
+                     Index Cond: (id = c1_0.user_id)
+                     Filter: (deleted_at IS NULL)
+                     Buffers: shared hit=40
+         ->  Materialize  (cost=0.42..8.44 rows=1 width=16) (actual time=0.000..0.001 rows=1 loops=10)
+               Buffers: shared hit=4
+               ->  Index Scan using pk_users on users lb1_0  (cost=0.42..8.44 rows=1 width=16) (actual time=0.003..0.003 rows=1 loops=1)
+                     Index Cond: (id = '00000001-0000-4000-8000-000000000001'::uuid)
+                     Filter: (deleted_at IS NULL)
+                     Buffers: shared hit=4
+         SubPlan 1
+           ->  Aggregate  (cost=25.34..25.35 rows=1 width=8) (actual time=0.007..0.007 rows=1 loops=10)
+                 Buffers: shared hit=210
+                 ->  Nested Loop  (cost=1.28..25.34 rows=1 width=16) (actual time=0.003..0.007 rows=2 loops=10)
+                       Buffers: shared hit=210
+                       ->  Nested Loop  (cost=0.86..16.91 rows=1 width=32) (actual time=0.002..0.004 rows=2 loops=10)
+                             Buffers: shared hit=130
+                             ->  Index Scan using uk_comment_likes_comment_liked_by on comment_likes cl2_0  (cost=0.43..8.45 rows=1 width=48) (actual time=0.001..0.002 rows=2 loops=10)
+                                   Index Cond: (comment_id = c1_0.id)
+                                   Buffers: shared hit=50
+                             ->  Index Only Scan using pk_comments on comments c2_0  (cost=0.43..8.45 rows=1 width=16) (actual time=0.001..0.001 rows=1 loops=20)
+                                   Index Cond: (id = c1_0.id)
+                                   Heap Fetches: 20
+                                   Buffers: shared hit=80
+                       ->  Index Scan using pk_users on users lb2_0  (cost=0.42..8.44 rows=1 width=16) (actual time=0.001..0.001 rows=1 loops=20)
+                             Index Cond: (id = cl2_0.liked_by)
+                             Filter: (deleted_at IS NULL)
+                             Buffers: shared hit=80
+ Planning:
+   Buffers: shared hit=63
+ Planning Time: 0.562 ms
+ Execution Time: 0.209 ms
+(53 rows)
+
+Time: 1.114 ms
+query=recent_liked_comments repeats
+Time: 0.900 ms
+Time: 0.782 ms
+Time: 0.836 ms
+Time: 0.709 ms
+Time: 0.851 ms
+query=recent_article_views explain
+                                                                                   QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=1.27..620.59 rows=10 width=206) (actual time=0.219..0.308 rows=10 loops=1)
+   Buffers: shared hit=250
+   ->  Nested Loop  (cost=1.27..540290.61 rows=8724 width=206) (actual time=0.219..0.307 rows=10 loops=1)
+         Buffers: shared hit=250
+         ->  Nested Loop  (cost=0.86..73657.49 rows=8724 width=190) (actual time=0.161..0.171 rows=10 loops=1)
+               Buffers: shared hit=44
+               ->  Index Scan using idx_article_views_user_viewed_id on article_views av1_0  (cost=0.43..14336.99 rows=8900 width=56) (actual time=0.157..0.160 rows=10 loops=1)
+                     Index Cond: (user_id = '00000001-0000-4000-8000-000000000001'::uuid)
+                     Buffers: shared hit=4
+               ->  Index Scan using pk_articles on articles a1_0  (cost=0.43..6.67 rows=1 width=150) (actual time=0.001..0.001 rows=1 loops=10)
+                     Index Cond: (id = av1_0.article_id)
+                     Filter: (deleted_at IS NULL)
+                     Buffers: shared hit=40
+         ->  Materialize  (cost=0.42..8.44 rows=1 width=16) (actual time=0.000..0.000 rows=1 loops=10)
+               Buffers: shared hit=4
+               ->  Index Scan using pk_users on users u1_0  (cost=0.42..8.44 rows=1 width=16) (actual time=0.001..0.002 rows=1 loops=1)
+                     Index Cond: (id = '00000001-0000-4000-8000-000000000001'::uuid)
+                     Filter: (deleted_at IS NULL)
+                     Buffers: shared hit=4
+         SubPlan 1
+           ->  Aggregate  (cost=28.36..28.37 rows=1 width=8) (actual time=0.007..0.007 rows=1 loops=10)
+                 Buffers: shared hit=130
+                 ->  Nested Loop  (cost=0.85..28.36 rows=2 width=16) (actual time=0.003..0.006 rows=2 loops=10)
+                       Buffers: shared hit=130
+                       ->  Index Scan using idx_comments_article on comments c1_0  (cost=0.43..11.49 rows=2 width=32) (actual time=0.002..0.003 rows=2 loops=10)
+                             Index Cond: (article_id = a1_0.id)
+                             Filter: (deleted_at IS NULL)
+                             Buffers: shared hit=50
+                       ->  Index Scan using pk_users on users u2_0  (cost=0.42..8.44 rows=1 width=16) (actual time=0.001..0.001 rows=1 loops=20)
+                             Index Cond: (id = c1_0.user_id)
+                             Filter: (deleted_at IS NULL)
+                             Buffers: shared hit=80
+         SubPlan 2
+           ->  Aggregate  (cost=25.09..25.10 rows=1 width=8) (actual time=0.005..0.005 rows=1 loops=10)
+                 Buffers: shared hit=72
+                 ->  Nested Loop  (cost=0.86..25.09 rows=2 width=16) (actual time=0.002..0.005 rows=3 loops=10)
+                       Buffers: shared hit=72
+                       ->  Index Scan using uk_article_views_article_user on article_views av2_0  (cost=0.43..12.39 rows=2 width=32) (actual time=0.002..0.003 rows=3 loops=10)
+                             Index Cond: (article_id = a1_0.id)
+                             Buffers: shared hit=60
+                       ->  Memoize  (cost=0.43..8.45 rows=1 width=16) (actual time=0.000..0.000 rows=1 loops=30)
+                             Cache Key: av2_0.user_id
+                             Cache Mode: logical
+                             Hits: 27  Misses: 3  Evictions: 0  Overflows: 0  Memory Usage: 1kB
+                             Buffers: shared hit=12
+                             ->  Index Scan using pk_users on users u3_0  (cost=0.42..8.44 rows=1 width=16) (actual time=0.001..0.001 rows=1 loops=3)
+                                   Index Cond: (id = av2_0.user_id)
+                                   Filter: (deleted_at IS NULL)
+                                   Buffers: shared hit=12
+ Planning:
+   Buffers: shared hit=132
+ Planning Time: 0.572 ms
+ Execution Time: 0.335 ms
+(53 rows)
+
+Time: 1.585 ms
+query=recent_article_views repeats
+Time: 0.713 ms
+Time: 0.550 ms
+Time: 0.537 ms
+Time: 1.108 ms
+Time: 0.525 ms
+query=subscribed_interests_main explain
+                                                                                    QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=1.13..759.99 rows=5 width=78) (actual time=0.050..0.770 rows=50 loops=1)
+   Buffers: shared hit=3182
+   ->  Nested Loop  (cost=0.71..65.70 rows=5 width=86) (actual time=0.006..0.052 rows=50 loops=1)
+         Buffers: shared hit=154
+         ->  Index Scan using idx_subscriptions_user_created_id on subscriptions s1_0  (cost=0.42..24.17 rows=5 width=56) (actual time=0.004..0.012 rows=50 loops=1)
+               Index Cond: (user_id = '00000001-0000-4000-8000-000000000001'::uuid)
+               Buffers: shared hit=4
+         ->  Index Scan using pk_interests on interests i1_0  (cost=0.29..8.31 rows=1 width=46) (actual time=0.001..0.001 rows=1 loops=50)
+               Index Cond: (id = s1_0.interest_id)
+               Buffers: shared hit=150
+   ->  Materialize  (cost=0.42..8.44 rows=1 width=16) (actual time=0.000..0.000 rows=1 loops=50)
+         Buffers: shared hit=4
+         ->  Index Scan using pk_users on users u1_0  (cost=0.42..8.44 rows=1 width=16) (actual time=0.002..0.002 rows=1 loops=1)
+               Index Cond: (id = '00000001-0000-4000-8000-000000000001'::uuid)
+               Filter: (deleted_at IS NULL)
+               Buffers: shared hit=4
+   SubPlan 1
+     ->  Aggregate  (cost=137.15..137.16 rows=1 width=8) (actual time=0.014..0.014 rows=1 loops=50)
+           Buffers: shared hit=3024
+           ->  Nested Loop  (cost=1.13..137.12 rows=10 width=16) (actual time=0.003..0.013 rows=11 loops=50)
+                 Buffers: shared hit=3024
+                 ->  Index Only Scan using pk_interests on interests i2_0  (cost=0.29..8.31 rows=1 width=16) (actual time=0.001..0.001 rows=1 loops=50)
+                       Index Cond: (id = i1_0.id)
+                       Heap Fetches: 50
+                       Buffers: shared hit=150
+                 ->  Nested Loop  (cost=0.84..128.72 rows=10 width=32) (actual time=0.002..0.012 rows=11 loops=50)
+                       Buffers: shared hit=2874
+                       ->  Index Scan using uk_subscriptions_interest_user on subscriptions s2_0  (cost=0.42..44.36 rows=10 width=48) (actual time=0.001..0.004 rows=11 loops=50)
+                             Index Cond: (interest_id = i1_0.id)
+                             Buffers: shared hit=694
+                       ->  Index Scan using pk_users on users u2_0  (cost=0.42..8.44 rows=1 width=16) (actual time=0.001..0.001 rows=1 loops=545)
+                             Index Cond: (id = s2_0.user_id)
+                             Filter: (deleted_at IS NULL)
+                             Rows Removed by Filter: 0
+                             Buffers: shared hit=2180
+ Planning:
+   Buffers: shared hit=140
+ Planning Time: 0.384 ms
+ Execution Time: 0.791 ms
+(39 rows)
+
+Time: 1.581 ms
+query=subscribed_interests_main repeats
+Time: 1.009 ms
+Time: 1.107 ms
+Time: 0.945 ms
+Time: 0.940 ms
+Time: 0.903 ms
+query=subscribed_interests_keywords explain
+                                                                           QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on keywords k1_0  (cost=68.60..176.11 rows=30 width=47) (actual time=0.081..0.099 rows=150 loops=1)
+   Recheck Cond: (interest_id = ANY ($0))
+   Heap Blocks: exact=4
+   Buffers: shared hit=161
+   InitPlan 1 (returns $0)
+     ->  Index Scan using idx_subscriptions_user_created_id on subscriptions s1_0  (cost=0.42..24.17 rows=5 width=16) (actual time=0.003..0.006 rows=50 loops=1)
+           Index Cond: (user_id = '00000001-0000-4000-8000-000000000001'::uuid)
+           Buffers: shared hit=4
+   ->  Bitmap Index Scan on uk_keywords_interest_keyword  (cost=0.00..44.43 rows=30 width=0) (actual time=0.074..0.074 rows=150 loops=1)
+         Index Cond: (interest_id = ANY ($0))
+         Buffers: shared hit=157
+ Planning:
+   Buffers: shared hit=41
+ Planning Time: 0.125 ms
+ Execution Time: 0.114 ms
+(15 rows)
+
+Time: 0.543 ms
+query=subscribed_interests_keywords repeats
+Time: 0.380 ms
+Time: 0.576 ms
+Time: 0.384 ms
+Time: 0.353 ms
+Time: 0.312 ms

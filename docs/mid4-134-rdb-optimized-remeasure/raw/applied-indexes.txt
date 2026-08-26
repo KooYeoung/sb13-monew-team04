@@ -1,0 +1,8 @@
+   tablename   |               indexname               |                                                          indexdef
+---------------+---------------------------------------+-----------------------------------------------------------------------------------------------------------------------------
+ article_views | idx_article_views_user_viewed_id      | CREATE INDEX idx_article_views_user_viewed_id ON public.article_views USING btree (user_id, viewed_at DESC, id DESC)
+ comment_likes | idx_comment_likes_liked_by_created_id | CREATE INDEX idx_comment_likes_liked_by_created_id ON public.comment_likes USING btree (liked_by, created_at DESC, id DESC)
+ comments      | idx_comments_article                  | CREATE INDEX idx_comments_article ON public.comments USING btree (article_id)
+ comments      | idx_comments_user_created_id          | CREATE INDEX idx_comments_user_created_id ON public.comments USING btree (user_id, created_at DESC, id DESC)
+ subscriptions | idx_subscriptions_user_created_id     | CREATE INDEX idx_subscriptions_user_created_id ON public.subscriptions USING btree (user_id, created_at DESC, id DESC)
+(5 rows)

@@ -1,0 +1,2 @@
+﻿CONTAINER ID   NAME                              CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O         PIDS
+9c55e8810fce   monew-perf-134-rerun-postgres-1   0.17%     296.2MiB / 30.91GiB   0.94%     8.59MB / 53.6MB   18.7MB / 2.32GB   16

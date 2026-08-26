@@ -1,0 +1,20 @@
+ Container monew-perf-134-rerun-postgres-1  Running
+CREATE FUNCTION
+CREATE FUNCTION
+NOTICE:  Seeding activity history data. scale=1000000, users=10000, interests=5000, articles=200000, comments=400000, likes=300000, views=300000
+             metric              |                value
+---------------------------------+--------------------------------------
+ scale_count                     | 1000000
+ target_user_id                  | 00000001-0000-4000-8000-000000000001
+ target_rows_per_recent_activity | 10000
+ users                           | 10000
+ interests                       | 5000
+ keywords                        | 15000
+ subscriptions                   | 50045
+ articles                        | 200000
+ comments                        | 400000
+ comment_likes                   | 300000
+ article_views                   | 300000
+(11 rows)
+
+seed_duration_seconds=17.483

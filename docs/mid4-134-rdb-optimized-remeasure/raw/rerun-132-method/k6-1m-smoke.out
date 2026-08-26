@@ -1,0 +1,33 @@
+
+         /\      Grafana   /?얄?
+    /\  /  \     |\  __   /  /
+   /  \/    \    | |/ /  /   ?얄?
+  /          \   |   (  |  (??  |
+ / __________ \  |_|\_\  \_____/
+
+     execution: local
+        script: /scripts/activity-history-baseline.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 1 max VUs, 1m0s max duration (incl. graceful stop):
+              * smoke: 1 iterations shared among 1 VUs (maxDuration: 30s, gracefulStop: 30s)
+
+
+running (0m01.0s), 1/1 VUs, 0 complete and 0 interrupted iterations
+smoke   [   0% ] 1 VUs  01.0s/30s  0/1 shared iters
+Activity history k6 summary
+scenario: smoke
+url: http://host.docker.internal:8080/api/user-activities/00000001-0000-4000-8000-000000000001
+targetUserId: 00000001-0000-4000-8000-000000000001
+summaryPath: /results/mid4-134-rerun-132-method/activity-history-1m-smoke-summary.json
+requests: 1
+rps: 0.97
+droppedIterations: 0
+errorRate: 0.00%
+duration.avg: 23.02 ms
+duration.p95: 23.02 ms
+duration.p99: 23.02 ms
+checksRate: 100.00%
+
+running (0m01.0s), 0/1 VUs, 1 complete and 0 interrupted iterations
+smoke ??[ 100% ] 1 VUs  01.0s/30s  1/1 shared iters

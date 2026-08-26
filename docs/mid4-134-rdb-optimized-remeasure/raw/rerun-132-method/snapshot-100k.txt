@@ -1,0 +1,33 @@
+Pager usage is off.
+scale=100k
+          measured_at
+-------------------------------
+ 2026-08-25 14:15:34.572154+00
+(1 row)
+
+ db_size
+---------
+ 44 MB
+(1 row)
+
+    relname    | n_live_tup | total_size
+---------------+------------+------------
+ article_views |      30000 | 9192 kB
+ articles      |      20000 | 8624 kB
+ comment_likes |      30000 | 6896 kB
+ comments      |      40000 | 10104 kB
+ interests     |        500 | 144 kB
+ keywords      |       1500 | 336 kB
+ subscriptions |       5045 | 1472 kB
+ users         |       1000 | 304 kB
+(8 rows)
+
+        metric        | value
+----------------------+-------
+ target_subscriptions |    50
+(1 row)
+
+     metric      | value
+-----------------+-------
+ target_keywords |   150
+(1 row)

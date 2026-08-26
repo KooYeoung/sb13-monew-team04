@@ -1,0 +1,5 @@
+Pager usage is off.
+ datname | xact_commit | xact_rollback | blks_read | blks_hit | cache_hit_pct | tup_returned | tup_fetched | temp_files | temp_bytes | deadlocks
+---------+-------------+---------------+-----------+----------+---------------+--------------+-------------+------------+------------+-----------
+ monew   |        5934 |             0 |        88 |  4090783 |        100.00 |      1988451 |     1987461 |          0 |          0 |         0
+(1 row)

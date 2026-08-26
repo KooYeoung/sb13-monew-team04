@@ -1,0 +1,16 @@
+ db_size
+---------
+ 3655 MB
+(1 row)
+
+  table_name   |  rows
+---------------+---------
+ interests     |   50000
+ users         |  100000
+ keywords      |  150000
+ subscriptions |  500045
+ articles      | 2000000
+ comment_likes | 3000000
+ article_views | 3000000
+ comments      | 4000000
+(8 rows)
