@@ -45,6 +45,38 @@ class ArticleBackupItemTest {
     }
 
     @Test
+    @DisplayName("summary는 빈 문자열 또는 공백 문자열이어도 백업 아이템을 생성한다")
+    void createsArticleBackupItemWithEmptyOrBlankSummary() {
+        // given
+        UUID originalArticleId = UUID.fromString("00000000-0000-4000-8000-000000000001");
+        LocalDateTime publishedAt = LocalDateTime.of(2026, 8, 23, 10, 15);
+
+        // when
+        ArticleBackupItem emptySummaryItem = new ArticleBackupItem(
+                originalArticleId,
+                ArticleSource.NAVER,
+                "https://example.com/news/1",
+                "기사 제목",
+                "",
+                publishedAt,
+                null
+        );
+        ArticleBackupItem blankSummaryItem = new ArticleBackupItem(
+                originalArticleId,
+                ArticleSource.NAVER,
+                "https://example.com/news/1",
+                "기사 제목",
+                " ",
+                publishedAt,
+                null
+        );
+
+        // then
+        assertThat(emptySummaryItem.summary()).isEmpty();
+        assertThat(blankSummaryItem.summary()).isEqualTo(" ");
+    }
+
+    @Test
     @DisplayName("Article.date를 publishedAt으로 매핑한다")
     void mapsArticleDateToPublishedAt() {
         // given
@@ -139,7 +171,7 @@ class ArticleBackupItemTest {
                 ArticleSource.NAVER,
                 "https://example.com/news/1",
                 "기사 제목",
-                " ",
+                null,
                 LocalDateTime.of(2026, 8, 23, 10, 15),
                 null
         )).isInstanceOf(ArticleBackupFileInvalidException.class);

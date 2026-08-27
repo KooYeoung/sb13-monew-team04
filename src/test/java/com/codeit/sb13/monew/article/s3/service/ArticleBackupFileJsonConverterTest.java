@@ -66,6 +66,21 @@ class ArticleBackupFileJsonConverterTest {
     }
 
     @Test
+    @DisplayName("summary가 빈 문자열이어도 JSON 직렬화와 역직렬화가 성공한다")
+    void serializesAndDeserializesEmptySummary() {
+        // given
+        ArticleBackupFile backupFile = backupFileWithSummary("");
+
+        // when
+        String json = converter.serialize(backupFile);
+        ArticleBackupFile result = converter.deserialize(json);
+
+        // then
+        assertThat(json).contains("\"summary\":\"\"");
+        assertThat(result.articles().get(0).summary()).isEmpty();
+    }
+
+    @Test
     @DisplayName("백업 파일이 없으면 백업 파일 검증 예외가 발생한다")
     void throwsInvalidExceptionWhenBackupFileIsNull() {
         assertThatThrownBy(() -> converter.serialize(null))
@@ -129,12 +144,16 @@ class ArticleBackupFileJsonConverterTest {
     }
 
     private ArticleBackupFile backupFile() {
+        return backupFileWithSummary("기사 요약");
+    }
+
+    private ArticleBackupFile backupFileWithSummary(String summary) {
         ArticleBackupItem item = new ArticleBackupItem(
                 UUID.fromString("00000000-0000-4000-8000-000000000001"),
                 ArticleSource.NAVER,
                 "https://example.com/news/1",
                 "기사 제목",
-                "기사 요약",
+                summary,
                 LocalDateTime.of(2026, 8, 23, 10, 15),
                 null
         );

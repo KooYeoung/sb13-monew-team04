@@ -30,8 +30,8 @@ public record ArticleBackupItem(
         if (!StringUtils.hasText(title)) {
             throw invalid("title", "기사 제목은 필수입니다.");
         }
-        if (!StringUtils.hasText(summary)) {
-            throw invalid("summary", "기사 요약은 필수입니다.");
+        if (summary == null) {
+            throw invalid("summary", "기사 요약은 null일 수 없습니다.");
         }
         if (publishedAt == null) {
             throw invalid("publishedAt", "기사 발행일시는 필수입니다.");

@@ -89,6 +89,26 @@ class ArticleRestoreCommandServiceTest {
     }
 
     @Test
+    @DisplayName("summary가 빈 문자열이어도 새 기사로 복구한다")
+    void restoresNewArticleWithEmptySummary() {
+        ArticleBackupItem item = backupItem("");
+        when(articleRepository.findByLink(item.link())).thenReturn(Optional.empty());
+        when(articleRestoreSaveService.save(any(Article.class))).thenAnswer(invocation -> {
+            Article article = invocation.getArgument(0);
+            ReflectionTestUtils.setField(article, "id", RESTORED_ARTICLE_ID);
+            return article;
+        });
+
+        ArticleRestoreResult result = commandService.restore(RESTORE_DATE, List.of(item));
+
+        assertThat(result.restoredArticleIds()).containsExactly(RESTORED_ARTICLE_ID);
+
+        ArgumentCaptor<Article> articleCaptor = ArgumentCaptor.forClass(Article.class);
+        verify(articleRestoreSaveService).save(articleCaptor.capture());
+        assertThat(articleCaptor.getValue().getSummary()).isEmpty();
+    }
+
+    @Test
     @DisplayName("DB에 같은 link가 있으면 복구하지 않는다")
     void skipsWhenSameLinkExists() {
         ArticleBackupItem item = backupItem();
@@ -153,12 +173,16 @@ class ArticleRestoreCommandServiceTest {
     }
 
     private ArticleBackupItem backupItem() {
+        return backupItem("복구 기사 요약");
+    }
+
+    private ArticleBackupItem backupItem(String summary) {
         return new ArticleBackupItem(
                 ORIGINAL_ARTICLE_ID,
                 ArticleSource.NAVER,
                 "https://example.com/news/1",
                 "복구 기사 제목",
-                "복구 기사 요약",
+                summary,
                 LocalDateTime.of(2026, 8, 23, 10, 15),
                 null
         );
