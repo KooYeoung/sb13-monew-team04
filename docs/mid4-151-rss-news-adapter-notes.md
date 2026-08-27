@@ -232,7 +232,7 @@
 1. `description`이 의미 있는 텍스트면 우선 사용합니다.
 2. `description`이 없거나 비어 있으면 `content:encoded`를 사용합니다.
 3. `content:encoded`는 HTML 제거, entity decode, 공백 정규화 후 사용합니다.
-4. 둘 다 의미 있는 텍스트가 없으면 `summary=null`로 처리합니다.
+4. 둘 다 의미 있는 텍스트가 없으면 `summary=""`로 처리합니다.
 
 다음 값은 비어 있는 값으로 처리합니다.
 
@@ -242,7 +242,7 @@
 - `ㅤ` 같은 특수 공백 또는 채움 문자만 있는 문자열
 - HTML 제거 후 남는 텍스트가 없는 문자열
 
-현재 확인 기준으로 한국경제 `all-news`는 `description`과 `content:encoded`가 모두 없어 `summary=null`이 됩니다. 조선일보와 연합뉴스TV는 `description`이 비어 있을 때 `content:encoded` fallback을 적용합니다.
+현재 확인 기준으로 한국경제 `all-news`는 `description`과 `content:encoded`가 모두 없어 `summary=""`이 됩니다. 조선일보와 연합뉴스TV는 `description`이 비어 있을 때 `content:encoded` fallback을 적용합니다.
 
 ### 파싱 실패 정책
 
@@ -263,7 +263,7 @@
 - 지원 카테고리는 enum으로 관리하고, 호출할 카테고리 key 목록은 작업자가 넘기는 방식으로 처리합니다.
 - 여러 카테고리를 동시에 호출하면 동일 기사가 중복으로 반환될 수 있습니다.
 - 링크 중복 방지는 MID4-151 범위 밖이므로, 이 티켓에서 제거할지 여부는 추가 결정이 필요합니다.
-- `description`이 없는 RSS item이 있으므로 `CollectedArticle.summary`는 `null`을 허용하는 방향으로 처리해야 합니다.
+- `description`이 없는 RSS item이 있으므로 `CollectedArticle.summary`는 빈 문자열을 허용하는 방향으로 처리해야 합니다.
 - `content:encoded`는 HTML 조각일 수 있으므로 summary fallback으로 사용할 때 HTML 제거, entity decode, 공백 정규화가 필요합니다.
 - `publishedAt`을 만들 수 없는 RSS item은 저장 가능한 기사 후보가 아니므로 제외합니다.
 - 제외 item의 별도 저장과 재처리는 MID4-151 범위 밖이며, 저장 정책 확정 시 후속 티켓으로 다룹니다.

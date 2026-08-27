@@ -97,7 +97,7 @@ public class RssNewsMapper {
             return description;
         }
         String content = cleanSummary(contentEncodedValue(entry));
-        return StringUtils.hasText(content) ? content : null;
+        return StringUtils.hasText(content) ? content : "";
     }
 
     private String cleanSummary(String value) {

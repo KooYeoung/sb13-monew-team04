@@ -176,7 +176,7 @@ RSS 매핑 정책은 다음과 같습니다.
 - `publishedAt`은 Rome이 파싱한 `publishedDate`를 사용합니다.
 - `publishedAt`을 만들 수 없으면 해당 item은 제외하고 warn 로그를 남깁니다.
 - `summary`는 `description`을 우선 사용하고, 비어 있으면 `content:encoded`를 사용합니다.
-- `description`과 `content:encoded`가 모두 비어 있으면 `summary=null`입니다.
+- `description`과 `content:encoded`가 모두 비어 있으면 `summary=""`입니다.
 - XML 파싱 실패는 `ArticleFetchParseException`으로 처리합니다.
 - HTTP 오류, timeout 등 호출 실패는 `ArticleFetchFailedException`으로 처리합니다.
 
@@ -195,7 +195,7 @@ RSS 매핑 정책은 다음과 같습니다.
 작업자는 저장 전에 다음 정책을 반드시 적용해야 합니다.
 
 - `link` 기준 중복 기사는 저장하지 않습니다.
-- RSS는 `summary=null` 후보가 반환될 수 있으므로 저장 전 기본 문구 사용, 제목 대체, 제외 중 하나의 정책을 정해야 합니다.
+- RSS는 요약 후보가 없으면 `summary=""`를 반환하므로 빈 요약 기사 처리 정책은 저장 작업자 또는 후속 담당자가 정해야 합니다.
 - 여러 RSS 카테고리를 동시에 호출하면 같은 링크가 중복 반환될 수 있습니다.
 - 어댑터가 제외한 item을 별도 저장하거나 재처리하는 정책은 MID4-151 범위 밖입니다.
 

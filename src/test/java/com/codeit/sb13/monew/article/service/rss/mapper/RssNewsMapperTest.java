@@ -75,8 +75,8 @@ class RssNewsMapperTest {
     }
 
     @Test
-    @DisplayName("description과 content:encoded가 모두 비어 있으면 summary를 null로 반환한다")
-    void returnsNullSummaryWhenSummaryCandidatesAreBlank() {
+    @DisplayName("description과 content:encoded가 모두 비어 있으면 summary를 빈 문자열로 반환한다")
+    void returnsEmptySummaryWhenSummaryCandidatesAreBlank() {
         String xml = rss("""
                 <item>
                     <title>Title</title>
@@ -90,7 +90,24 @@ class RssNewsMapperTest {
         List<CollectedArticle> articles = mapper.toCollectedArticles(ArticleSource.HANKYUNG, xml);
 
         assertThat(articles).singleElement()
-                .satisfies(article -> assertThat(article.summary()).isNull());
+                .satisfies(article -> assertThat(article.summary()).isEmpty());
+    }
+
+    @Test
+    @DisplayName("description과 content:encoded가 없는 item은 summary를 빈 문자열로 반환한다")
+    void returnsEmptySummaryWhenSummaryCandidatesAreMissing() {
+        String xml = rss("""
+                <item>
+                    <title>Title</title>
+                    <link>https://example.com/articles/1</link>
+                    <pubDate>Fri, 21 Aug 2026 10:28:09 +0900</pubDate>
+                </item>
+                """);
+
+        List<CollectedArticle> articles = mapper.toCollectedArticles(ArticleSource.HANKYUNG, xml);
+
+        assertThat(articles).singleElement()
+                .satisfies(article -> assertThat(article.summary()).isEmpty());
     }
 
     @Test
