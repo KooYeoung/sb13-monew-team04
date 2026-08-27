@@ -17,6 +17,7 @@ import com.codeit.sb13.monew.user.repository.UserRepository;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,6 +60,9 @@ public class CommentLikeServiceImpl implements CommentLikeService {
       log.info("댓글 좋아요 등록 완료 - 댓글 아이디: {}", comment.getId());
 
     } catch (DataIntegrityViolationException e) {
+      if (!isDuplicateCommentLike(e)) {
+        throw e;
+      }
       return commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(
               comment.getId(), likedByUser.getId())
           .map(existingLike -> {
@@ -79,6 +83,20 @@ public class CommentLikeServiceImpl implements CommentLikeService {
             comment.getId(), likedByUser.getId())
         .map(this::toDto)
         .orElseThrow(()->new IllegalStateException("댓글 좋아요 등록 후 조회 실패 - 댓글 아이디: " + comment.getId()));
+  }
+
+  // UNIQUE 제약 조건 위반일 때만 중복 좋아요로 판단하고, 다른 제약 조건 위반 시 해당 예외를 그대로 던진다
+  private boolean isDuplicateCommentLike(DataIntegrityViolationException e) {
+    Throwable cause = e;
+    while (cause != null) {
+      if (cause instanceof ConstraintViolationException constraintViolation
+          && "uk_comment_likes_comment_liked_by".equals(
+              constraintViolation.getConstraintName())) {
+        return true;
+      }
+      cause = cause.getCause();
+    }
+    return false;
   }
 
   @Override

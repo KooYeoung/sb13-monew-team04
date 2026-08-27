@@ -121,4 +121,13 @@ public interface CommentLikeRepository extends JpaRepository<CommentLike, UUID> 
       @Param("likedById") UUID likedById
   );
 
+
+  // 쿼리 실행 전 지연 저장소 쿼리 flush
+  @Modifying(flushAutomatically = true)
+  @Query("""
+      DELETE FROM CommentLike CL
+      WHERE CL.comment.id = :commentId
+      """)
+  Long deleteByCommentId(@Param("commentId") UUID commentId);
+
 }

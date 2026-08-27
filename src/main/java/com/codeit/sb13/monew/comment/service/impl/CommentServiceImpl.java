@@ -20,7 +20,9 @@ import com.codeit.sb13.monew.global.exception.comment.CommentPermissionDeniedExc
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.repository.UserRepository;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -130,5 +132,25 @@ public class CommentServiceImpl implements CommentService {
         comment.getId(), command.requestUserId());// 좋아요 여부를 업데이트하기 위해 조회
 
     return CommentDto.from(comment, likeCount, likedBy);
+  }
+
+
+  @Transactional
+  @Override
+  public void softDelete(UUID commentId) {
+    int updatedCount = commentRepository.softDeleteIfNotDeleted(commentId, LocalDateTime.now());
+    if (updatedCount == 0) {
+      // API 계약상 이미 삭제된 댓글과 존재하지 않는 댓글 모두 404로 응답한다 ("404 댓글 정보 없음")
+      throw new CommentNotFoundException(commentId);
+    }
+  }
+
+  @Transactional
+  @Override
+  public void hardDelete(UUID commentId) {
+    Comment comment = commentRepository.findForHardDeleteById(commentId)
+        .orElseThrow(() -> new CommentNotFoundException(commentId));
+    commentLikeRepository.deleteByCommentId(commentId);
+    commentRepository.delete(comment);
   }
 }

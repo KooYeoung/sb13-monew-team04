@@ -655,4 +655,43 @@ class CommentRepositoryTest {
                 "invalid-like-count", LocalDateTime.now(), comment.getId(), 10, null))))
             .isInstanceOf(CommentSearchConditionInvalidException.class);
     }
+
+
+    @Test
+    @DisplayName("활성화된 댓글만 조건부로 논리 삭제하고, 삭제 재시도는 0건을 반환한다")
+    void softDeleteIfNotDeleted_updatesOnlyActiveComment() {
+        User writer = userRepository.saveAndFlush(new User(
+            "soft-delete-writer@email.com", "작성자", "testPassword!"));
+        Article article = articleRepository.saveAndFlush(
+            createArticle("테스트 기사", "테스트 기사 내용", "soft-delete-link"));
+        Comment comment = commentRepository.saveAndFlush(new Comment(article, writer, "삭제할 댓글"));
+
+        LocalDateTime deletedAt = LocalDateTime.of(2026, 8, 26, 12, 0);
+        int firstUpdatedCount = commentRepository.softDeleteIfNotDeleted(comment.getId(), deletedAt);
+        int secondUpdatedCount = commentRepository.softDeleteIfNotDeleted(
+            comment.getId(), LocalDateTime.of(2026, 8, 26, 12, 1));
+        em.clear();
+
+        assertThat(firstUpdatedCount).isEqualTo(1);
+        assertThat(secondUpdatedCount).isZero();
+        assertThat(commentRepository.findActiveById(comment.getId())).isEmpty();
+        Comment deletedComment = commentRepository.findById(comment.getId()).orElseThrow();
+        assertThat(deletedComment.getDeletedAt()).isEqualTo(deletedAt);
+        assertThat(deletedComment.getUpdatedAt()).isEqualTo(deletedAt);
+    }
+
+    @Test
+    @DisplayName("댓글 물리 삭제를 위한 대상 조회 시 논리 삭제된 댓글도 포함한다")
+    void findForHardDeleteById_includesSoftDeletedComment() {
+        User writer = userRepository.saveAndFlush(new User(
+            "hard-delete-writer@email.com", "작성자", "testPassword!"));
+        Article article = articleRepository.saveAndFlush(
+            createArticle("테스트 기사", "테스트 기사 내용", "hard-delete-link"));
+        Comment comment = commentRepository.saveAndFlush(new Comment(article, writer, "정리할 댓글"));
+        comment.softDelete();
+        commentRepository.saveAndFlush(comment);
+        em.clear();
+
+        assertThat(commentRepository.findForHardDeleteById(comment.getId())).isPresent();
+    }
 }

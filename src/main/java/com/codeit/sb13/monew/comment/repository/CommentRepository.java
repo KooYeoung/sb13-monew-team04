@@ -2,9 +2,11 @@ package com.codeit.sb13.monew.comment.repository;
 
 import com.codeit.sb13.monew.comment.domain.Comment;
 import com.codeit.sb13.monew.comment.repository.dto.RecentCommentActivityProjection;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -22,6 +24,28 @@ public interface CommentRepository extends JpaRepository<Comment, UUID>, Comment
           AND A.deletedAt IS NULL
       """) // 댓글, 작성자, 기사 모두 활성 상태인 경우에만 조회
   Optional<Comment> findActiveById(@Param("commentId") UUID commentId);
+
+  // 논리 삭제는 이미 삭제된 댓글을 다시 성공 처리하지 않도록 DB에서 조건부로 수행한다
+  @Modifying(clearAutomatically = true)
+  @Query("""
+      UPDATE Comment C
+      SET C.deletedAt = :deletedAt,
+          C.updatedAt = :deletedAt
+      WHERE C.id = :commentId
+        AND C.deletedAt IS NULL
+      """)
+  int softDeleteIfNotDeleted(
+      @Param("commentId") UUID commentId,
+      @Param("deletedAt") LocalDateTime deletedAt
+  );
+
+  // 댓글은 논리 삭제 여부와 관계 없이 물리 삭제 정리 대상에 포함해 조회한다
+  @Query("""
+     SELECT C
+     FROM Comment C
+     WHERE C.id = :commentId
+  """)
+  Optional<Comment> findForHardDeleteById(@Param("commentId") UUID commentId);
 
   @Query("""
       SELECT new com.codeit.sb13.monew.comment.repository.dto.RecentCommentActivityProjection(

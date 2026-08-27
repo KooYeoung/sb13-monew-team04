@@ -2,6 +2,7 @@ package com.codeit.sb13.monew.comment.controller;
 
 import static org.mockito.BDDMockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -11,6 +12,7 @@ import com.codeit.sb13.monew.comment.service.CommentService;
 import com.codeit.sb13.monew.comment.service.CommentOrderBy;
 import com.codeit.sb13.monew.comment.service.dto.CommentDto;
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
+import com.codeit.sb13.monew.global.exception.comment.CommentNotFoundException;
 import com.codeit.sb13.monew.user.domain.User;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -289,4 +291,59 @@ public class CommentControllerTest {
     then(commentService).shouldHaveNoInteractions();
   }
 
+
+  @Test
+  @DisplayName("댓글 논리 삭제 성공 - RED")
+  void 댓글_논리_삭제_성공() throws Exception {
+    // given
+    UUID commentId = UUID.randomUUID();
+    mockMvc.perform(delete("/api/comments/{commentId}", commentId))
+        .andExpect(status().isNoContent());
+
+    // then
+    then(commentService).should(times(1)).softDelete(commentId);
+  }
+
+  @Test
+  @DisplayName("존재하지 않는 댓글을 논리 삭제하면 404 NOT FOUND를 반환한다")
+  void 존재하지_않는_댓글_논리_삭제_실패() throws Exception {
+    // given
+    UUID commentId = UUID.randomUUID();
+
+    willThrow(new CommentNotFoundException(commentId)).given(commentService).softDelete(commentId);
+
+    // when & then
+    mockMvc.perform(delete("/api/comments/{commentId}", commentId))
+        .andExpect(status().isNotFound());
+
+    then(commentService).should(times(1)).softDelete(commentId);
+  }
+
+  @Test
+  @DisplayName("댓글 물리 삭제 성공 - GREEN")
+  void 댓글_물리_삭제_성공() throws Exception {
+    // given
+    UUID commentId = UUID.randomUUID();
+    mockMvc.perform(delete("/api/comments/{commentId}/hard", commentId))
+        .andExpect(status().isNoContent())
+        .andExpect(content().string("")); // 응답 비어 있는지 확인
+
+    // then
+    then(commentService).should(times(1)).hardDelete(commentId);
+  }
+
+  @Test
+  @DisplayName("존재하지 않는 댓글을 물리 삭제하면 404 NOT FOUND를 반환한다")
+  void 존재하지_않는_댓글_물리_삭제_실패() throws Exception {
+    // given
+    UUID commentId = UUID.randomUUID();
+
+    willThrow(new CommentNotFoundException(commentId)).given(commentService).hardDelete(commentId);
+
+    // when & then
+    mockMvc.perform(delete("/api/comments/{commentId}/hard", commentId))
+        .andExpect(status().isNotFound());
+
+    then(commentService).should(times(1)).hardDelete(commentId);
+  }
 }

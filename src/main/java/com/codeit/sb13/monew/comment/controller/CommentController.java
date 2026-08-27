@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -95,4 +96,20 @@ public class CommentController implements CommentApi {
     return ResponseEntity.status(HttpStatus.OK).body(commentService.update(request.toCommand(commentId, requestUserId)));
   }
 
+
+  // 댓글 논리 삭제
+  @Override
+  @DeleteMapping("/{commentId}")
+  public ResponseEntity<Void> softDeleteComment(@PathVariable UUID commentId) {
+    commentService.softDelete(commentId);
+    return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+  }
+
+  // 댓글 물리 삭제
+  @Override
+  @DeleteMapping("/{commentId}/hard")
+  public ResponseEntity<Void> hardDeleteComment(@PathVariable UUID commentId) {
+    commentService.hardDelete(commentId);
+    return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+  }
 }

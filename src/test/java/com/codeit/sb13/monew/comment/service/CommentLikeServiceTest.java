@@ -26,10 +26,11 @@ import com.codeit.sb13.monew.notification.service.NotificationService;
 import com.codeit.sb13.monew.notification.service.dto.CommentLikedDto;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.repository.UserRepository;
-import org.springframework.dao.DataIntegrityViolationException;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -38,6 +39,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @DisplayName("댓글 좋아요 서비스 - TDD")
@@ -163,7 +165,11 @@ public class CommentLikeServiceTest {
     ReflectionTestUtils.setField(existingLike, "createdAt", likeCreatedAt);
 
     DataIntegrityViolationException duplicateException =
-        new DataIntegrityViolationException("UNIQUE 제약 위반 발생");
+        new DataIntegrityViolationException("UNIQUE 제약 위반 발생",
+            new ConstraintViolationException(
+                "UNIQUE 제약 위반 발생",
+                new SQLException(),
+                "uk_comment_likes_comment_liked_by"));
 
     given(commentRepository.findActiveById(comment.getId())).willReturn(Optional.of(comment));
     given(userRepository.findByIdAndDeletedAtIsNull(likedBy.getId())).willReturn(Optional.of(likedBy));
@@ -200,6 +206,33 @@ public class CommentLikeServiceTest {
     then(commentLikeRepository).should(times(1)).countActiveLikesByCommentId(comment.getId());
     then(commentLikeSaveService).should(times(1)).create(comment.getId(), likedBy.getId());
     then(notificationService).should(never()).notifyCommentLiked(any(CommentLikedDto.class));
+  }
+
+  @Test
+  @DisplayName("복합 UNIQUE 제약 외 저장 관련 오류는 중복 좋아요로 처리하지 않는다")
+  void UNIQUE_외_저장_오류는_그대로_전파한다() {
+    CommentLikeRegisterCommand command = new CommentLikeRegisterCommand(comment.getId(), likedBy.getId());
+    DataIntegrityViolationException foreignKeyException =
+        new DataIntegrityViolationException("FK 제약 위반 발생",
+            new ConstraintViolationException(
+                "FK 제약 위반 발생",
+                new SQLException(),
+                "fk_comment_likes_comment_id"));
+    // ConstraintViolationException 추가, isDuplicateCommentLike 제약 조건 위반 이름 비교식의 false 경로까지 확인
+
+    given(commentRepository.findActiveById(comment.getId())).willReturn(Optional.of(comment));
+    given(userRepository.findByIdAndDeletedAtIsNull(likedBy.getId())).willReturn(Optional.of(likedBy));
+    given(commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(comment.getId(), likedBy.getId()))
+        .willReturn(Optional.empty());
+    doThrow(foreignKeyException).when(commentLikeSaveService)
+        .create(comment.getId(), likedBy.getId());
+
+    assertThatThrownBy(() -> commentLikeService.likeComment(command))
+        .isSameAs(foreignKeyException);
+
+    then(commentLikeRepository).should(times(1))
+        .findWithCommentDetailsByCommentIdAndLikedById(comment.getId(), likedBy.getId());
+    then(notificationService).shouldHaveNoInteractions();
   }
 
   @Test

@@ -104,4 +104,31 @@ public interface CommentApi {
       @RequestBody CommentUpdateRequest request
   );
 
+
+  @Operation(
+      summary = "댓글 논리 삭제",
+      description = "댓글을 논리적으로 삭제할 수 있습니다.")
+  @Parameter(name = "commentId", description = "댓글 ID", required = true)
+  @ApiResponses({
+      @ApiResponse(responseCode = "204", description = "댓글 논리 삭제 성공"),
+      @ApiResponse(responseCode = "404", description = "댓글 정보를 찾을 수 없음"),
+      @ApiResponse(responseCode = "500", description = "서버 내부 오류")
+  })
+  ResponseEntity<Void> softDeleteComment(
+      @PathVariable UUID commentId
+  );
+
+  @Operation(
+      summary = "댓글 물리 삭제",
+      description = "댓글을 물리적으로 삭제할 수 있습니다.")
+  @Parameter(name = "commentId", description = "댓글 ID", required = true)
+  @ApiResponses({
+      @ApiResponse(responseCode = "204", description = "댓글 물리 삭제 성공"),
+      @ApiResponse(responseCode = "404", description = "댓글 정보를 찾을 수 없음"),
+      @ApiResponse(responseCode = "500", description = "서버 내부 오류")
+  })
+  ResponseEntity<Void> hardDeleteComment(
+      @PathVariable UUID commentId
+  );
+
 }

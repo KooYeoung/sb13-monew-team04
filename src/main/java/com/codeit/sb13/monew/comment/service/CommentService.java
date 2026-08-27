@@ -6,6 +6,7 @@ import com.codeit.sb13.monew.comment.service.dto.CommentSearchCommand;
 import com.codeit.sb13.monew.comment.service.dto.CommentUpdateCommand;
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import jakarta.validation.Valid;
+import java.util.UUID;
 
 public interface CommentService {
 
@@ -14,4 +15,8 @@ public interface CommentService {
   CursorPageResponseDto<CommentDto> search(@Valid CommentSearchCommand command);
 
   CommentDto update(@Valid CommentUpdateCommand command);
+
+  void softDelete(UUID commentId);
+
+  void hardDelete(UUID commentId);
 }
