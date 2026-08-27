@@ -18,11 +18,12 @@ import java.util.UUID;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/notifications")
-public class NotificationController {
+public class NotificationController implements NotificationApi {
 
     private final NotificationService notificationService;
     private final NotificationMapper mapper;
 
+    @Override
     @GetMapping
     public ResponseEntity<CursorPageResponseDto<NotificationResponse>> findAllNotifications(
             @ModelAttribute NotificationFindRequest request,
@@ -35,6 +36,7 @@ public class NotificationController {
         return ResponseEntity.ok(mapper.toResponse(result));
     }
 
+    @Override
     @PatchMapping("/{notificationId}")
     public ResponseEntity<NotificationResponse> confirmNotification(@PathVariable UUID notificationId,
                                                                     @RequestHeader(MonewHttpHeaders.REQUEST_USER_ID) UUID userId) {
@@ -42,6 +44,7 @@ public class NotificationController {
         return ResponseEntity.ok(mapper.toResponse(notificationResult));
     }
 
+    @Override
     @PatchMapping
     public ResponseEntity<List<NotificationResponse>> confirmAllNotifications(@RequestHeader(MonewHttpHeaders.REQUEST_USER_ID) UUID userId) {
         List<NotificationResult> notificationResults = notificationService.confirmAllNotifications(userId);

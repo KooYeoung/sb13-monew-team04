@@ -73,6 +73,7 @@ class NotificationControllerTest {
                             .header(MonewHttpHeaders.REQUEST_USER_ID, userId.toString()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.id").value(notificationId.toString()))
+                    .andExpect(jsonPath("$.resourceType").value("comment"))
                     .andExpect(jsonPath("$.confirmed").value(true));
         }
 
