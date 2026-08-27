@@ -6,7 +6,9 @@ import java.util.UUID;
 public record UserUpdateNicknameResult(
     UUID id,
     String nickname,
-    LocalDateTime updatedAt
+    LocalDateTime updatedAt,
+    LocalDateTime createdAt,
+    String email
 ) {
 
 }

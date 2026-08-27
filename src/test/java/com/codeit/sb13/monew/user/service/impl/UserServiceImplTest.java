@@ -240,7 +240,7 @@ public class UserServiceImplTest {
         .password("encodedPassword123")
         .build();
     UserLoginResult expectedResult = new UserLoginResult(
-        UUID.randomUUID(), "email@email.com", "닉네임"
+        UUID.randomUUID(), "email@email.com", "닉네임", LocalDateTime.now()
     );
     when(userMapper.toLoginResult(user))
         .thenReturn(expectedResult);
@@ -281,15 +281,16 @@ public class UserServiceImplTest {
     // given
     UserUpdateNicknameCommand command = new UserUpdateNicknameCommand(
         UUID.randomUUID(), "닉네임2");
-
-    UserUpdateNicknameResult expectedResult = new UserUpdateNicknameResult(
-        command.userId(), "닉네임2", LocalDateTime.now());
-
     User user = User.builder()
-        .email("email@email.cim")
+        .email("email@email.com")
         .nickname("닉네임")
         .password("PassWord123!")
         .build();
+
+    UserUpdateNicknameResult expectedResult = new UserUpdateNicknameResult(
+        command.userId(), "닉네임2", LocalDateTime.now(),
+        LocalDateTime.now(), "email@email.com");
+
     when(userRepository.findById(command.userId()))
         .thenReturn(Optional.of(user));
     when(userRepository.saveAndFlush(user))

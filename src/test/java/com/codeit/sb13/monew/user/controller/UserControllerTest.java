@@ -156,7 +156,8 @@ class UserControllerTest {
     UserLoginResult result = new UserLoginResult(
         UUID.randomUUID(),
         "email@email.com",
-        "닉네임"
+        "닉네임",
+        LocalDateTime.now()
     );
 
     when(userService.login(any(UserLoginCommand.class)))
@@ -171,7 +172,8 @@ class UserControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.id").exists())
         .andExpect(jsonPath("$.email").value(result.email()))
-        .andExpect(jsonPath("$.nickname").value(result.nickname()));
+        .andExpect(jsonPath("$.nickname").value(result.nickname()))
+        .andExpect(jsonPath("$.createdAt").exists());
 
     // Command 변환값 검증 추가
     ArgumentCaptor<UserLoginCommand> commandCaptor = ArgumentCaptor.forClass(
@@ -245,8 +247,9 @@ class UserControllerTest {
   void 올바른_요청_시_닉네임을_변경한다() throws Exception {
     // given
     UserUpdateNicknameResult result = new UserUpdateNicknameResult(
-        UUID.randomUUID(), "닉네임2", LocalDateTime.now()
-    );
+        UUID.randomUUID(), "닉네임2", LocalDateTime.now(),
+        LocalDateTime.now(), "email@email.com");
+
     UserNicknameUpdateRequest request = new UserNicknameUpdateRequest("닉네임2");
     when(userService.updateNickname(any(UserUpdateNicknameCommand.class)))
         .thenReturn(result);
@@ -258,13 +261,19 @@ class UserControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.id").exists())
         .andExpect(jsonPath("$.nickname").value(result.nickname()))
-        .andExpect(jsonPath("$.updatedAt").exists());
+        .andExpect(jsonPath("$.updatedAt").exists())
+        .andExpect(jsonPath("$.createdAt").exists())
+        .andExpect(jsonPath("$.email").value(result.email()));
+
+
+
     ArgumentCaptor<UserUpdateNicknameCommand> commandCaptor =
         ArgumentCaptor.forClass(UserUpdateNicknameCommand.class);
     verify(userService).updateNickname(commandCaptor.capture());
     UserUpdateNicknameCommand capturedCommand = commandCaptor.getValue();
     assertThat(capturedCommand.userId()).isEqualTo(result.id());
     assertThat(capturedCommand.nickname()).isEqualTo(request.nickname());
+
   }
 
   @Test

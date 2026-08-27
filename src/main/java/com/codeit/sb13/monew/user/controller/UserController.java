@@ -62,7 +62,8 @@ public class UserController {
     UserLoginResponse response = new UserLoginResponse(
         login.id(),
         login.email(),
-        login.nickname());
+        login.nickname(),
+        login.createdAt());
     return ResponseEntity.status(HttpStatus.OK)
         .header(MonewHttpHeaders.REQUEST_USER_ID, login.id().toString())
         .body(response);
@@ -81,7 +82,9 @@ public class UserController {
     UserUpdateNicknameResponse response = new UserUpdateNicknameResponse
         (result.id(),
             result.nickname(),
-            result.updatedAt());
+            result.updatedAt(),
+            result.createdAt(),
+            result.email());
 
     return ResponseEntity.status(HttpStatus.OK).body(response);
   }
