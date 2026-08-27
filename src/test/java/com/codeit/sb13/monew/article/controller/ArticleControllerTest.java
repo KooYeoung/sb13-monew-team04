@@ -304,6 +304,7 @@ class ArticleControllerTest {
         mockMvc.perform(get("/api/articles")
                         .header(REQUEST_USER_ID, userId)
                         .param("keyword", "반도체")
+                        .param("interestId", "22222222-2222-2222-2222-222222222222")
                         .param("sourceIn", "NAVER", "CHOSUN")
                         .param("publishDateFrom", "2026-08-01T00:00:00")
                         .param("publishDateTo", "2026-08-31T00:00:00")
@@ -321,6 +322,8 @@ class ArticleControllerTest {
 
         ArticleSearchCommand command = captor.getValue();
         org.assertj.core.api.Assertions.assertThat(command.keyword()).isEqualTo("반도체");
+        org.assertj.core.api.Assertions.assertThat(command.interestId())
+                .isEqualTo(UUID.fromString("22222222-2222-2222-2222-222222222222"));
         org.assertj.core.api.Assertions.assertThat(command.sourceIn())
                 .containsExactly(ArticleSource.NAVER, ArticleSource.CHOSUN);
         org.assertj.core.api.Assertions.assertThat(command.publishDateFrom())

@@ -66,6 +66,7 @@ public class ArticleController implements ArticleApi {
 
         ArticleSearchCommand command = new ArticleSearchCommand(
                 request.keyword(),
+                request.interestId(),
                 request.sourceIn(),
                 request.publishDateFrom(),
                 request.publishDateTo(),

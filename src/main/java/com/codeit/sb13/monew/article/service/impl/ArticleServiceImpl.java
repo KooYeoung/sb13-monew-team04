@@ -81,6 +81,7 @@ public class ArticleServiceImpl implements ArticleService {
 
         ArticleSearchCondition condition = new ArticleSearchCondition(
                 command.keyword(),
+                command.interestId(),
                 command.sourceIn(),
                 command.publishDateFrom(),
                 command.publishDateTo(),

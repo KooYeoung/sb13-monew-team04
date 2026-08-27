@@ -6,6 +6,7 @@ import static com.codeit.sb13.monew.comment.domain.QComment.comment;
 import static com.codeit.sb13.monew.user.domain.QUser.user;
 
 import com.codeit.sb13.monew.article.domain.ArticleSource;
+import com.codeit.sb13.monew.interest.domain.QKeyword;
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchCondition;
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchPage;
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchRow;
@@ -31,6 +32,7 @@ import java.util.UUID;
 public class ArticleRepositoryCustomImpl implements ArticleRepositoryCustom {
 
     private static final QUser commentUser = new QUser("commentUser");
+    private static final QKeyword interestKeyword = new QKeyword("interestKeyword");
 
     private final JPAQueryFactory queryFactory;
 
@@ -43,6 +45,7 @@ public class ArticleRepositoryCustomImpl implements ArticleRepositoryCustom {
         BooleanExpression[] filters = {
                 article.deletedAt.isNull(),
                 keywordContains(condition.keyword()),
+                interestMatches(condition.interestId()),
                 sourceIn(condition.sourceIn()),
                 publishDateGoe(condition.publishDateFrom()),
                 publishDateLoe(condition.publishDateTo())
@@ -296,6 +299,21 @@ public class ArticleRepositoryCustomImpl implements ArticleRepositoryCustom {
         }
         return article.title.containsIgnoreCase(keyword)
                 .or(article.summary.containsIgnoreCase(keyword));
+    }
+
+    private BooleanExpression interestMatches(UUID interestId) {
+        if (interestId == null) {
+            return null;
+        }
+
+        return JPAExpressions.selectOne()
+                .from(interestKeyword)
+                .where(
+                        interestKeyword.interest.id.eq(interestId),
+                        article.title.containsIgnoreCase(interestKeyword.keyword)
+                                .or(article.summary.containsIgnoreCase(interestKeyword.keyword))
+                )
+                .exists();
     }
 
     private BooleanExpression sourceIn(List<ArticleSource> sources) {

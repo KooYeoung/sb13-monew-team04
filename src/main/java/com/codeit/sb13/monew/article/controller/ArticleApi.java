@@ -11,12 +11,14 @@ import com.codeit.sb13.monew.global.dto.ApiErrorResponse;
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springdoc.core.annotations.ParameterObject;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ModelAttribute;
@@ -33,6 +35,21 @@ public interface ArticleApi {
             summary = "뉴스 기사 목록 조회",
             description = "검색어, 출처, 발행일 범위로 뉴스 기사 목록을 조회합니다. 논리 삭제된 기사는 제외됩니다."
     )
+    @Parameters({
+            @Parameter(name = "keyword", description = "검색어(제목, 요약)"),
+            @Parameter(name = "interestId", description = "관심사 ID. 해당 관심사의 키워드가 제목이나 요약에 포함된 기사만 조회한다"),
+            @Parameter(name = "sourceIn", description = "출처(포함)"),
+            @Parameter(name = "publishDateFrom", description = "날짜 시작(범위)"),
+            @Parameter(name = "publishDateTo", description = "날짜 끝(범위)"),
+            @Parameter(name = "orderBy", description = "정렬 속성 이름", required = true,
+                    schema = @Schema(allowableValues = {"publishDate", "commentCount", "viewCount"})),
+            @Parameter(name = "direction", description = "정렬 방향(ASC/DESC)", required = true,
+                    schema = @Schema(allowableValues = {"ASC", "DESC"})),
+            @Parameter(name = "cursor", description = "이전 페이지 마지막 기사 ID"),
+            @Parameter(name = "after", description = "보조 커서(이전 페이지 마지막 항목의 생성 시각)"),
+            @Parameter(name = "limit", description = "커서 페이지 크기", required = true),
+            @Parameter(name = MonewHttpHeaders.REQUEST_USER_ID, description = "요청자 ID", required = true)
+    })
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
@@ -55,12 +72,8 @@ public interface ArticleApi {
             )
     })
     ResponseEntity<CursorPageResponseDto<ArticleDto>> getArticles(
-            @ModelAttribute ArticleSearchRequest request,
-            @Parameter(
-                    name = MonewHttpHeaders.REQUEST_USER_ID,
-                    description = "요청자 ID",
-                    required = true
-            ) @RequestHeader(MonewHttpHeaders.REQUEST_USER_ID) UUID requestUserId
+            @ParameterObject @ModelAttribute ArticleSearchRequest request,
+            @RequestHeader(MonewHttpHeaders.REQUEST_USER_ID) UUID requestUserId
     );
 
     @Operation(

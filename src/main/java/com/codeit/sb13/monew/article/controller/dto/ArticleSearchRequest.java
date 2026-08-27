@@ -11,6 +11,7 @@ import java.util.UUID;
 
 public record ArticleSearchRequest(
         String keyword,
+        UUID interestId,
         List<ArticleSource> sourceIn,
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime publishDateFrom,
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime publishDateTo,

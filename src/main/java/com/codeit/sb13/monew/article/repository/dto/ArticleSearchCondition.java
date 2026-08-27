@@ -10,6 +10,8 @@ import java.util.UUID;
 
 /**
  * @param keyword 검색어(제목 또는 요약에 포함). {@code null}/공백이면 전체 대상
+ * @param interestId 관심사 id. 그 관심사의 키워드 중 하나라도 제목이나 요약에 포함된
+ *                   기사만 남긴다. {@code null}이면 전체 대상
  * @param sourceIn 출처 복수 선택. {@code null}이거나 비어 있으면 전체 출처
  * @param publishDateFrom 발행일 시작(포함). {@code null}이면 하한 없음
  * @param publishDateTo 발행일 종료(포함). {@code null}이면 상한 없음
@@ -23,6 +25,7 @@ import java.util.UUID;
  */
 public record ArticleSearchCondition(
         String keyword,
+        UUID interestId,
         List<ArticleSource> sourceIn,
         LocalDateTime publishDateFrom,
         LocalDateTime publishDateTo,

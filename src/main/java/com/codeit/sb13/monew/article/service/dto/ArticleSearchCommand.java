@@ -10,6 +10,7 @@ import java.util.UUID;
 // 기사 목록 조회 요청을 서비스 계층에 전달하기 위한 커맨드.
 public record ArticleSearchCommand(
         String keyword,
+        UUID interestId,
         List<ArticleSource> sourceIn,
         LocalDateTime publishDateFrom,
         LocalDateTime publishDateTo,

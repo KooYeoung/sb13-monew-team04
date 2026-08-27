@@ -370,8 +370,10 @@ class ArticleServiceTest {
         // given
         UUID userId = UUID.randomUUID();
         UUID cursor = UUID.randomUUID();
+        UUID interestId = UUID.randomUUID();
         ArticleSearchCommand command = new ArticleSearchCommand(
                 "반도체",
+                interestId,
                 List.of(ArticleSource.NAVER, ArticleSource.CHOSUN),
                 LocalDateTime.of(2026, 8, 1, 0, 0),
                 LocalDateTime.of(2026, 8, 31, 0, 0),
@@ -395,6 +397,7 @@ class ArticleServiceTest {
 
         ArticleSearchCondition condition = captor.getValue();
         assertThat(condition.keyword()).isEqualTo("반도체");
+        assertThat(condition.interestId()).isEqualTo(interestId);
         assertThat(condition.sourceIn())
                 .containsExactly(ArticleSource.NAVER, ArticleSource.CHOSUN);
         assertThat(condition.publishDateFrom()).isEqualTo(LocalDateTime.of(2026, 8, 1, 0, 0));
@@ -413,7 +416,7 @@ class ArticleServiceTest {
         // given
         UUID userId = UUID.randomUUID();
         ArticleSearchCommand command = new ArticleSearchCommand(
-                null, null, null, null,
+                null, null, null, null, null,
                 ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC, null, null, 50, userId);
 
         Article article = Article.create("제목", "요약", "https://example.com/1",
@@ -454,7 +457,7 @@ class ArticleServiceTest {
         // given
         UUID userId = UUID.randomUUID();
         ArticleSearchCommand command = new ArticleSearchCommand(
-                null, null, null, null,
+                null, null, null, null, null,
                 ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC, null, null, 50, userId);
         when(articleRepository.search(any(ArticleSearchCondition.class)))
                 .thenReturn(new ArticleSearchPage(List.of(), false, 0L));

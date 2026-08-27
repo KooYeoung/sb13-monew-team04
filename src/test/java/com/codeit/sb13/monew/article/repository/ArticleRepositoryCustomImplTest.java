@@ -13,6 +13,7 @@ import com.codeit.sb13.monew.article.service.dto.ArticleOrderBy;
 import com.codeit.sb13.monew.comment.domain.Comment;
 import com.codeit.sb13.monew.global.config.JpaAuditingConfig;
 import com.codeit.sb13.monew.global.exception.article.ArticleSearchConditionInvalidException;
+import com.codeit.sb13.monew.interest.domain.Interest;
 import org.springframework.data.domain.Sort;
 import com.codeit.sb13.monew.global.config.QueryDslConfig;
 import com.codeit.sb13.monew.user.domain.User;
@@ -92,7 +93,7 @@ class ArticleRepositoryCustomImplTest {
      */
     private ArticleSearchCondition page(ArticleOrderBy orderBy, Sort.Direction direction,
                                         UUID cursor, LocalDateTime after, int limit) {
-        return new ArticleSearchCondition(null, null, null, null,
+        return new ArticleSearchCondition(null, null, null, null, null,
                 orderBy, direction, cursor, after, limit, null);
     }
 
@@ -129,13 +130,27 @@ class ArticleRepositoryCustomImplTest {
     private ArticleSearchCondition condition(String keyword, List<ArticleSource> sourceIn,
                                              LocalDateTime from, LocalDateTime to, UUID userId) {
         // 이 헬퍼의 기본값: 발행일 내림차순, 커서 없음.
-        return new ArticleSearchCondition(keyword, sourceIn, from, to,
+        return new ArticleSearchCondition(keyword, null, sourceIn, from, to,
                 ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC, null, null, 100, userId);
     }
 
     private ArticleSearchCondition sortedBy(ArticleOrderBy orderBy, Sort.Direction direction) {
-        return new ArticleSearchCondition(null, null, null, null,
+        return new ArticleSearchCondition(null, null, null, null, null,
                 orderBy, direction, null, null, 100, null);
+    }
+
+    private ArticleSearchCondition interestFilter(UUID interestId) {
+        return new ArticleSearchCondition(null, interestId, null, null, null,
+                ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC, null, null, 100, null);
+    }
+
+    private Interest persistInterest(String name, String... keywords) {
+        Interest interest = Interest.create(name);
+        for (String keyword : keywords) {
+            interest.addKeyword(keyword);
+        }
+        em.persist(interest);
+        return interest;
     }
 
     private List<String> titlesOf(List<ArticleSearchRow> rows) {
@@ -466,6 +481,52 @@ class ArticleRepositoryCustomImplTest {
         assertThat(page.totalElements()).isEqualTo(2L);
     }
 
+    @Test
+    @DisplayName("관심사 필터 - 키워드가 제목이나 요약에 포함된 기사만 남는다")
+    void interestFilterMatchesKeywordInTitleOrSummary() {
+        Interest interest = persistInterest("반도체", "메모리", "파운드리");
+
+        persistArticle("메모리 가격 반등", "요약", D1, ArticleSource.NAVER);
+        persistArticle("기사 제목", "파운드리 수주 확대", D2, ArticleSource.CHOSUN);
+        persistArticle("관계 없는 기사", "관계 없는 요약", D3, ArticleSource.HANKYUNG);
+
+        List<ArticleSearchRow> rows = search(interestFilter(interest.getId()));
+
+        assertThat(titlesOf(rows))
+                .containsExactlyInAnyOrder("메모리 가격 반등", "기사 제목");
+    }
+
+    @Test
+    @DisplayName("관심사 필터 - 키워드가 여러 개 매칭돼도 기사는 한 번만 나온다")
+    void interestFilterDoesNotDuplicateArticles() {
+        Interest interest = persistInterest("반도체", "메모리", "파운드리");
+
+        // 두 키워드가 모두 걸리는 기사. JOIN이었다면 두 행으로 늘어난다.
+        persistArticle("메모리와 파운드리", "메모리 파운드리 동반 성장", D1, ArticleSource.NAVER);
+
+        List<ArticleSearchRow> rows = search(interestFilter(interest.getId()));
+
+        assertThat(rows).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("관심사 필터 - 매칭되는 기사가 없으면 빈 목록을 반환한다")
+    void interestFilterReturnsEmptyWhenNothingMatches() {
+        Interest interest = persistInterest("반도체", "메모리");
+        persistArticle("관계 없는 기사", "관계 없는 요약", D1, ArticleSource.NAVER);
+
+        assertThat(search(interestFilter(interest.getId()))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("관심사 필터 - interestId가 없으면 전체가 조회된다")
+    void interestFilterIsSkippedWhenAbsent() {
+        persistInterest("반도체", "메모리");
+        persistArticle("메모리 가격 반등", "요약", D1, ArticleSource.NAVER);
+        persistArticle("관계 없는 기사", "관계 없는 요약", D2, ArticleSource.CHOSUN);
+
+        assertThat(search(interestFilter(null))).hasSize(2);
+    }
 
     @Test
     @DisplayName("cursor와 after 중 일부만 오면 예외를 던진다")
