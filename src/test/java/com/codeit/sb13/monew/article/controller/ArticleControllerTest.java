@@ -366,20 +366,20 @@ class ArticleControllerTest {
     @Test
     @DisplayName("기사 복구 성공 시 200과 날짜별 복구 결과를 반환한다")
     void restoreArticlesSuccess() throws Exception {
-        LocalDate restoreFrom = LocalDate.of(2026, 8, 23);
-        LocalDate restoreTo = LocalDate.of(2026, 8, 25);
+        LocalDate restoreFrom = LocalDate.of(2026, 8, 10);
+        LocalDate restoreTo = LocalDate.of(2026, 8, 27);
         UUID restoredArticleId = UUID.randomUUID();
         ArticleRestoreResult restoreResult = ArticleRestoreResult.of(restoreFrom, List.of(restoredArticleId));
         when(articleRestoreService.restoreArticles(any(ArticleRestoreCommand.class)))
                 .thenReturn(List.of(restoreResult));
 
         mockMvc.perform(get("/api/articles/restore")
-                        .param("from", "2026-08-23")
-                        .param("to", "2026-08-25"))
+                        .param("from", "2026-08-10T00:00:00")
+                        .param("to", "2026-08-27T23:59:59"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].restoreDate").value("2026-08-23"))
+                .andExpect(jsonPath("$[0].restoreDate").value("2026-08-10"))
                 .andExpect(jsonPath("$[0].restoredArticleIds[0]").value(restoredArticleId.toString()))
                 .andExpect(jsonPath("$[0].restoredArticleCount").value(1));
 
@@ -393,8 +393,8 @@ class ArticleControllerTest {
     @DisplayName("기사 복구 요청에서 시작일이 종료일보다 이후이면 400을 반환한다")
     void restoreArticlesReturnsBadRequestWhenDateRangeIsInvalid() throws Exception {
         mockMvc.perform(get("/api/articles/restore")
-                        .param("from", "2026-08-24")
-                        .param("to", "2026-08-23"))
+                        .param("from", "2026-08-24T00:00:00")
+                        .param("to", "2026-08-23T23:59:59"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("GLB_001"));
 
@@ -409,8 +409,8 @@ class ArticleControllerTest {
                 .thenThrow(new ArticleRestoreFailedException(restoreDate, new IllegalStateException("restore failure")));
 
         mockMvc.perform(get("/api/articles/restore")
-                        .param("from", "2026-08-23")
-                        .param("to", "2026-08-23"))
+                        .param("from", "2026-08-23T00:00:00")
+                        .param("to", "2026-08-23T23:59:59"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.code").value("ART_015"))
                 .andExpect(jsonPath("$.details.restoreDate").value("2026-08-23"));
