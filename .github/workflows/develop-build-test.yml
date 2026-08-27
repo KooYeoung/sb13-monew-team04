@@ -4,17 +4,22 @@ on:
   pull_request:
     branches:
       - develop
+      - main
     types:
       - opened
       - reopened
       - synchronize
       - ready_for_review
+  push:
+    branches:
+      - develop
+      - main
 
 permissions:
   contents: read
 
 concurrency:
-  group: develop-build-test-${{ github.event.pull_request.number }}
+  group: develop-build-test-${{ github.event.pull_request.number || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -37,6 +42,7 @@ jobs:
           --health-retries 5
     steps:
       - name: Reject main to develop PR
+        if: ${{ github.event_name == 'pull_request' }}
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
@@ -82,4 +88,5 @@ jobs:
           files: ./build/reports/jacoco/test/jacocoTestReport.xml
           flags: backend
           name: monew-backend
+          disable_search: true
           fail_ci_if_error: true
