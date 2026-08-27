@@ -16,9 +16,8 @@ public record ArticleSearchRequest(
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime publishDateTo,
         ArticleOrderBy orderBy,
         Sort.Direction direction,
-        String cursor,
+        UUID cursor,
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime after,
-        UUID idAfter,
         int limit
 ) {
 }

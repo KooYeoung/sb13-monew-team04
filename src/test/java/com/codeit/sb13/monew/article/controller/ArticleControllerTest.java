@@ -309,9 +309,8 @@ class ArticleControllerTest {
                         .param("publishDateTo", "2026-08-31T00:00:00")
                         .param("orderBy", "viewCount")
                         .param("direction", "ASC")
-                        .param("cursor", "10")
+                        .param("cursor", "11111111-1111-1111-1111-111111111111")
                         .param("after", "2026-08-20T12:00:00")
-                        .param("idAfter", "11111111-1111-1111-1111-111111111111")
                         .param("limit", "30"))
                 .andExpect(status().isOk());
 
@@ -333,11 +332,10 @@ class ArticleControllerTest {
                 .isEqualTo(ArticleOrderBy.VIEW_COUNT);
         org.assertj.core.api.Assertions.assertThat(command.direction())
                 .isEqualTo(Sort.Direction.ASC);
-        org.assertj.core.api.Assertions.assertThat(command.cursor()).isEqualTo("10");
+        org.assertj.core.api.Assertions.assertThat(command.cursor())
+                .isEqualTo(UUID.fromString("11111111-1111-1111-1111-111111111111"));
         org.assertj.core.api.Assertions.assertThat(command.after())
                 .isEqualTo(LocalDateTime.of(2026, 8, 20, 12, 0));
-        org.assertj.core.api.Assertions.assertThat(command.idAfter())
-                .isEqualTo(UUID.fromString("11111111-1111-1111-1111-111111111111"));
         org.assertj.core.api.Assertions.assertThat(command.limit()).isEqualTo(30);
     }
 

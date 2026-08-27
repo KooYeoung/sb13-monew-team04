@@ -22,7 +22,6 @@ import com.querydsl.jpa.impl.JPAQueryFactory;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.util.StringUtils;
-import java.time.format.DateTimeParseException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -48,8 +47,11 @@ public class ArticleRepositoryCustomImpl implements ArticleRepositoryCustom {
                 publishDateGoe(condition.publishDateFrom()),
                 publishDateLoe(condition.publishDateTo())
         };
+        // cursor(이전 페이지 마지막 기사의 id)로 그 행을 다시 조회해, 키셋 비교에 쓸
+        // "현재" 정렬 기준 값을 가져온다.
+        AnchorRow anchor = resolveAnchor(condition, commentCountExpr, viewCountExpr);
         BooleanExpression keysetCondition = keysetCondition(
-                condition, commentCountExpr, viewCountExpr);
+                condition, anchor, commentCountExpr, viewCountExpr);
 
         // 다음 페이지 존재 여부를 별도 count 쿼리 없이 판단하기 위해 요청한 limit보다 하나 더 가져온다.
         List<ArticleSearchRow> rows = queryFactory
@@ -115,52 +117,111 @@ public class ArticleRepositoryCustomImpl implements ArticleRepositoryCustom {
     }
 
     /**
-     * 커서 기반(keyset) 페이지네이션 조건을 만든다.
+     * {@code cursor}(이전 페이지 마지막 기사의 id)로 그 행을 다시 조회해, 키셋 비교에 쓸
+     * "현재" 정렬 기준 값을 가져온다.
      *
-     * <p>정렬 기준 값(주 기준), 생성 시각(보조 기준), id(3차 기준) 순으로 사전식 비교를 한다.
-     * 주 기준이 커서보다 "다음" 쪽이면 통과, 주 기준이 같으면 생성 시각을 보고, 생성 시각까지
-     * 같으면 id를 본다. 세 기준을 모두 같은 방향으로 비교해야 값이 어떻게 겹치든 페이지가
-     * 항상 한쪽으로만 나아가는 유일한 순서가 유지된다.
+     * <p>커서 문자열에 정렬 기준 값을 담아 그대로 쓰던 방식은, 그 값이 이전 페이지 응답을
+     * 만든 시점의 스냅샷이라는 한계가 있다. {@code viewCount}/{@code commentCount}는 페이지
+     * 요청 사이에 바뀌므로 클라이언트가 들고 있는 값이 실제 값과 어긋난다. 여기서는 매 요청
+     * 앵커 행을 다시 조회해 그 시점 기준으로 비교한다.</p>
      *
-     * <p>id는 UUID라 크고 작음에 비즈니스적 의미는 없지만 항상 유일하므로, 정렬 기준과
-     * 생성 시각이 모두 같은 기사가 페이지 경계에 걸려도 건너뛰거나 중복으로 반환되지 않는다.
+     * <p>다만 이 방식도 완전하지는 않다. 앵커 자신의 정렬 기준 값이 변하면 경계가 그만큼
+     * 움직여, 값이 변하지 않은 다른 기사까지 중복되거나 빠질 수 있다. 정렬 키가 변하는 한
+     * 무상태 커서로는 완전히 풀 수 없고, 서버가 랭킹 스냅샷을 유지해야 한다. 관심사 목록도
+     * 같은 방식이라 세 목록의 커서 계약을 맞추는 쪽을 택했다.</p>
+     *
+     * <p>{@code cursor}와 {@code after}가 둘 다 없으면 첫 페이지 조회로 보고 조회를 생략한다.
+     * 둘 중 하나만 있으면 커서를 일부만 보낸 잘못된 요청이라, 조용히 첫 페이지를 돌려주는
+     * 대신(클라이언트에는 이전 페이지 항목이 중복으로 보인다) 예외를 던진다. {@code cursor}로
+     * 조회했는데 행이 없으면 그 사이 기사가 물리 삭제된 것이므로 이어보기 위치를 계산할 수
+     * 없다는 뜻으로 예외를 던진다.</p>
      */
-    private BooleanExpression keysetCondition(
+    private AnchorRow resolveAnchor(
             ArticleSearchCondition condition,
             NumberExpression<Long> commentCountExpr,
             NumberExpression<Long> viewCountExpr
     ) {
-        String cursor = condition.cursor();
+        UUID cursor = condition.cursor();
         LocalDateTime after = condition.after();
-        UUID idAfter = condition.idAfter();
 
-        // 세 값은 하나의 단위다. 일부만 오면 첫 페이지를 다시 돌려주게 되어
-        // 클라이언트가 같은 항목을 두 번 받는다. 조용히 넘기지 않고 거부한다.
-        boolean noneProvided = !StringUtils.hasText(cursor) && after == null && idAfter == null;
-        if (noneProvided) {
+        if (cursor == null && after == null) {
             return null;
         }
-        if (!StringUtils.hasText(cursor) || after == null || idAfter == null) {
+
+        if (cursor == null || after == null) {
+            throw new ArticleSearchConditionInvalidException("cursor와 after는 함께 전달해야 합니다.");
+        }
+
+        if (condition.orderBy() == ArticleOrderBy.PUBLISH_DATE) {
+            LocalDateTime date = queryFactory
+                    .select(article.date)
+                    .from(article)
+                    .where(article.id.eq(cursor))
+                    .fetchOne();
+
+            if (date == null) {
+                throw new ArticleSearchConditionInvalidException(
+                        "커서가 가리키는 기사를 더 이상 찾을 수 없습니다: " + cursor);
+            }
+            return new AnchorRow(date, null);
+        }
+
+        NumberExpression<Long> countExpr = condition.orderBy() == ArticleOrderBy.COMMENT_COUNT
+                ? commentCountExpr : viewCountExpr;
+        // 카운트 표현식은 서브쿼리를 감싼 것이라 제네릭 타입이 Object로 소실된다.
+        // longValue()로 복원해야 fetchOne()이 Long을 돌려준다.
+        Long count = queryFactory
+                .select(countExpr.longValue())
+                .from(article)
+                .where(article.id.eq(cursor))
+                .fetchOne();
+
+        if (count == null) {
             throw new ArticleSearchConditionInvalidException(
-                    "cursor, after, idAfter는 함께 전달해야 합니다.");
+                    "커서가 가리키는 기사를 더 이상 찾을 수 없습니다: " + cursor);
+        }
+
+        return new AnchorRow(null, count);
+    }
+
+    /**
+     * {@link #resolveAnchor}가 다시 조회한 앵커 행의 값.
+     *
+     * <p>{@code date}는 발행일 정렬일 때만, {@code count}는 집계값 정렬일 때만 채워진다.
+     * 쓰지 않는 쪽을 굳이 조회하면 서브쿼리가 한 번 더 나가므로 정렬 기준에 필요한 값만
+     * 담는다.</p>
+     */
+    private record AnchorRow(LocalDateTime date, Long count) {
+    }
+
+    private BooleanExpression keysetCondition(
+            ArticleSearchCondition condition,
+            AnchorRow anchor,
+            NumberExpression<Long> commentCountExpr,
+            NumberExpression<Long> viewCountExpr
+    ) {
+        if (anchor == null) {
+            return null;
         }
 
         boolean ascending = condition.direction().isAscending();
+        LocalDateTime after = condition.after();
+        UUID cursor = condition.cursor();
 
         if (condition.orderBy() == ArticleOrderBy.PUBLISH_DATE) {
-            LocalDateTime cursorDate = parseCursorAsDateTime(cursor);
-            return keyset(article.date.eq(cursorDate),
-                    ascending ? article.date.gt(cursorDate) : article.date.lt(cursorDate),
-                    ascending, after, idAfter);
+            LocalDateTime anchorDate = anchor.date();
+            return keyset(article.date.eq(anchorDate),
+                    ascending ? article.date.gt(anchorDate) : article.date.lt(anchorDate),
+                    ascending, after, cursor);
         }
 
-        NumberExpression<Long> countExpr =
-                condition.orderBy() == ArticleOrderBy.COMMENT_COUNT ? commentCountExpr : viewCountExpr;
-        long cursorCount = parseCursorAsCount(cursor);
+        NumberExpression<Long> countExpr = condition.orderBy() == ArticleOrderBy.COMMENT_COUNT
+                ? commentCountExpr : viewCountExpr;
+        long anchorCount = anchor.count();
 
-        return keyset(countExpr.eq(cursorCount),
-                ascending ? countExpr.gt(cursorCount) : countExpr.lt(cursorCount),
-                ascending, after, idAfter);
+        return keyset(countExpr.eq(anchorCount),
+                ascending ? countExpr.gt(anchorCount) : countExpr.lt(anchorCount),
+                ascending, after, cursor);
     }
 
     /**
@@ -174,34 +235,16 @@ public class ArticleRepositoryCustomImpl implements ArticleRepositoryCustom {
             BooleanExpression primaryAdvances,
             boolean ascending,
             LocalDateTime after,
-            UUID idAfter
+            UUID cursor
     ) {
         BooleanExpression createdAtAdvances =
                 ascending ? article.createdAt.gt(after) : article.createdAt.lt(after);
         BooleanExpression idAdvances =
-                ascending ? article.id.gt(idAfter) : article.id.lt(idAfter);
+                ascending ? article.id.gt(cursor) : article.id.lt(cursor);
 
         return primaryAdvances
                 .or(primaryEq.and(createdAtAdvances))
                 .or(primaryEq.and(article.createdAt.eq(after)).and(idAdvances));
-    }
-
-    private LocalDateTime parseCursorAsDateTime(String cursor) {
-        try {
-            return LocalDateTime.parse(cursor);
-        } catch (DateTimeParseException e) {
-            throw new ArticleSearchConditionInvalidException(
-                    "발행일 기준 커서 값이 올바르지 않습니다: " + cursor);
-        }
-    }
-
-    private long parseCursorAsCount(String cursor) {
-        try {
-            return Long.parseLong(cursor);
-        } catch (NumberFormatException e) {
-            throw new ArticleSearchConditionInvalidException(
-                    "집계값 기준 커서 값이 올바르지 않습니다: " + cursor);
-        }
     }
 
     /**

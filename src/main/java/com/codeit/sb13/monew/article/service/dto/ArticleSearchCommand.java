@@ -15,9 +15,8 @@ public record ArticleSearchCommand(
         LocalDateTime publishDateTo,
         ArticleOrderBy orderBy,
         Sort.Direction direction,
-        String cursor,
+        UUID cursor,
         LocalDateTime after,
-        UUID idAfter,
         int limit,
         UUID requestUserId
 ) {

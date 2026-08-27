@@ -16,9 +16,9 @@ import java.util.UUID;
  * @param requestUserId 요청자 id. 각 기사의 조회 여부를 계산하는 데 쓰임
  * @param orderBy 정렬 기준
  * @param direction 정렬 방향
- * @param cursor 이전 페이지 마지막 항목의 정렬 기준 값. 첫 페이지면 {@code null}
+ * @param cursor 이전 페이지 마지막 기사의 id. 서버가 이 id로 앵커 행을 다시 조회해
+ *               정렬 기준 값을 얻고, 동시에 3차 비교 기준으로도 쓴다. 첫 페이지면 {@code null}
  * @param after 이전 페이지 마지막 항목의 생성 시각(보조 커서). 첫 페이지면 {@code null}
- * @param idAfter 이전 페이지 마지막 항목의 id(3차 커서). 첫 페이지면 {@code null}
  * @param limit 조회할 최대 개수
  */
 public record ArticleSearchCondition(
@@ -28,9 +28,8 @@ public record ArticleSearchCondition(
         LocalDateTime publishDateTo,
         ArticleOrderBy orderBy,
         Sort.Direction direction,
-        String cursor,
+        UUID cursor,
         LocalDateTime after,
-        UUID idAfter,
         int limit,
         UUID requestUserId
 ) {

@@ -198,6 +198,23 @@ class ArticleServiceTest {
     }
 
     @Test
+    @DisplayName("기사 생성 - 요약이 null이면 빈 문자열로 채운다")
+    void testCreateFillsNullSummaryWithEmptyString() {
+        // given
+        articleRequest.setSummary(null);
+        when(articleRepository.findByLink(articleRequest.getLink()))
+                .thenReturn(Optional.empty());
+        when(articleRepository.saveAndFlush(any(Article.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        Article result = articleService.create(articleRequest);
+
+        // then
+        assertThat(result.getSummary()).isEmpty();
+    }
+
+    @Test
     @DisplayName("기사 생성 실패 - 중복된 링크")
     void testCreateDuplicateLink() {
         // given
@@ -352,7 +369,7 @@ class ArticleServiceTest {
     void testSearchArticlesPassesCondition() {
         // given
         UUID userId = UUID.randomUUID();
-        UUID idAfter = UUID.randomUUID();
+        UUID cursor = UUID.randomUUID();
         ArticleSearchCommand command = new ArticleSearchCommand(
                 "반도체",
                 List.of(ArticleSource.NAVER, ArticleSource.CHOSUN),
@@ -360,9 +377,8 @@ class ArticleServiceTest {
                 LocalDateTime.of(2026, 8, 31, 0, 0),
                 ArticleOrderBy.VIEW_COUNT,
                 Sort.Direction.ASC,
-                "10",
+                cursor,
                 LocalDateTime.of(2026, 8, 20, 12, 0),
-                idAfter,
                 30,
                 userId
         );
@@ -386,9 +402,8 @@ class ArticleServiceTest {
         assertThat(condition.requestUserId()).isEqualTo(userId);
         assertThat(condition.orderBy()).isEqualTo(ArticleOrderBy.VIEW_COUNT);
         assertThat(condition.direction()).isEqualTo(Sort.Direction.ASC);
-        assertThat(condition.cursor()).isEqualTo("10");
+        assertThat(condition.cursor()).isEqualTo(cursor);
         assertThat(condition.after()).isEqualTo(LocalDateTime.of(2026, 8, 20, 12, 0));
-        assertThat(condition.idAfter()).isEqualTo(idAfter);
         assertThat(condition.limit()).isEqualTo(30);
     }
 
@@ -399,7 +414,7 @@ class ArticleServiceTest {
         UUID userId = UUID.randomUUID();
         ArticleSearchCommand command = new ArticleSearchCommand(
                 null, null, null, null,
-                ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC, null, null, null, 50, userId);
+                ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC, null, null, 50, userId);
 
         Article article = Article.create("제목", "요약", "https://example.com/1",
                 LocalDateTime.now(), ArticleSource.NAVER);
@@ -426,10 +441,10 @@ class ArticleServiceTest {
         assertThat(result.size()).isEqualTo(1);
         assertThat(result.totalElements()).isEqualTo(42L);
         assertThat(result.hasNext()).isTrue();
-        // publishDate 정렬이므로 nextCursor는 발행일이어야 한다.
-        assertThat(result.nextCursor()).isEqualTo(article.getDate().toString());
+        // 정렬 기준과 무관하게 nextCursor는 마지막 기사의 id다.
+        assertThat(result.nextCursor()).isEqualTo(lastArticleId.toString());
         assertThat(result.nextAfter()).isEqualTo(lastCreatedAt.toString());
-        assertThat(result.nextIdAfter()).isEqualTo(lastArticleId.toString());
+        assertThat(result.nextIdAfter()).isNull();
         verify(articleMapper).toDto(article, true, 3L, 5L);
     }
 
@@ -440,7 +455,7 @@ class ArticleServiceTest {
         UUID userId = UUID.randomUUID();
         ArticleSearchCommand command = new ArticleSearchCommand(
                 null, null, null, null,
-                ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC, null, null, null, 50, userId);
+                ArticleOrderBy.PUBLISH_DATE, Sort.Direction.DESC, null, null, 50, userId);
         when(articleRepository.search(any(ArticleSearchCondition.class)))
                 .thenReturn(new ArticleSearchPage(List.of(), false, 0L));
 

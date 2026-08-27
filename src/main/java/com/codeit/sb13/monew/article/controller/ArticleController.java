@@ -73,7 +73,6 @@ public class ArticleController implements ArticleApi {
                 request.direction(),
                 request.cursor(),
                 request.after(),
-                request.idAfter(),
                 request.limit(),
                 requestUserId
         );
