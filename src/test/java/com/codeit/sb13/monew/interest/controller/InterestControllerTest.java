@@ -288,13 +288,30 @@ class InterestControllerTest {
     @Test
     @DisplayName("서비스 계층에서 조회 조건 오류가 올라오면 400(INT_006)으로 응답한다")
     void search_searchConditionInvalidFromService_returns400() throws Exception {
-        // InterestRepositoryCustomImpl에서 구독자 수 기준 커서가 숫자가 아닐 때처럼,
-        // 서비스 계층에서 InterestSearchConditionInvalidException이 올라오는 경우를 가정하고
-        // 컨트롤러까지 도달했을 때 GlobalExceptionHandler가 400(INT_006)으로 응답하는지 확인한다.
+        // InterestRepositoryCustomImpl에서 cursor(id)가 가리키는 관심사를 더 이상 찾을 수
+        // 없을 때처럼, 서비스 계층에서 InterestSearchConditionInvalidException이 올라오는
+        // 경우를 가정하고 컨트롤러까지 도달했을 때 GlobalExceptionHandler가 400(INT_006)으로
+        // 응답하는지 확인한다. cursor 자체는 UUID 형식으로 바인딩만 통과하면 되므로
+        // (형식 검증은 여기서 확인할 대상이 아니다) 임의의 UUID를 쓴다.
+        UUID missingCursor = UUID.randomUUID();
         when(interestService.search(any(InterestSearchCommand.class)))
                 .thenThrow(new InterestSearchConditionInvalidException(
-                        "구독자 수 기준 커서 값이 올바르지 않습니다: 숫자아님"));
+                        "커서가 가리키는 관심사를 더 이상 찾을 수 없습니다: " + missingCursor));
 
+        mockMvc.perform(get("/api/interests")
+                        .header("Monew-Request-User-ID", UUID.randomUUID().toString())
+                        .param("orderBy", "subscriberCount")
+                        .param("direction", "DESC")
+                        .param("cursor", missingCursor.toString())
+                        .param("after", LocalDateTime.now().toString())
+                        .param("limit", "10"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INT_006"));
+    }
+
+    @Test
+    @DisplayName("cursor가 UUID 형식이 아니면 400으로 응답한다")
+    void search_invalidCursorFormat_returns400() throws Exception {
         mockMvc.perform(get("/api/interests")
                         .header("Monew-Request-User-ID", UUID.randomUUID().toString())
                         .param("orderBy", "subscriberCount")
@@ -303,7 +320,7 @@ class InterestControllerTest {
                         .param("after", LocalDateTime.now().toString())
                         .param("limit", "10"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INT_006"));
+                .andExpect(jsonPath("$.code").exists());
     }
 
     @Test

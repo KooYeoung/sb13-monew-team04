@@ -13,7 +13,6 @@ import com.codeit.sb13.monew.interest.repository.dto.InterestSearchCondition;
 import com.codeit.sb13.monew.interest.repository.dto.InterestSearchPage;
 import com.codeit.sb13.monew.interest.repository.dto.InterestSubscriberRow;
 import com.codeit.sb13.monew.interest.service.dto.InterestCreateCommand;
-import com.codeit.sb13.monew.interest.service.dto.InterestOrderBy;
 import com.codeit.sb13.monew.interest.service.dto.InterestSearchCommand;
 import com.codeit.sb13.monew.interest.service.dto.InterestUpdateCommand;
 import com.codeit.sb13.monew.notification.service.NotificationService;
@@ -138,9 +137,10 @@ public class InterestServiceImpl implements InterestService{
      *
      * <p>정렬 기준이 이름이면 {@code interests.name}을, 구독자 수면 구독 테이블에 대한
      * 상관 서브쿼리 결과를 기준으로 정렬한다. 두 경우 모두 생성 시각을 같은 방향의
-     * 보조 정렬 기준으로 두어, 정렬 기준 값이 같은 항목들 사이에서도 커서가 안정적으로
-     * 다음 페이지를 가리키도록 한다. 실제 쿼리 구성은
-     * {@link InterestRepository#search}에 위임한다.</p>
+     * 보조 정렬 기준으로, 마지막 항목의 id를 3차 타이브레이커로 두어, 정렬 기준 값이
+     * 같은 항목들 사이에서도 커서가 안정적으로 다음 페이지를 가리키도록 한다. {@code cursor}는
+     * 이전 페이지 마지막 항목의 id이며, 실제 쿼리 구성은 {@link InterestRepository#search}에
+     * 위임한다.</p>
      *
      * <p>목록의 각 항목이 가진 {@code subscriberCount}, {@code subscribedByMe}는
      * {@code InterestRepositoryCustomImpl}이 {@code InterestSearchRow}에 row 단위로
@@ -154,7 +154,6 @@ public class InterestServiceImpl implements InterestService{
                 command.direction(),
                 command.cursor(),
                 command.after(),
-                command.idAfter(),
                 command.limit(),
                 command.requestUserId()
         ));
@@ -165,9 +164,9 @@ public class InterestServiceImpl implements InterestService{
 
         return new CursorPageResponseDto<>(
                 content,
-                nextCursor(content, command.orderBy()),
+                nextCursor(content),
                 nextAfter(content),
-                nextIdAfter(content),
+                null,
                 content.size(),
                 page.totalElements(),
                 page.hasNext()
@@ -302,20 +301,19 @@ public class InterestServiceImpl implements InterestService{
     }
 
     /**
-     * 다음 페이지 조회 시 {@code cursor} 파라미터로 그대로 돌려보낼 주 커서 값을 만든다.
+     * 다음 페이지 조회 시 {@code cursor} 파라미터로 그대로 돌려보낼 값을 만든다.
      *
-     * <p>정렬 기준이 이름이면 마지막 항목의 이름을, 구독자 수면 마지막 항목의
-     * 구독자 수를 문자열로 담는다. 이번 페이지가 비어 있으면 다음 페이지도 없다는
-     * 뜻이라 {@code null}을 돌려준다.</p>
+     * <p>{@code cursor}는 이전 페이지 마지막 항목의 id다. 정렬 기준이 이름이든
+     * 구독자 수든 상관없이 항상 id를 돌려주며, 실제 정렬 기준 값(이름/구독자 수)은
+     * 서버가 이 id로 앵커 행을 다시 조회해 얻는다({@code InterestRepositoryCustomImpl#resolveAnchor}
+     * 참고). 이번 페이지가 비어 있으면 다음 페이지도 없다는 뜻이라 {@code null}을 돌려준다.</p>
      */
-    private String nextCursor(List<InterestResponse> content, InterestOrderBy orderBy) {
+    private String nextCursor(List<InterestResponse> content) {
         if (content.isEmpty()) {
             return null;
         }
 
-        InterestResponse last = content.get(content.size() - 1);
-        return orderBy == InterestOrderBy.NAME
-                ? last.name() : String.valueOf(last.subscriberCount());
+        return content.get(content.size() - 1).id().toString();
     }
 
     /**
@@ -327,20 +325,6 @@ public class InterestServiceImpl implements InterestService{
         }
 
         return content.get(content.size() - 1).createdAt().toString();
-    }
-
-    /**
-     * 다음 페이지 조회 시 {@code idAfter} 파라미터로 그대로 돌려보낼 3차 커서(마지막 항목의 id) 값을 만든다.
-     *
-     * <p>{@code cursor}와 {@code after}가 모두 같은 항목이 여러 건 있을 때 순서를 확정하는
-     * 타이브레이커로 쓰인다.</p>
-     */
-    private String nextIdAfter(List<InterestResponse> content) {
-        if (content.isEmpty()) {
-            return null;
-        }
-
-        return content.get(content.size() - 1).id().toString();
     }
 
     /**

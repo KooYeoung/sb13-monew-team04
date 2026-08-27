@@ -2,6 +2,7 @@ package com.codeit.sb13.monew.interest.repository;
 
 import static com.codeit.sb13.monew.interest.domain.QInterest.interest;
 import static com.codeit.sb13.monew.interest.domain.QSubscribe.subscribe;
+import static com.codeit.sb13.monew.user.domain.QUser.user;
 
 import com.codeit.sb13.monew.global.exception.interest.InterestSearchConditionInvalidException;
 import com.codeit.sb13.monew.interest.domain.QKeyword;
@@ -9,6 +10,7 @@ import com.codeit.sb13.monew.interest.repository.dto.InterestSearchCondition;
 import com.codeit.sb13.monew.interest.repository.dto.InterestSearchPage;
 import com.codeit.sb13.monew.interest.repository.dto.InterestSearchRow;
 import com.codeit.sb13.monew.interest.service.dto.InterestOrderBy;
+import com.querydsl.core.Tuple;
 import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.BooleanExpression;
@@ -33,6 +35,13 @@ import org.springframework.util.StringUtils;
  * 페이지네이션의 LIMIT이 관심사 개수가 아니라 조인된 행 개수를 자르게 되고 구독자 수
  * 집계도 흐트러진다. 서브쿼리는 관심사 1건당 정확히 1행을 유지하면서 값만 끌어오므로
  * 이 문제가 생기지 않는다.</p>
+ *
+ * <p>구독자 수는 논리 삭제된 사용자의 구독을 제외하고 센다. {@code Subscribe.userId}가
+ * {@code User}를 정식 연관관계가 아니라 값으로만 들고 있어, {@code users}를 직접 조인해
+ * {@code deletedAt IS NULL}을 걸어야 한다. 이 프로젝트의 다른 구독자 조회
+ * ({@code SubscribeRepository#findSubscriberUsersByInterestIds} 등)와 댓글 좋아요 수
+ * ({@code CommentRepositoryCustomImpl#likeCountExpression})도 같은 방식으로 탈퇴한
+ * 사용자를 제외하므로, 이 클래스만 예외를 둘 이유가 없다.</p>
  */
 @RequiredArgsConstructor
 public class InterestRepositoryCustomImpl implements InterestRepositoryCustom {
@@ -51,17 +60,21 @@ public class InterestRepositoryCustomImpl implements InterestRepositoryCustom {
         String keywordText = condition.keyword();
         InterestOrderBy orderBy = condition.orderBy();
         Sort.Direction direction = condition.direction();
-        String cursor = condition.cursor();
+        UUID cursor = condition.cursor();
         LocalDateTime after = condition.after();
-        UUID idAfter = condition.idAfter();
         int limit = condition.limit();
         UUID requestUserId = condition.requestUserId();
 
         NumberExpression<Long> subscriberCountExpr = subscriberCountExpression();
         BooleanExpression subscribedByMeExpr = subscribedByMeExpression(requestUserId);
         BooleanExpression searchCondition = searchCondition(keywordText);
+
+        // cursor(이전 페이지 마지막 항목의 id)로 그 행을 다시 조회해, 키셋 비교에 쓸
+        // "현재" 이름/구독자 수를 가져온다. 클라이언트가 들고 있던 값을 그대로 신뢰하지 않는
+        // 이유는 resolveAnchor의 문서를 참고.
+        AnchorRow anchor = resolveAnchor(cursor, after, subscriberCountExpr);
         BooleanExpression keysetCondition =
-                keysetCondition(orderBy, direction, cursor, after, idAfter, subscriberCountExpr);
+                keysetCondition(orderBy, direction, anchor, after, cursor, subscriberCountExpr);
 
         // 다음 페이지 존재 여부를 별도 쿼리 없이 판단하기 위해 요청한 limit보다 하나 더 가져온다.
         List<InterestSearchRow> rows = queryFactory
@@ -97,11 +110,84 @@ public class InterestRepositoryCustomImpl implements InterestRepositoryCustom {
         );
     }
 
+    /**
+     * {@code cursor}(이전 페이지 마지막 관심사의 id)로 그 행을 다시 조회해, 키셋 비교에 쓸
+     * "현재" 이름과 구독자 수를 가져온다.
+     *
+     * <p>{@code cursor} 문자열을 그대로 파싱해 비교 기준값으로 쓰던 이전 방식은, 그 값이
+     * 이전 페이지 응답을 만든 시점의 스냅샷이라는 문제가 있었다. 그 사이 해당 관심사의
+     * 구독자 수가 바뀌면(누군가 구독/구독 해지) 클라이언트가 들고 있는 값과 실제 값이
+     * 어긋나, 페이지 경계에서 항목이 누락되거나 중복될 수 있다. 여기서는 대신 {@code cursor}가
+     * 가리키는 행을 매 요청마다 다시 조회해, 그 시점 기준 정확한 값으로 비교한다.</p>
+     *
+     * <p>{@code cursor}와 {@code after}가 둘 다 없으면 첫 페이지 조회로 보고 조회 자체를
+     * 생략한다. 둘 중 하나만 있으면 클라이언트가 커서를 일부만 보낸 잘못된 요청이므로,
+     * 이를 첫 페이지 조회로 처리해 조용히 첫 페이지를 다시 돌려주는 대신(클라이언트 입장에서는
+     * 이전 페이지 항목이 중복으로 보인다) 예외를 던져 요청 자체가 잘못됐음을 알린다.
+     * {@code cursor}로 조회했는데 행이 없으면 그 사이 관심사가 삭제된 것이므로, 더 이상
+     * 정확한 이어보기 위치를 계산할 수 없다는 뜻으로 예외를 던진다.</p>
+     */
+    private AnchorRow resolveAnchor(UUID cursor, LocalDateTime after, NumberExpression<Long> subscriberCountExpr) {
+        if (cursor == null && after == null) {
+            return null;
+        }
+
+        if (cursor == null || after == null) {
+            throw new InterestSearchConditionInvalidException("cursor와 after는 함께 전달해야 합니다.");
+        }
+
+        // Projections.constructor로 AnchorRow에 바로 매핑하는 대신, 조회 결과를 Tuple로
+        // 받아 값을 직접 꺼내 생성자를 호출한다. 리플렉션 기반 생성자 매칭을 거치지 않아
+        // 더 단순하고, 위 InterestSearchRow 매핑과 달리 타입 소실 문제에서도 자유롭다.
+        NumberExpression<Long> countExpr = subscriberCountExpr.longValue();
+        Tuple anchorTuple = queryFactory
+                .select(interest.name, countExpr)
+                .from(interest)
+                .where(interest.id.eq(cursor))
+                .fetchOne();
+
+        if (anchorTuple == null) {
+            throw new InterestSearchConditionInvalidException("커서가 가리키는 관심사를 더 이상 찾을 수 없습니다: " + cursor);
+        }
+
+        return new AnchorRow(anchorTuple.get(interest.name), anchorTuple.get(countExpr));
+    }
+
+    /**
+     * {@link #resolveAnchor}가 다시 조회한 앵커 행의 값을 담는 보관용 클래스.
+     *
+     * <p>{@code name}은 앵커 관심사의 현재 이름, {@code subscriberCount}는 앵커 관심사의
+     * 현재 구독자 수(논리 삭제된 사용자는 제외하고 센 값)이다. {@link #resolveAnchor}에서
+     * {@code Tuple} 조회 결과로 채워 넣는다.</p>
+     */
+    private static final class AnchorRow {
+
+        private final String name;
+        private final Long subscriberCount;
+
+        private AnchorRow(String name, Long subscriberCount) {
+            this.name = name;
+            this.subscriberCount = subscriberCount;
+        }
+
+        private String name() {
+            return name;
+        }
+
+        private Long subscriberCount() {
+            return subscriberCount;
+        }
+    }
+
     private NumberExpression<Long> subscriberCountExpression() {
         return Expressions.asNumber(
                 JPAExpressions.select(subscribe.count())
                         .from(subscribe)
-                        .where(subscribe.interest.eq(interest))
+                        .join(user).on(user.id.eq(subscribe.userId))
+                        .where(
+                                subscribe.interest.eq(interest),
+                                user.deletedAt.isNull()
+                        )
         );
     }
 
@@ -145,7 +231,7 @@ public class InterestRepositoryCustomImpl implements InterestRepositoryCustom {
      * 커서 기반(keyset) 페이지네이션 조건을 만든다.
      *
      * <p>정렬 기준 값(주 기준), 생성 시각(보조 기준), id(3차 기준) 순으로 사전식(lexicographic)
-     * 비교를 한다. 주 기준이 커서 값보다 "다음" 쪽이면 그대로 통과, 주 기준이 커서와 같으면
+     * 비교를 한다. 주 기준이 커서보다 "다음" 쪽이면 그대로 통과, 주 기준이 커서와 같으면
      * 생성 시각을 비교하고, 생성 시각까지 같으면 마지막으로 id를 비교한다. 세 기준 모두
      * 같은 방향으로 비교해야, 어느 조합으로 값이 겹치더라도 페이지가 진행될수록 항상 "다음"
      * 쪽으로만 나아가는 유일한 순서가 유지된다.</p>
@@ -153,54 +239,50 @@ public class InterestRepositoryCustomImpl implements InterestRepositoryCustom {
      * <p>id는 UUID라 그 자체로 크고 작음에 비즈니스적인 의미는 없지만, 항상 유일하므로
      * 정렬 기준과 생성 시각이 모두 같은 항목이 있더라도 순서를 확정적으로 정해준다.
      * 그래서 정렬 기준·생성 시각까지 같은 항목이 페이지 경계에 걸려도 커서가 항목을
-     * 건너뛰거나 중복으로 돌려주는 일이 없다.</p>
+     * 건너뛰거나 중복으로 돌려주는 일이 없다. 이 3차 기준값은 곧 {@code cursor} 자신이므로
+     * 별도 파라미터로 받지 않는다.</p>
+     *
+     * @param anchor {@link #resolveAnchor}가 조회한 앵커 행 값. 첫 페이지 조회라 앵커가
+     *               없으면 {@code null}이고, 이때는 필터 없이 처음부터 조회한다
      */
     private BooleanExpression keysetCondition(
             InterestOrderBy orderBy,
             Sort.Direction direction,
-            String cursor,
+            AnchorRow anchor,
             LocalDateTime after,
-            UUID idAfter,
+            UUID cursor,
             NumberExpression<Long> subscriberCountExpr
     ) {
-        if (!StringUtils.hasText(cursor) || after == null || idAfter == null) {
+        if (anchor == null) {
             return null;
         }
 
         if (orderBy == InterestOrderBy.NAME) {
-            BooleanExpression primaryEq = interest.name.eq(cursor);
+            BooleanExpression primaryEq = interest.name.eq(anchor.name());
 
             if (direction.isAscending()) {
-                return interest.name.gt(cursor)
+                return interest.name.gt(anchor.name())
                         .or(primaryEq.and(interest.createdAt.gt(after)))
-                        .or(primaryEq.and(interest.createdAt.eq(after)).and(interest.id.gt(idAfter)));
+                        .or(primaryEq.and(interest.createdAt.eq(after)).and(interest.id.gt(cursor)));
             }
 
-            return interest.name.lt(cursor)
+            return interest.name.lt(anchor.name())
                     .or(primaryEq.and(interest.createdAt.lt(after)))
-                    .or(primaryEq.and(interest.createdAt.eq(after)).and(interest.id.lt(idAfter)));
+                    .or(primaryEq.and(interest.createdAt.eq(after)).and(interest.id.lt(cursor)));
         }
 
-        long cursorCount = parseCursorAsCount(cursor);
+        long cursorCount = anchor.subscriberCount();
         BooleanExpression primaryEq = subscriberCountExpr.eq(cursorCount);
 
         if (direction.isAscending()) {
             return subscriberCountExpr.gt(cursorCount)
                     .or(primaryEq.and(interest.createdAt.gt(after)))
-                    .or(primaryEq.and(interest.createdAt.eq(after)).and(interest.id.gt(idAfter)));
+                    .or(primaryEq.and(interest.createdAt.eq(after)).and(interest.id.gt(cursor)));
         }
 
         return subscriberCountExpr.lt(cursorCount)
                 .or(primaryEq.and(interest.createdAt.lt(after)))
-                .or(primaryEq.and(interest.createdAt.eq(after)).and(interest.id.lt(idAfter)));
-    }
-
-    private long parseCursorAsCount(String cursor) {
-        try {
-            return Long.parseLong(cursor);
-        } catch (NumberFormatException e) {
-            throw new InterestSearchConditionInvalidException("구독자 수 기준 커서 값이 올바르지 않습니다: " + cursor);
-        }
+                .or(primaryEq.and(interest.createdAt.eq(after)).and(interest.id.lt(cursor)));
     }
 
     private OrderSpecifier<?>[] orderSpecifiers(

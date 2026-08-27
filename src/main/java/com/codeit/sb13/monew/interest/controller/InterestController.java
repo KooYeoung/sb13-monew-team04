@@ -86,10 +86,9 @@ public class InterestController {
      * {@code BindException}이 발생하고, {@code GlobalExceptionHandler}가 이를
      * {@code GLB_001}(400)로 응답한다. 두 값이 아예 생략되면 바인딩 단계에서는
      * 예외 없이 {@code null}로 채워지므로, 이 메서드에서 직접 {@code null} 여부를
-     * 확인해 {@code INT_006}(400)으로 응답한다. {@code cursor}/{@code after}/{@code idAfter}는
-     * 이전 응답의 {@code nextCursor}/{@code nextAfter}/{@code nextIdAfter}를 그대로 돌려보내는
-     * 값으로, 첫 페이지 조회 시에는 생략한다. {@code idAfter}는 {@code cursor}와 {@code after}가
-     * 모두 같은 항목이 여러 건 있을 때 순서를 확정하는 타이브레이커다.</p>
+     * 확인해 {@code INT_006}(400)으로 응답한다. {@code cursor}(이전 페이지 마지막 항목의 id)와
+     * {@code after}(생성 시각)는 이전 응답의 {@code nextCursor}/{@code nextAfter}를 그대로
+     * 돌려보내는 값으로, 첫 페이지 조회 시에는 생략한다.</p>
      *
      * <p>{@code Monew-Request-User-ID} 헤더로 전달된 사용자를 기준으로 각 관심사의
      * {@code subscribedByMe}를 계산한다. 이 값이 실제로 유효한 사용자인지는 이
@@ -121,7 +120,6 @@ public class InterestController {
                         request.direction(),
                         request.cursor(),
                         request.after(),
-                        request.idAfter(),
                         request.limit(),
                         requestUserId
                 )
