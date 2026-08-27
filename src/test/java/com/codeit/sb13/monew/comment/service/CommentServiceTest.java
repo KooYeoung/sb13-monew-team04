@@ -13,13 +13,13 @@ import com.codeit.sb13.monew.comment.repository.dto.CommentSearchCondition;
 import com.codeit.sb13.monew.comment.repository.dto.CommentSearchProjection;
 import com.codeit.sb13.monew.comment.repository.dto.CommentSearchResult;
 import com.codeit.sb13.monew.comment.service.dto.CommentDto;
+import com.codeit.sb13.monew.comment.service.dto.CursorPageResponseCommentDto;
 import com.codeit.sb13.monew.comment.domain.Comment;
 import com.codeit.sb13.monew.comment.repository.CommentRepository;
 import com.codeit.sb13.monew.comment.service.dto.CommentRegisterCommand;
 import com.codeit.sb13.monew.comment.service.dto.CommentSearchCommand;
 import com.codeit.sb13.monew.comment.service.dto.CommentUpdateCommand;
 import com.codeit.sb13.monew.comment.service.impl.CommentServiceImpl;
-import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.comment.CommentNotFoundException;
 import com.codeit.sb13.monew.global.exception.comment.CommentPermissionDeniedException;
 import com.codeit.sb13.monew.global.exception.comment.InvalidCommentException;
@@ -127,7 +127,7 @@ public class CommentServiceTest {
     UUID writerId = UUID.randomUUID();
 
     CommentSearchCommand command=new CommentSearchCommand(articleId, CommentOrderBy.CREATED_AT,
-        Direction.DESC, null, null, null, 50, requestUserId);
+        Direction.DESC, null, null, 50, requestUserId);
 
     CommentSearchProjection projection = new CommentSearchProjection(
         commentId,
@@ -149,7 +149,7 @@ public class CommentServiceTest {
     given(commentRepository.search(any(CommentSearchCondition.class))).willReturn(page);
 
     // when
-    CursorPageResponseDto<CommentDto> result = commentService.search(command);
+    CursorPageResponseCommentDto result = commentService.search(command);
 
     // then
     then(commentRepository).should(times(1)).search(argThat(condition -> condition.articleId().equals(articleId)
@@ -157,7 +157,6 @@ public class CommentServiceTest {
         && condition.direction().equals(Direction.DESC)
         && condition.cursor() == null
         && condition.after() == null
-        && condition.idAfter() == null
         && condition.limit() == 50
         && condition.requestUserId().equals(requestUserId)));
 
@@ -166,9 +165,8 @@ public class CommentServiceTest {
         () -> assertThat(result.content().get(0).id()).isEqualTo(commentId),
         () -> assertThat(result.content().get(0).likeCount()).isEqualTo(3L),
         () -> assertThat(result.content().get(0).likedByMe()).isTrue(),
-        () -> assertThat(result.nextCursor()).isEqualTo(createdAt.toString()),
+        () -> assertThat(result.nextCursor()).isEqualTo(commentId.toString()),
         ()->assertThat(result.nextAfter()).isEqualTo(createdAt.toString()),
-        ()->assertThat(result.nextIdAfter()).isEqualTo(commentId.toString()),
         ()->assertThat(result.size()).isEqualTo(1),
         ()->assertThat(result.totalElements()).isEqualTo(1L),
         () -> assertThat(result.hasNext()).isFalse()
@@ -184,12 +182,12 @@ public class CommentServiceTest {
     UUID requestUserId = UUID.randomUUID();
 
     CommentSearchCommand command=new CommentSearchCommand(articleId, CommentOrderBy.CREATED_AT,
-        Direction.ASC, null, null, null, 50, requestUserId);
+        Direction.ASC, null, null, 50, requestUserId);
 
     given(commentRepository.search(any(CommentSearchCondition.class))).willReturn(new CommentSearchResult(List.of(), false, 0L));
 
     // when
-    CursorPageResponseDto<CommentDto> result = commentService.search(command);
+    CursorPageResponseCommentDto result = commentService.search(command);
 
     // then
     then(commentRepository).should().search(argThat(condition -> condition.orderBy()==CommentOrderBy.CREATED_AT
@@ -199,7 +197,6 @@ public class CommentServiceTest {
         () -> assertThat(result.content()).isEmpty(),
         () -> assertThat(result.nextCursor()).isNull(),
         ()->assertThat(result.nextAfter()).isNull(),
-        ()->assertThat(result.nextIdAfter()).isNull(),
         ()->assertThat(result.size()).isZero(),
         ()->assertThat(result.totalElements()).isZero(),
         () -> assertThat(result.hasNext()).isFalse()
@@ -217,7 +214,7 @@ public class CommentServiceTest {
     UUID writerId = UUID.randomUUID();
 
     CommentSearchCommand command=new CommentSearchCommand(articleId, CommentOrderBy.LIKE_COUNT,
-        Direction.ASC, null, null, null, 50, requestUserId);
+        Direction.ASC, null, null, 50, requestUserId);
 
     CommentSearchProjection first = new CommentSearchProjection(
         commentId,
@@ -250,14 +247,13 @@ public class CommentServiceTest {
     given(commentRepository.search(any(CommentSearchCondition.class))).willReturn(searchResult);
 
     // when
-    CursorPageResponseDto<CommentDto> result = commentService.search(command);
+    CursorPageResponseCommentDto result = commentService.search(command);
 
     // then
     Assertions.assertAll(
         () -> assertThat(result.content()).hasSize(2),
-        () -> assertThat(result.nextCursor()).isEqualTo("100"),
+        () -> assertThat(result.nextCursor()).isEqualTo(popularCommentId.toString()),
         ()->assertThat(result.nextAfter()).isEqualTo(createdAt.plusMinutes(5).toString()),
-        ()->assertThat(result.nextIdAfter()).isEqualTo(popularCommentId.toString()),
         ()->assertThat(result.size()).isEqualTo(2),
         ()->assertThat(result.totalElements()).isEqualTo(10L),
         () -> assertThat(result.hasNext()).isTrue()
@@ -268,7 +264,6 @@ public class CommentServiceTest {
         && condition.direction().equals(Direction.ASC)
         && condition.cursor() == null
         && condition.after() == null
-        && condition.idAfter() == null
         && condition.limit() == 50
         && condition.requestUserId().equals(requestUserId)));
   }

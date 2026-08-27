@@ -11,7 +11,7 @@ import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.comment.service.CommentService;
 import com.codeit.sb13.monew.comment.service.CommentOrderBy;
 import com.codeit.sb13.monew.comment.service.dto.CommentDto;
-import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
+import com.codeit.sb13.monew.comment.service.dto.CursorPageResponseCommentDto;
 import com.codeit.sb13.monew.global.exception.comment.CommentNotFoundException;
 import com.codeit.sb13.monew.user.domain.User;
 import java.time.LocalDateTime;
@@ -94,8 +94,8 @@ public class CommentControllerTest {
     LocalDateTime createdAt = LocalDateTime.of(2026, 8, 25, 10, 30);
     CommentDto comment = new CommentDto(
         commentId, articleId, UUID.randomUUID(), "작성자", "댓글 내용", 2L, true, createdAt);
-    CursorPageResponseDto<CommentDto> response = new CursorPageResponseDto<>(
-        List.of(comment), createdAt.toString(), createdAt.toString(), commentId.toString(), 1, 1L, false);
+    CursorPageResponseCommentDto response = new CursorPageResponseCommentDto(
+        List.of(comment), commentId.toString(), createdAt.toString(), 1, 1L, false);
 
     given(commentService.search(argThat(command -> command != null
         && articleId.equals(command.articleId())
@@ -103,7 +103,6 @@ public class CommentControllerTest {
         && command.direction().isDescending()
         && command.cursor() == null
         && command.after() == null
-        && command.idAfter() == null
         && command.limit() == 10
         && requestUserId.equals(command.requestUserId())))).willReturn(response);
 
@@ -118,29 +117,28 @@ public class CommentControllerTest {
         .andExpect(jsonPath("$.content[0].id").value(commentId.toString()))
         .andExpect(jsonPath("$.content[0].likeCount").value(2))
         .andExpect(jsonPath("$.content[0].likedByMe").value(true))
-        .andExpect(jsonPath("$.nextCursor").value(createdAt.toString()))
+        .andExpect(jsonPath("$.nextCursor").value(commentId.toString()))
         .andExpect(jsonPath("$.nextAfter").value(createdAt.toString()))
-        .andExpect(jsonPath("$.nextIdAfter").value(commentId.toString()))
+        .andExpect(jsonPath("$.nextIdAfter").doesNotExist())
         .andExpect(jsonPath("$.hasNext").value(false));
   }
 
   @Test
-  @DisplayName("완전한 cursor + after + idAfter 값으로 댓글 목록 조회 명령으로 전달한다")
+  @DisplayName("완전한 cursor + after 값을 댓글 목록 조회 명령으로 전달한다")
   void 댓글_목록_조회_명령으로_완전한_커서_값을_전달한다() throws Exception {
     UUID articleId = UUID.randomUUID();
     UUID requestUserId = UUID.randomUUID();
-    UUID idAfter = UUID.randomUUID();
+    UUID cursor = UUID.randomUUID();
     LocalDateTime after = LocalDateTime.of(2026, 8, 25, 10, 30);
-    CursorPageResponseDto<CommentDto> response = new CursorPageResponseDto<>(
-        List.of(), null, null, null, 0, 0L, false);
+    CursorPageResponseCommentDto response = new CursorPageResponseCommentDto(
+        List.of(), null, null, 0, 0L, false);
 
     given(commentService.search(argThat(command -> command != null
         && articleId.equals(command.articleId())
         && command.orderBy() == CommentOrderBy.CREATED_AT
         && command.direction().isAscending()
-        && after.toString().equals(command.cursor())
+        && cursor.toString().equals(command.cursor())
         && after.equals(command.after())
-        && idAfter.equals(command.idAfter())
         && command.limit() == 10
         && requestUserId.equals(command.requestUserId())))).willReturn(response);
 
@@ -148,9 +146,8 @@ public class CommentControllerTest {
             .param("articleId", articleId.toString())
             .param("orderBy", "createdAt")
             .param("direction", "ASC")
-            .param("cursor", after.toString())
+            .param("cursor", cursor.toString())
             .param("after", after.toString())
-            .param("idAfter", idAfter.toString())
             .param("limit", "10")
             .header("Monew-Request-User-ID", requestUserId))
         .andExpect(status().isOk())
@@ -160,47 +157,62 @@ public class CommentControllerTest {
 
 
   @Test
-  @DisplayName("커서 값 일부만 전달하면 댓글 목록 조회에 실패한다")
-  void 커서_값_일부_전달시_댓글_목록_조회_실패() throws Exception {
+  @DisplayName("cursor만 전달해도 댓글 목록 조회 명령으로 전달한다")
+  void cursor만_전달시_댓글_목록_조회_성공() throws Exception {
+    UUID cursor = UUID.randomUUID();
+    given(commentService.search(argThat(command -> cursor.toString().equals(command.cursor())
+        && command.after() == null))).willReturn(
+        new CursorPageResponseCommentDto(List.of(), null, null, 0, 0L, false));
+
     mockMvc.perform(get("/api/comments")
             .param("articleId", UUID.randomUUID().toString())
             .param("orderBy", "likeCount")
             .param("direction", "DESC")
-            .param("cursor", "3")
+            .param("cursor", cursor.toString())
             .param("limit", "10")
             .header("Monew-Request-User-ID", UUID.randomUUID()))
-        .andExpect(status().isBadRequest());
+        .andExpect(status().isOk());
 
-    then(commentService).shouldHaveNoInteractions();
+    then(commentService).should().search(argThat(command -> cursor.toString().equals(command.cursor())
+        && command.after() == null));
   }
 
   @Test
-  @DisplayName("idAfter 없이 cursor와 after만 전달하면 댓글 목록 조회에 실패한다")
-  void cursor와_after만_전달하면_댓글_목록_조회_실패() throws Exception {
+  @DisplayName("cursor와 after만 전달하면 댓글 목록 조회에 성공한다")
+  void cursor와_after만_전달하면_댓글_목록_조회_성공() throws Exception {
+    UUID articleId = UUID.randomUUID();
+    UUID requestUserId = UUID.randomUUID();
+    UUID cursor = UUID.randomUUID();
     LocalDateTime after = LocalDateTime.of(2026, 8, 25, 10, 30);
+    given(commentService.search(any())).willReturn(
+        new CursorPageResponseCommentDto(List.of(), null, null, 0, 0L, false));
     mockMvc.perform(get("/api/comments")
-            .param("articleId", UUID.randomUUID().toString())
+            .param("articleId", articleId.toString())
             .param("orderBy", "likeCount")
             .param("direction", "DESC")
-            .param("cursor", "3")
+            .param("cursor", cursor.toString())
             .param("after", after.toString())
             .param("limit", "10")
-            .header("Monew-Request-User-ID", UUID.randomUUID()))
-        .andExpect(status().isBadRequest());
+            .header("Monew-Request-User-ID", requestUserId))
+        .andExpect(status().isOk());
 
-    then(commentService).shouldHaveNoInteractions();
+    then(commentService).should().search(argThat(command -> cursor.toString().equals(command.cursor())
+        && after.equals(command.after())));
   }
 
   @Test
-  @DisplayName("articleId 없이 댓글 목록을 조회하면 실패한다")
-  void articleId_없이_댓글_목록_조회시_실패() throws Exception {
+  @DisplayName("articleId 없이 댓글 목록을 조회하면 전체 댓글 목록 조회 명령을 전달한다")
+  void articleId_없이_댓글_목록_조회시_성공() throws Exception {
+    given(commentService.search(argThat(command -> command.articleId() == null)))
+        .willReturn(new CursorPageResponseCommentDto(List.of(), null, null, 0, 0L, false));
+
     mockMvc.perform(commentSearchRequestWithRequestUserHeader()
             .param("orderBy", "createdAt")
             .param("direction", "DESC")
             .param("limit", "10"))
-        .andExpect(status().isBadRequest());
+        .andExpect(status().isOk());
 
-    then(commentService).shouldHaveNoInteractions();
+    then(commentService).should().search(argThat(command -> command.articleId() == null));
   }
 
   @Test

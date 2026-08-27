@@ -15,6 +15,7 @@ import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.comment.domain.Comment;
 import com.codeit.sb13.monew.comment.service.CommentLikeService;
 import com.codeit.sb13.monew.comment.service.dto.CommentLikeDto;
+import com.codeit.sb13.monew.global.exception.comment.CommentNotFoundException;
 import com.codeit.sb13.monew.user.domain.User;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -120,12 +121,25 @@ public class CommentLikeControllerTest {
     mockMvc.perform(
         delete("/api/comments/{commentId}/comment-likes", commentId)
             .header("Monew-Request-User-ID", requestUserId.toString())
-    ).andExpect(status().isNoContent());
+    ).andExpect(status().isOk());
 
 
     // then
     then(commentLikeService).should(times(1))
         .unlikeComment(argThat(command ->commentId.equals(command.commentId())
             && requestUserId.equals(command.requestUserId())));
+  }
+
+  @Test
+  @DisplayName("존재하지 않는 댓글에 좋아요를 등록하면 404 오류 응답을 반환한다")
+  void 댓글_좋아요_등록_댓글_없음() throws Exception {
+    UUID commentId = UUID.randomUUID();
+    given(commentLikeService.likeComment(argThat(command -> commentId.equals(command.commentId()))))
+        .willThrow(new CommentNotFoundException(commentId));
+
+    mockMvc.perform(post("/api/comments/{commentId}/comment-likes", commentId)
+            .header("Monew-Request-User-ID", UUID.randomUUID()))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("CMT_001"));
   }
 }

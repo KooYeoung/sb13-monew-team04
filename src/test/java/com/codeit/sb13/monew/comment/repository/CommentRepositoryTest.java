@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Sort.Direction;
 
+import static org.assertj.core.api.Assertions.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
@@ -313,7 +314,6 @@ class CommentRepositoryTest {
                 Direction.ASC,
                 null,
                 null,
-                null,
                 10,
                 requestUser.getId()
         );
@@ -356,7 +356,6 @@ class CommentRepositoryTest {
             Direction.DESC,
             null,
             null,
-            null,
             10,
             requestUser.getId()
         );
@@ -393,11 +392,11 @@ class CommentRepositoryTest {
 
         CommentSearchResult firstPage = commentRepository.search(new CommentSearchCondition(
             article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
-            null, null, null, 2, requestUser.getId()));
+            null, null, 2, requestUser.getId()));
         CommentSearchProjection last = firstPage.rows().get(1);
         CommentSearchResult secondPage = commentRepository.search(new CommentSearchCondition(
             article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
-            last.createdAt().toString(), last.createdAt(), last.id(), 2, requestUser.getId()));
+            last.id().toString(), last.createdAt(), 2, requestUser.getId()));
 
         Assertions.assertAll(
             () -> assertThat(firstPage.rows()).extracting(CommentSearchProjection::content)
@@ -411,28 +410,57 @@ class CommentRepositoryTest {
     }
 
     @Test
-    @DisplayName("완전하지 않은 커서 조건은 첫 페이지 조회 조건으로 처리한다")
-    void search_treats_incomplete_cursor_condition_as_first_page() {
+    @DisplayName("cursor만 있어도 anchor 댓글 기준으로 다음 페이지를 조회할 수 있다")
+    void search_allows_cursor_without_after() {
         User writer = userRepository.saveAndFlush(new User("partial-cursor-writer@email.com", "작성자", "testPassword?"));
         Article article = articleRepository.saveAndFlush(createArticle("테스트 기사", "테스트 기사 내용", "testLink"));
-        Comment comment = commentRepository.saveAndFlush(new Comment(article, writer, "댓글"));
-        LocalDateTime after = LocalDateTime.of(2026, 8, 25, 12, 0);
-        updateCommentCreatedAt(comment.getId(), after);
+        Comment anchor = commentRepository.saveAndFlush(new Comment(article, writer, "첫 번째 댓글"));
+        Comment next = commentRepository.saveAndFlush(new Comment(article, writer, "두 번째 댓글"));
+        LocalDateTime anchorCreatedAt = LocalDateTime.of(2026, 8, 25, 12, 0);
+        updateCommentCreatedAt(anchor.getId(), anchorCreatedAt);
+        updateCommentCreatedAt(next.getId(), anchorCreatedAt.plusMinutes(1));
         em.clear();
 
-        CommentSearchResult withoutAfter = commentRepository.search(new CommentSearchCondition(
+        CommentSearchResult result = commentRepository.search(new CommentSearchCondition(
             article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
-            after.toString(), null, UUID.randomUUID(), 10, null));
-        CommentSearchResult withoutIdAfter = commentRepository.search(new CommentSearchCondition(
-            article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
-            after.toString(), after, null, 10, null));
+            anchor.getId().toString(), null, 10, null));
 
-        Assertions.assertAll(
-            () -> assertThat(withoutAfter.rows()).extracting(CommentSearchProjection::id)
-                .containsExactly(comment.getId()),
-            () -> assertThat(withoutIdAfter.rows()).extracting(CommentSearchProjection::id)
-                .containsExactly(comment.getId())
-        );
+        assertThat(result.rows())
+            .extracting(CommentSearchProjection::id)
+            .containsExactly(next.getId());
+
+        CommentSearchResult afterOnlyResult = commentRepository.search(new CommentSearchCondition(
+            article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
+            null, anchorCreatedAt, 10, null));
+
+        assertThat(afterOnlyResult.rows())
+            .extracting(CommentSearchProjection::id)
+            .containsExactly(anchor.getId(), next.getId());
+    }
+
+    @Test
+    @DisplayName("articleId 없이도 cursor anchor를 기준으로 다음 페이지를 조회한다")
+    void search_uses_cursor_anchor_when_article_id_is_absent() {
+        User writer = userRepository.saveAndFlush(new User(
+            "cursor-without-article-writer@email.com", "작성자", "testPassword?"));
+        Article firstArticle = articleRepository.saveAndFlush(
+            createArticle("첫 번째 기사", "기사 내용", "cursor-without-article-link-1"));
+        Article secondArticle = articleRepository.saveAndFlush(
+            createArticle("두 번째 기사", "기사 내용", "cursor-without-article-link-2"));
+        Comment anchor = commentRepository.saveAndFlush(new Comment(firstArticle, writer, "첫 번째 댓글"));
+        Comment next = commentRepository.saveAndFlush(new Comment(secondArticle, writer, "두 번째 댓글"));
+        LocalDateTime anchorCreatedAt = LocalDateTime.of(2026, 8, 25, 12, 0);
+        updateCommentCreatedAt(anchor.getId(), anchorCreatedAt);
+        updateCommentCreatedAt(next.getId(), anchorCreatedAt.plusMinutes(1));
+        em.clear();
+
+        CommentSearchResult result = commentRepository.search(new CommentSearchCondition(
+            null, CommentOrderBy.CREATED_AT, Direction.ASC,
+            anchor.getId().toString(), null, 10, null));
+
+        assertThat(result.rows())
+            .extracting(CommentSearchProjection::id)
+            .containsExactly(next.getId());
     }
 
     @Test
@@ -452,11 +480,11 @@ class CommentRepositoryTest {
 
         CommentSearchResult firstPage = commentRepository.search(new CommentSearchCondition(
             article.getId(), CommentOrderBy.CREATED_AT, Direction.DESC,
-            null, null, null, 2, requestUser.getId()));
+            null, null, 2, requestUser.getId()));
         CommentSearchProjection last = firstPage.rows().get(1);
         CommentSearchResult secondPage = commentRepository.search(new CommentSearchCondition(
             article.getId(), CommentOrderBy.CREATED_AT, Direction.DESC,
-            last.createdAt().toString(), last.createdAt(), last.id(), 2, requestUser.getId()));
+            last.id().toString(), last.createdAt(), 2, requestUser.getId()));
 
         assertThat(secondPage.rows())
             .extracting(CommentSearchProjection::content)
@@ -478,11 +506,11 @@ class CommentRepositoryTest {
 
         CommentSearchResult firstPage = commentRepository.search(new CommentSearchCondition(
             article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
-            null, null, null, 1, requestUser.getId()));
+            null, null, 1, requestUser.getId()));
         CommentSearchProjection last = firstPage.rows().get(0);
         CommentSearchResult secondPage = commentRepository.search(new CommentSearchCondition(
             article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
-            last.createdAt().toString(), last.createdAt(), last.id(), 1, requestUser.getId()));
+            last.id().toString(), last.createdAt(), 1, requestUser.getId()));
 
         assertThat(secondPage.rows())
             .hasSize(1)
@@ -514,7 +542,6 @@ class CommentRepositoryTest {
             article.getId(),
             CommentOrderBy.LIKE_COUNT,
             Direction.ASC,
-            null,
             null,
             null,
             10,
@@ -563,7 +590,6 @@ class CommentRepositoryTest {
             Direction.DESC,
             null,
             null,
-            null,
             10,
             requestUser.getId()
         );
@@ -600,19 +626,19 @@ class CommentRepositoryTest {
 
         CommentSearchResult firstAscendingPage = commentRepository.search(new CommentSearchCondition(
             article.getId(), CommentOrderBy.LIKE_COUNT, Direction.ASC,
-            null, null, null, 1, requestUser.getId()));
+            null, null, 1, requestUser.getId()));
         CommentSearchProjection ascendingCursor = firstAscendingPage.rows().get(0);
         CommentSearchResult nextAscendingPage = commentRepository.search(new CommentSearchCondition(
             article.getId(), CommentOrderBy.LIKE_COUNT, Direction.ASC,
-            String.valueOf(ascendingCursor.likeCount()), ascendingCursor.createdAt(), ascendingCursor.id(), 1, requestUser.getId()));
+            ascendingCursor.id().toString(), ascendingCursor.createdAt(), 1, requestUser.getId()));
 
         CommentSearchResult firstDescendingPage = commentRepository.search(new CommentSearchCondition(
             article.getId(), CommentOrderBy.LIKE_COUNT, Direction.DESC,
-            null, null, null, 1, requestUser.getId()));
+            null, null, 1, requestUser.getId()));
         CommentSearchProjection descendingCursor = firstDescendingPage.rows().get(0);
         CommentSearchResult nextDescendingPage = commentRepository.search(new CommentSearchCondition(
             article.getId(), CommentOrderBy.LIKE_COUNT, Direction.DESC,
-            String.valueOf(descendingCursor.likeCount()), descendingCursor.createdAt(), descendingCursor.id(), 1, requestUser.getId()));
+            descendingCursor.id().toString(), descendingCursor.createdAt(), 1, requestUser.getId()));
 
         Assertions.assertAll(
             () -> assertThat(nextAscendingPage.rows()).extracting(CommentSearchProjection::content)
@@ -632,10 +658,32 @@ class CommentRepositoryTest {
 
         CommentSearchResult result = commentRepository.search(new CommentSearchCondition(
             article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
-            null, null, null, 10, null));
+            null, null, 10, null));
 
         // allSatisfy는 result.rows()가 비어 있어도 통과하기 때문에 댓글 수나 댓글 내용을 먼저 검증한 뒤 likedByMe()를 확인하는 방향으로 개선
         assertThat(result.rows()).hasSize(1).allSatisfy(row->assertThat(row.likedByMe()).isFalse());
+    }
+
+    @Test
+    @DisplayName("articleId가 없으면 활성화된 댓글 전체를 조회한다")
+    void search_without_article_id_returns_comments_from_all_articles() {
+        User writer = userRepository.saveAndFlush(new User(
+            "all-comments-writer@email.com", "작성자", "testPassword!"));
+        Article firstArticle = articleRepository.saveAndFlush(
+            createArticle("첫 번째 기사", "기사 내용", "all-comments-link-1"));
+        Article secondArticle = articleRepository.saveAndFlush(
+            createArticle("두 번째 기사", "기사 내용", "all-comments-link-2"));
+        commentRepository.saveAndFlush(new Comment(firstArticle, writer, "첫 번째 기사 댓글"));
+        commentRepository.saveAndFlush(new Comment(secondArticle, writer, "두 번째 기사 댓글"));
+        em.clear();
+
+        CommentSearchResult result = commentRepository.search(new CommentSearchCondition(
+            null, CommentOrderBy.CREATED_AT, Direction.ASC, null, null, 10, null));
+
+        assertThat(result.rows())
+            .extracting(CommentSearchProjection::content)
+            .containsExactlyInAnyOrder("첫 번째 기사 댓글", "두 번째 기사 댓글");
+        assertThat(result.totalElements()).isEqualTo(2L);
     }
 
     @Test
@@ -646,13 +694,29 @@ class CommentRepositoryTest {
         Comment comment = commentRepository.saveAndFlush(new Comment(article, writer, "댓글"));
         em.clear();
 
-        assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> commentRepository.search(
+        assertThat(catchThrowable(() -> commentRepository.search(
             new CommentSearchCondition(article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
-                "invalid-date", LocalDateTime.now(), comment.getId(), 10, null))))
+                "invalid-date", LocalDateTime.now(), 10, null))))
             .isInstanceOf(CommentSearchConditionInvalidException.class);
-        assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> commentRepository.search(
+        assertThat(catchThrowable(() -> commentRepository.search(
             new CommentSearchCondition(article.getId(), CommentOrderBy.LIKE_COUNT, Direction.ASC,
-                "invalid-like-count", LocalDateTime.now(), comment.getId(), 10, null))))
+                "invalid-like-count", LocalDateTime.now(), 10, null))))
+            .isInstanceOf(CommentSearchConditionInvalidException.class);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 UUID cursor라면 목록 조회에 실패한다")
+    void search_fails_when_cursor_anchor_does_not_exist() {
+        User writer = userRepository.saveAndFlush(new User(
+            "missing-cursor-writer@email.com", "작성자", "testPassword?"));
+        Article article = articleRepository.saveAndFlush(
+            createArticle("테스트 기사", "테스트 기사 내용", "missing-cursor-link"));
+        commentRepository.saveAndFlush(new Comment(article, writer, "댓글"));
+        em.clear();
+
+        assertThat(catchThrowable(() -> commentRepository.search(
+            new CommentSearchCondition(article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
+                UUID.randomUUID().toString(), null, 10, null))))
             .isInstanceOf(CommentSearchConditionInvalidException.class);
     }
 

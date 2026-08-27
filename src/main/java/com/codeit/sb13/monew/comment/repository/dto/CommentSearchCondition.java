@@ -11,7 +11,6 @@ public record CommentSearchCondition(
     Sort.Direction direction,
     String cursor,
     LocalDateTime after,
-    UUID idAfter,
     int limit,
     UUID requestUserId
 ) {

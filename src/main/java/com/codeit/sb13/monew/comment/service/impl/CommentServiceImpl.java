@@ -5,15 +5,14 @@ import com.codeit.sb13.monew.article.repository.ArticleRepository;
 import com.codeit.sb13.monew.comment.domain.Comment;
 import com.codeit.sb13.monew.comment.repository.CommentLikeRepository;
 import com.codeit.sb13.monew.comment.repository.CommentRepository;
-import com.codeit.sb13.monew.comment.service.CommentOrderBy;
 import com.codeit.sb13.monew.comment.service.CommentService;
+import com.codeit.sb13.monew.comment.service.dto.CursorPageResponseCommentDto;
 import com.codeit.sb13.monew.comment.service.dto.CommentDto;
 import com.codeit.sb13.monew.comment.service.dto.CommentRegisterCommand;
 import com.codeit.sb13.monew.comment.service.dto.CommentSearchCommand;
 import com.codeit.sb13.monew.comment.repository.dto.CommentSearchCondition;
 import com.codeit.sb13.monew.comment.repository.dto.CommentSearchResult;
 import com.codeit.sb13.monew.comment.service.dto.CommentUpdateCommand;
-import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
 import com.codeit.sb13.monew.global.exception.comment.CommentNotFoundException;
 import com.codeit.sb13.monew.global.exception.comment.CommentPermissionDeniedException;
@@ -59,14 +58,13 @@ public class CommentServiceImpl implements CommentService {
   }
 
   @Override
-  public CursorPageResponseDto<CommentDto> search(CommentSearchCommand command) {
+  public CursorPageResponseCommentDto search(CommentSearchCommand command) { // Swagger API 응답과 맞춘다
     CommentSearchResult page=commentRepository.search(new CommentSearchCondition(
         command.articleId(),
         command.orderBy(),
         command.direction(),
         command.cursor(),
         command.after(),
-        command.idAfter(),
         command.limit(),
         command.requestUserId()
     ));
@@ -75,26 +73,23 @@ public class CommentServiceImpl implements CommentService {
         .map(CommentDto::from)
         .toList();
 
-    return new CursorPageResponseDto<>(
+    return new CursorPageResponseCommentDto(
         content,
-        nextCursor(content, command.orderBy()),
+        nextCursor(content),
         nextAfter(content),
-        nextIdAfter(content), // cursor, after 모두 같은 데이터에 대한 3차 tie-breaker
         content.size(),
         page.totalElements(),
         page.hasNext()
     );
   }
 
-  // 다음 페이지 조회에 사용할 주요 커서 값을 만든다
-  private String nextCursor(List<CommentDto> content, CommentOrderBy orderBy) {
+  // 다음 페이지 cursor는 마지막 댓글 ID
+  private String nextCursor(List<CommentDto> content) {
     if (content.isEmpty()) {
       return null;
     }
 
-    CommentDto last = content.get(content.size() - 1);
-    return orderBy == CommentOrderBy.CREATED_AT
-        ? last.createdAt().toString() : String.valueOf(last.likeCount());
+    return content.get(content.size() - 1).id().toString();
   }
 
   // 다음 페이지 조회에 사용할 보조 커서
@@ -105,15 +100,6 @@ public class CommentServiceImpl implements CommentService {
 
     return content.get(content.size() - 1).createdAt().toString();
   }
-
-  private String nextIdAfter(List<CommentDto> content) {
-    if (content.isEmpty()) {
-      return null;
-    }
-
-    return content.get(content.size() - 1).id().toString();
-  }
-
 
   @Transactional
   @Override
