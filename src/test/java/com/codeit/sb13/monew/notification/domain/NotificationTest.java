@@ -82,4 +82,19 @@ class NotificationTest {
         // then
         assertThat(notification.getConfirmedAt()).isEqualTo(firstConfirmedAt);
     }
+
+    @Test
+    @DisplayName("confirm(시각)을 호출하면 전달한 시각이 confirmedAt으로 설정된다")
+    void 지정한_시각으로_확인_처리() {
+        // given
+        Notification notification = Notification.create(user, "알림", resourceId, ResourceType.COMMENT);
+        LocalDateTime specificTime = LocalDateTime.of(2026, 1, 1, 0, 0);
+
+        // when
+        notification.confirm(specificTime);
+
+        // then
+        assertThat(notification.isConfirmed()).isTrue();
+        assertThat(notification.getConfirmedAt()).isEqualTo(specificTime);
+    }
 }

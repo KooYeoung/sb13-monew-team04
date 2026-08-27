@@ -14,10 +14,12 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 @DataJpaTest
 @Import(QueryDslConfig.class)
@@ -161,7 +163,7 @@ class NotificationRepositoryTest {
         LocalDateTime threshold = LocalDateTime.now().minusDays(7);
 
         // when
-        long deletedCount = notificationRepository.deleteConfirmedBefore(threshold);
+        int deletedCount = notificationRepository.deleteConfirmedBefore(threshold);
 
         // then
         assertThat(deletedCount).isEqualTo(1);
@@ -179,7 +181,7 @@ class NotificationRepositoryTest {
         LocalDateTime threshold = LocalDateTime.now().minusDays(7);
 
         // when
-        long deletedCount = notificationRepository.deleteConfirmedBefore(threshold);
+        int deletedCount = notificationRepository.deleteConfirmedBefore(threshold);
 
         // then
         assertThat(deletedCount).isZero();
@@ -197,10 +199,89 @@ class NotificationRepositoryTest {
         LocalDateTime threshold = LocalDateTime.now().minusDays(7);
 
         // when
-        long deletedCount = notificationRepository.deleteConfirmedBefore(threshold);
+        int deletedCount = notificationRepository.deleteConfirmedBefore(threshold);
 
         // then
         assertThat(deletedCount).isZero();
         assertThat(notificationRepository.findById(unconfirmed.getId())).isPresent();
+    }
+
+    @Test
+    @DisplayName("요청자의 미확인 알림이 모두 확인 처리되고, 전달한 시각이 confirmedAt으로 저장된다")
+    void 벌크_확인_처리_성공() {
+        // given
+        User user = saveUser("me@test.com", "나");
+        Notification n1 = saveNotification(user, "알림1", LocalDateTime.now());
+        Notification n2 = saveNotification(user, "알림2", LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+
+        // when
+        int updatedCount = notificationRepository.confirmAllByUserId(user.getId(), List.of(n1.getId(), n2.getId()), now);
+
+        // then
+        assertThat(updatedCount).isEqualTo(2);
+
+        Notification reloaded1 = notificationRepository.findById(n1.getId()).orElseThrow();
+        Notification reloaded2 = notificationRepository.findById(n2.getId()).orElseThrow();
+        assertThat(reloaded1.isConfirmed()).isTrue();
+        assertThat(reloaded1.getConfirmedAt()).isCloseTo(now, within(1, ChronoUnit.SECONDS));
+        assertThat(reloaded2.isConfirmed()).isTrue();
+        assertThat(reloaded2.getConfirmedAt()).isCloseTo(now, within(1, ChronoUnit.SECONDS));
+    }
+
+    @Test
+    @DisplayName("다른 사용자의 알림은 확인 처리되지 않는다")
+    void 벌크_확인_처리_사용자_격리() {
+        // given
+        User me = saveUser("me@test.com", "나");
+        User other = saveUser("other@test.com", "다른사람");
+        Notification myNotification = saveNotification(me, "내 알림", LocalDateTime.now());
+        Notification othersNotification = saveNotification(other, "다른 사람 알림", LocalDateTime.now());
+
+        // when
+        notificationRepository.confirmAllByUserId(me.getId(), List.of(myNotification.getId()), LocalDateTime.now());
+
+        // then
+        Notification reloaded = notificationRepository.findById(othersNotification.getId()).orElseThrow();
+        assertThat(reloaded.isConfirmed()).isFalse();
+    }
+
+    @Test
+    @DisplayName("이미 확인된 알림은 확인 시각이 갱신되지 않고 확인 대상에서도 제외된다")
+    void 벌크_확인_처리_이미_확인된_알림_제외() {
+        // given
+        User user = saveUser("me@test.com", "나");
+        LocalDateTime originalConfirmedAt = LocalDateTime.now().minusDays(1);
+        Notification alreadyConfirmed = saveNotification(user, "이미 확인함", true, originalConfirmedAt);
+
+        // when
+        int updatedCount = notificationRepository.confirmAllByUserId(user.getId(), List.of(alreadyConfirmed.getId()), LocalDateTime.now());
+
+        // then
+        assertThat(updatedCount).isZero();
+        Notification reloaded = notificationRepository.findById(alreadyConfirmed.getId()).orElseThrow();
+        assertThat(reloaded.getConfirmedAt()).isCloseTo(originalConfirmedAt, within(1, ChronoUnit.SECONDS));
+    }
+
+    @Test
+    @DisplayName("사전 조회한 알림 목록에 없는, 그 사이 새로 생긴 알림은 확인 처리되지 않는다")
+    void 벌크_확인_처리_사전_조회_이후_추가된_알림_제외() {
+        // given
+        User user = saveUser("me@test.com", "나");
+        Notification target = saveNotification(user, "사전 조회된 알림", LocalDateTime.now());
+        List<UUID> targetIds = List.of(target.getId());
+
+        Notification arrivedLater = saveNotification(user, "그 사이 도착한 새 알림", LocalDateTime.now());
+
+        // when
+        int updatedCount = notificationRepository.confirmAllByUserId(user.getId(), targetIds, LocalDateTime.now());
+
+        // then
+        assertThat(updatedCount).isEqualTo(1);
+
+        Notification reloadedTarget = notificationRepository.findById(target.getId()).orElseThrow();
+        Notification reloadedLater = notificationRepository.findById(arrivedLater.getId()).orElseThrow();
+        assertThat(reloadedTarget.isConfirmed()).isTrue();
+        assertThat(reloadedLater.isConfirmed()).isFalse();
     }
 }

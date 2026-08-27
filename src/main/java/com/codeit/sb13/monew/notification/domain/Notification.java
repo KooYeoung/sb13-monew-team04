@@ -54,12 +54,15 @@ public class Notification extends UpdatedAtEntity {
                 .build();
     }
 
-    public void confirm() {
+    public void confirm(LocalDateTime confirmedAt) {
         if (this.confirmed) {
             return;
         }
-
         this.confirmed = true;
-        this.confirmedAt = LocalDateTime.now();
+        this.confirmedAt = confirmedAt;
+    }
+
+    public void confirm() {
+        confirm(LocalDateTime.now());
     }
 }

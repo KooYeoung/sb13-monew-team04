@@ -259,6 +259,10 @@ class NotificationServiceImplTest {
 
             Notification notification1 = Notification.create(user, "알림1", UUID.randomUUID(), ResourceType.COMMENT);
             Notification notification2 = Notification.create(user, "알림2", UUID.randomUUID(), ResourceType.INTEREST);
+            UUID notificationId1 = UUID.randomUUID();
+            UUID notificationId2 = UUID.randomUUID();
+            ReflectionTestUtils.setField(notification1, "id", notificationId1);
+            ReflectionTestUtils.setField(notification2, "id", notificationId2);
             List<Notification> notifications = List.of(notification1, notification2);
 
             when(notificationRepository.findByUser_IdAndConfirmedFalse(userId)).thenReturn(notifications);
@@ -276,7 +280,8 @@ class NotificationServiceImplTest {
             assertThat(notification1.isConfirmed()).isTrue();
             assertThat(notification2.isConfirmed()).isTrue();
 
-            verify(notificationRepository).saveAll(notifications);
+            verify(notificationRepository).confirmAllByUserId(
+                    eq(userId), eq(List.of(notificationId1, notificationId2)), any(LocalDateTime.class));
             assertThat(result).hasSize(2);
         }
 
@@ -399,7 +404,7 @@ class NotificationServiceImplTest {
         @DisplayName("확인 처리된 지 7일 경과한 알림을 삭제하고, 삭제 기준 시각으로 '지금으로부터 7일 전'을 넘긴다.")
         void 만료된_확인_알림_삭제() {
             // given
-            when(notificationRepository.deleteConfirmedBefore(any(LocalDateTime.class))).thenReturn(3L);
+            when(notificationRepository.deleteConfirmedBefore(any(LocalDateTime.class))).thenReturn(3);
 
             // when
             notificationServiceImpl.deleteConfirmedNotification();
@@ -417,7 +422,7 @@ class NotificationServiceImplTest {
         @DisplayName("삭제 건수가 0이어도 예외 없이 정상 종료된다.")
         void 삭제_건수_0이어도_정상_종료() {
             // given
-            when(notificationRepository.deleteConfirmedBefore(any(LocalDateTime.class))).thenReturn(0L);
+            when(notificationRepository.deleteConfirmedBefore(any(LocalDateTime.class))).thenReturn(0);
 
             // when & then
             notificationServiceImpl.deleteConfirmedNotification();

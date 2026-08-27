@@ -108,17 +108,24 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional
     public List<NotificationResult> confirmAllNotifications(UUID userId) {
         userService.validateExists(userId);
-        List<Notification> notifications = notificationRepository.findByUser_IdAndConfirmedFalse(userId);
-        notifications.forEach(Notification::confirm);
 
-        notificationRepository.saveAll(notifications);
-        return notifications.stream().map(mapper::toResult).toList();
+        List<Notification> targets = notificationRepository.findByUser_IdAndConfirmedFalse(userId);
+        if (targets.isEmpty()) {
+            return List.of();
+        }
+
+        List<UUID> targetIds = targets.stream().map(Notification::getId).toList();
+        LocalDateTime now = LocalDateTime.now();
+        notificationRepository.confirmAllByUserId(userId, targetIds, now);
+        targets.forEach(n -> n.confirm(now));
+
+        return targets.stream().map(mapper::toResult).toList();
     }
 
     @Override
     @Transactional
     public void deleteConfirmedNotification() {
-        long deletedCount = notificationRepository.deleteConfirmedBefore(LocalDateTime.now().minusDays(7));
+        int deletedCount = notificationRepository.deleteConfirmedBefore(LocalDateTime.now().minusDays(7));
         log.info("확인 처리된 지 7일 경과한 알림 {}건 삭제", deletedCount);
     }
 
