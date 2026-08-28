@@ -1,11 +1,6 @@
 package com.codeit.sb13.monew.user.service.impl;
 
-import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
-import com.codeit.sb13.monew.comment.repository.CommentLikeRepository;
-import com.codeit.sb13.monew.comment.repository.CommentRepository;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
-import com.codeit.sb13.monew.interest.repository.SubscribeRepository;
-import com.codeit.sb13.monew.notification.repository.NotificationRepository;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.exception.AlreadyDeletedUserException;
 import com.codeit.sb13.monew.user.exception.DuplicateEmailException;
@@ -37,14 +32,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserServiceImpl implements UserService {
 
   private final UserRepository userRepository;
-
   private final UserHardDeleteExecutor userHardDeleteExecutor;
-
   private final PasswordEncoder passwordEncoder;
   private final UserMapper userMapper;
 
   @Transactional
   public UserCreateResult signUp(UserCreateCommand command) {
+    log.debug("회원가입 요청 - email: {}", command.email());
+
     boolean emailExists = userRepository.existsByEmail(command.email());
 
     if (emailExists) {
@@ -62,11 +57,15 @@ public class UserServiceImpl implements UserService {
     try {
       User saveUser = userRepository.saveAndFlush(user);
       UserCreateResult result = userMapper.toResult(saveUser);
+      log.info("회원가입 성공 - email: {}", command.email());
       return result;
+
     } catch (DataIntegrityViolationException e) {
       if (isEmailUniqueViolation(e)) {
         throw new DuplicateEmailException(command.email());
       }
+
+      log.error("회원가입 실패 - 예상치 못한 무결성 위반 - email: {}", command.email(), e);
       throw e;
     }
   }
@@ -74,10 +73,14 @@ public class UserServiceImpl implements UserService {
   @Override
   @Transactional(readOnly = true)
   public UserLoginResult login(UserLoginCommand command) {
+    log.debug("로그인 요청 - email: {}", command.email());
+
     User user = userRepository.findByEmail(command.email())
         .orElseThrow(() -> new LoginUserNotFoundException(command.email()));
+
     LocalDateTime deletedAt = user.getDeletedAt();
-    if(deletedAt != null) {
+
+    if (deletedAt != null) {
       throw new LoginUserNotFoundException(command.email());
     }
 
@@ -87,16 +90,23 @@ public class UserServiceImpl implements UserService {
     if (!matches) {
       throw new InvalidPasswordException(command.email());
     }
+
+    log.info("로그인 성공 - email: {}", command.email());
     return userMapper.toLoginResult(user);
   }
 
   @Override
   @Transactional
   public UserUpdateNicknameResult updateNickname(UserUpdateNicknameCommand command) {
+    log.debug("닉네임 변경 요청 - userId: {}, nickname: {}", command.userId(), command.nickname());
+
     User user = userRepository.findById(command.userId())
         .orElseThrow(() -> new UserNotFoundException(command.userId()));
+
     user.updateNickname(command.nickname());
     User saveUser = userRepository.saveAndFlush(user);
+
+    log.info("닉네임 변경 성공 - userId: {}, nickname: {}", command.userId(), command.nickname());
     return userMapper.toUpdateNicknameResult(saveUser);
   }
 
@@ -110,21 +120,22 @@ public class UserServiceImpl implements UserService {
   @Override
   @Transactional(readOnly = true)
   public void validateExists(UUID userId) {
-    if(!userRepository.existsById(userId)) {
+    if (!userRepository.existsById(userId)) {
       throw new UserNotFoundException(userId);
     }
-
   }
 
   @Override
   @Transactional
   public void deleteUser(UUID userId) {
+    log.debug("논리 삭제 요청 - userId: {}", userId);
     int updatedCount = userRepository.softDeleteIfNotDeleted(userId, LocalDateTime.now());
 
     if (updatedCount == 0) {
       validateExists(userId);
       throw new AlreadyDeletedUserException(userId);
     }
+    log.info("논리 삭제 성공 - userId: {}", userId);
   }
 
   @Override
@@ -138,15 +149,16 @@ public class UserServiceImpl implements UserService {
   public void autoDeleteExpiredUsers() {
     LocalDateTime threshold = LocalDateTime.now().minusDays(1);
     List<User> expiredUsers = userRepository.findByDeletedAtBefore(threshold);
+    log.info("사용자 자동 삭제 대상 조회 완료 - 대상 수: {}", expiredUsers.size());
 
     for (User user : expiredUsers) {
       try {
         userHardDeleteExecutor.hardDeleteExpiredUser(user.getId(), threshold);
       } catch (Exception e) {
+        // 예외를 밖으로 던지지 않고 스케줄러 루프를 계속 진행하므로 이 error 로그는 필수 유지
         log.error("사용자 자동 물리 삭제 실패 - userId: {}, 사유: {}", user.getId(), e.getMessage());
       }
     }
-
   }
 
   private boolean isEmailUniqueViolation(DataIntegrityViolationException e) {
@@ -154,4 +166,3 @@ public class UserServiceImpl implements UserService {
     return message != null && message.contains("uk_users_email");
   }
 }
-

@@ -22,7 +22,7 @@ public class UserAutoDeleteScheduler {
     boolean executed = advisoryLockService.executeWithLock(LOCK_KEY, userService::autoDeleteExpiredUsers);
 
     if (!executed) {
-      log.warn("이미 다른 인스턴스가 사용자 자동 삭제를 실행 중입니다.");
+      log.info("이미 다른 인스턴스가 사용자 자동 삭제를 실행 중입니다.");
       return;
     }
     log.info("사용자 자동 삭제 스케줄러 작업을 완료했습니다.");

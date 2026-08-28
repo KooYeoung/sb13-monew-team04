@@ -43,7 +43,6 @@ public class UserHardDeleteExecutorTest {
   UserHardDeleteExecutor userHardDeleteExecutor;
 
 
-
   @Test
   @DisplayName("존재하는_userId로_물리삭제_요청_시에_정상작동")
   void 존재하는_userId로_물리삭제_요청_시에_정상작() {
@@ -81,6 +80,21 @@ public class UserHardDeleteExecutorTest {
     // when & then
     assertThatThrownBy(() -> userHardDeleteExecutor.hardDeleteUser(userId))
         .isInstanceOf(UserNotFoundException.class);
+  }
+
+  @Test
+  @DisplayName("존재하지 않는 userId로 만료 회원 물리 삭제 요청시 예외를 터트린다.")
+  void 존재하지_않는_userId로_만료회원_물리삭제_요청_시_예외를_던진다() {
+    // given
+    UUID uuid = UUID.randomUUID();
+    LocalDateTime threshold = LocalDateTime.now();
+    when(userRepository.findById(uuid))
+        .thenReturn(Optional.empty());
+
+    // when & then
+    assertThatThrownBy(() -> userHardDeleteExecutor.hardDeleteExpiredUser(uuid, threshold))
+        .isInstanceOf(UserNotFoundException.class);
+
   }
 
   @Test

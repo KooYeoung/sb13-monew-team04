@@ -11,10 +11,12 @@ import com.codeit.sb13.monew.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class UserHardDeleteExecutor {
@@ -27,12 +29,16 @@ public class UserHardDeleteExecutor {
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void hardDeleteUser(UUID userId) {
+    log.debug("물리 삭제 요청 - userId: {}", userId);
+
     userRepository.findById(userId)
-        .orElseThrow(() -> new UserNotFoundException(userId));
-    deleteAllRelateDataData(userId);
+        .orElseThrow(() ->  new UserNotFoundException(userId));
+
+    deleteAllRelateData(userId);
+    log.info("물리 삭제 성공 - userId: {}", userId);
   }
 
-  private void deleteAllRelateDataData(UUID userId) {
+  private void deleteAllRelateData(UUID userId) {
     // FK 제약 순서 고려
     // CommentLike→ Comment → ArticleView → Subscribe → Notification → User
     commentLikeRepository.deleteByComment_User_Id(userId);
@@ -47,11 +53,17 @@ public class UserHardDeleteExecutor {
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void hardDeleteExpiredUser(UUID userId, LocalDateTime threshold) {
+    log.debug("논리 삭제 후 하루 경과 검토 - userId: {}", userId);
+
     User user = userRepository.findById(userId)
         .orElseThrow(() -> new UserNotFoundException(userId));
     LocalDateTime deletedAt = user.getDeletedAt();
     if(deletedAt != null &&  deletedAt.isBefore(threshold)) {
-      deleteAllRelateDataData(userId);
+      deleteAllRelateData(userId);
+      log.info("물리 삭제 성공 - userId: {}", userId);
+    }else {
+      log.info("물리 삭제 스킵 - 삭제 조건 미충족(복구되었거나 유예기간 이내) - userId: {}, deletedAt: {}",
+          userId, deletedAt);
     }
   }
 
