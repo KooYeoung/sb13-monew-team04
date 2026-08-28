@@ -52,6 +52,10 @@ monew:
     schedule:
       enabled: ${MONEW_NOTIFICATION_DELETE_ENABLED:false}
       cron: "${MONEW_NOTIFICATION_DELETE_CRON:0 0 0 * * *}"
+  user:
+    schedule:
+      enabled: ${MONEW_USER_AUTO_DELETE_ENABLED:false}
+      cron: "${MONEW_USER_AUTO_DELETE_CRON:0 0 1 * * *}"
 
   openapi:
     server-url: http://localhost:${server.port:8080}
