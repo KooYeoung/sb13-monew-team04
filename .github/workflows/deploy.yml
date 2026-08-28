@@ -1,0 +1,102 @@
+name: deploy-prod
+
+# main으로 merge된 시점 = AGENTS.md 기준 "운영 반영"이므로, main push만 트리거로 둔다.
+# develop push나 PR에서는 절대 배포되지 않는다. (develop-build-test.yml이 그쪽 검증을 담당)
+on:
+  push:
+    branches:
+      - main
+
+# 전역 권한은 read로 최소화하고, 실제로 필요한 job에만 필요한 권한만 따로 부여한다.
+# (deploy job은 이 GITHUB_TOKEN을 EC2로 전달하는데, EC2가 침해되더라도
+#  이 토큰으로 GHCR에 쓰기(악성 이미지 push)까지는 못 하도록 범위를 좁혀두는 것)
+permissions:
+  contents: read
+
+# 같은 이름의 배포가 동시에 두 개 뛰지 않도록 한다.
+# cancel-in-progress: false → 이미 서버에 배포 중인 작업을 도중에 끊지 않고, 새 배포는 줄을 서서 기다린다.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    name: build-and-push-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read    # actions/checkout이 저장소 코드를 읽기 위해 필요.
+                         # job-level permissions는 workflow 상단 값을 상속하지 않고 완전히 덮어쓰므로, 여기서도 명시해야 한다.
+      packages: write   # GHCR(GitHub Container Registry)에 이미지를 push하기 위해 필요
+    outputs:
+      image_sha: ${{ steps.meta.outputs.image_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # GITHUB_TOKEN은 Actions가 매 실행마다 자동 발급하는 단기 토큰이다. 별도로 만들 필요가 없다.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image tags
+        id: meta
+        run: |
+          IMAGE="ghcr.io/${{ github.repository }}"
+          echo "image_sha=${IMAGE}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "image_latest=${IMAGE}:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          push: true
+          # commit sha 태그는 "이 배포가 정확히 어떤 커밋인지" 추적하기 위한 것이고,
+          # latest 태그는 배포 스크립트가 매번 새로 pull할 대상을 가리키기 위한 것이다.
+          tags: |
+            ${{ steps.meta.outputs.image_sha }}
+            ${{ steps.meta.outputs.image_latest }}
+          # GitHub Actions의 캐시를 재사용해서, 매번 처음부터 gradle 의존성을 받지 않게 한다.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: deploy-to-ec2
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read   # EC2에서 이미지를 pull만 하므로 read면 충분하다
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          # 아래 script는 EC2 서버 안에서 그대로 실행된다.
+          # /opt/monew에는 미리 compose.prod.yaml과 .env.prod가 준비되어 있어야 한다. (배포 가이드 참고)
+          script: |
+            set -e
+            cd /opt/monew
+
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # build-and-push 잡이 방금 빌드해서 올린 이미지를 SHA 태그로 못박아 둔다.
+            # MONEW_IMAGE는 셸 환경변수로 넘기므로 --env-file(.env.prod)에 있는 값보다 우선 적용되고,
+            # compose.prod.yaml의 image: ${MONEW_IMAGE:-...latest} 기본값도 덮어쓴다.
+            # 이렇게 해야 방금 테스트를 통과한 커밋과 실제 배포되는 이미지가 항상 일치한다.
+            IMAGE_SHA="${{ needs.build-and-push.outputs.image_sha }}"
+
+            # latest 태그가 아니라 위에서 고정한 SHA 태그 이미지를 받아온다.
+            MONEW_IMAGE="$IMAGE_SHA" docker compose -f compose.prod.yaml --env-file .env.prod pull app
+
+            # 이미지가 바뀐 서비스만 재생성해서 컨테이너를 교체한다. DB 컨테이너는 그대로 유지된다.
+            MONEW_IMAGE="$IMAGE_SHA" docker compose -f compose.prod.yaml --env-file .env.prod up -d --no-deps app
+
+            # 더 이상 어떤 컨테이너도 참조하지 않는 이전 이미지(dangling image)를 정리해 디스크를 아낀다.
+            docker image prune -f

@@ -1,0 +1,10 @@
+version: 2
+updates:
+  # GitHub Actions 워크플로(.github/workflows/*)에서 쓰는 외부 액션들을 감시 대상으로 삼는다.
+  # SHA로 고정해 둔 액션(예: actions/checkout@<sha> # v4)도, 뒤에 붙은 "# v4" 주석을 보고
+  # 새 버전이 나오면 SHA와 주석을 함께 최신으로 맞추는 PR을 자동으로 열어준다.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      # 매번 push마다가 아니라, 일주일에 한 번만 확인한다.
+      interval: "weekly"

@@ -1,0 +1,58 @@
+# EC2 운영 서버에서만 사용하는 compose 파일이다.
+# 로컬 개발용 compose.yaml과 분리해 둔 이유는, 운영에서는
+#   1) DB 포트를 호스트에 열지 않고
+#   2) 앱까지 컨테이너로 함께 띄우고
+#   3) 재부팅/장애 시 자동 재시작(restart policy)이 필요하기 때문이다.
+#
+# 사용법 (EC2 서버 안, /opt/monew 디렉터리 기준):
+#   docker compose -f compose.prod.yaml --env-file .env.prod pull
+#   docker compose -f compose.prod.yaml --env-file .env.prod up -d
+
+services:
+  app:
+    # GitHub Actions가 빌드해서 GHCR(GitHub Container Registry)에 올린 이미지를 그대로 받아쓴다.
+    # EC2에서 직접 gradle 빌드를 하지 않기 때문에, 사양이 작은 인스턴스(t3.micro 등)에서도 안전하다.
+    image: ${MONEW_IMAGE:-ghcr.io/y2ahhh/sb13-monew-team04:latest}
+    container_name: monew-app
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    ports:
+      # 127.0.0.1에만 바인딩한다. 즉 EC2 밖에서 8080으로 직접 접근할 수 없고,
+      # 반드시 같은 서버의 Nginx(80번 포트)를 거쳐야 한다.
+      - '127.0.0.1:8080:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - monew-net
+
+  postgres:
+    image: 'postgres:16'
+    container_name: monew-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${MONEW_DB_NAME}
+      POSTGRES_USER: ${MONEW_DB_USERNAME}
+      POSTGRES_PASSWORD: ${MONEW_DB_PASSWORD}
+    # 로컬 compose.yaml과 달리 포트를 아예 publish하지 않는다.
+    # app 컨테이너는 같은 monew-net 안에서 'postgres'라는 서비스명으로 이 컨테이너에 접근하므로
+    # 호스트에 5432를 열어 둘 필요 자체가 없다. (외부 공격 표면을 하나 더 줄이는 것)
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${MONEW_DB_USERNAME} -d ${MONEW_DB_NAME}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - monew-net
+
+networks:
+  monew-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
