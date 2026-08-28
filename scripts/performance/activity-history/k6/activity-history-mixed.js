@@ -1,20 +1,22 @@
 import http from 'k6/http';
 import { check, group, sleep } from 'k6';
+import { Counter, Rate, Trend } from 'k6/metrics';
 
 const DEFAULT_TARGET_USER_ID = '00000001-0000-4000-8000-000000000001';
 const VALID_SCENARIOS = ['smoke', 'baseline', 'average', 'high-load', 'stress', 'throughput'];
 const VALID_VARIANTS = ['rdb', 'mongo'];
 const VALID_USER_PICK_STRATEGIES = ['single', 'round-robin', 'random'];
+const VALID_MIX_RATIOS = ['80/20', '50/50'];
 
 const SCENARIO = stringChoiceEnv('K6_SCENARIO', 'smoke', VALID_SCENARIOS);
 const VARIANT = stringChoiceEnv('K6_VARIANT', 'rdb', VALID_VARIANTS);
+const MIX_RATIO = stringChoiceEnv('K6_MIX_RATIO', '80/20', VALID_MIX_RATIOS);
 const BASE_URL = trimTrailingSlash(__ENV.K6_BASE_URL || 'http://localhost:8080');
 const PATH_TEMPLATE = __ENV.K6_ACTIVITY_HISTORY_PATH_TEMPLATE || '/api/user-activities/{userId}';
 const TARGET_USER_IDS = targetUserIdsEnv();
 const PRIMARY_TARGET_USER_ID = TARGET_USER_IDS[0];
 const USER_PICK_STRATEGY = stringChoiceEnv('K6_USER_PICK_STRATEGY', 'single', VALID_USER_PICK_STRATEGIES);
 const USER_ID_HEADER_NAME = __ENV.K6_USER_ID_HEADER_NAME || 'Monew-Request-User-ID';
-const EXPECTED_STATUS = httpStatusEnv('K6_EXPECTED_STATUS', 200);
 const SLEEP_SECONDS = nonNegativeNumberEnv('K6_SLEEP_SECONDS', 1);
 const SUMMARY_PATH = summaryPath(PATH_TEMPLATE);
 const SAMPLE_ACTIVITY_HISTORY_URL = buildUrl(PATH_TEMPLATE, PRIMARY_TARGET_USER_ID);
@@ -24,10 +26,18 @@ const HTTP_REQ_DURATION_P99_THRESHOLD = __ENV.K6_HTTP_REQ_DURATION_P99_THRESHOLD
 const CHECK_RATE_THRESHOLD = __ENV.K6_CHECK_RATE_THRESHOLD || '0.99';
 const DROPPED_ITERATIONS_COUNT_THRESHOLD = __ENV.K6_DROPPED_ITERATIONS_COUNT_THRESHOLD || '1';
 
+const ARTICLE_IDS = idPoolEnv('K6_MIX_ARTICLE_IDS', () => buildPerfUuidPool(5, 1, 10000));
+const COMMENT_IDS = idPoolEnv('K6_MIX_COMMENT_IDS', () => buildPerfUuidPool(7, 1, 10000));
+const INTEREST_IDS = idPoolEnv('K6_MIX_INTEREST_IDS', () => buildPerfUuidPool(2, 40000, 10000));
+const WRITE_USER_IDS = idPoolEnv('K6_MIX_WRITE_USER_IDS', () => buildActiveUserPool(1001, 5000));
+const API_WEIGHTS = apiWeights(MIX_RATIO);
+const API_NAMES = API_WEIGHTS.map((entry) => entry.name);
+const API_METRICS = buildApiMetrics(API_NAMES);
+
 const scenarioConfigs = {
   smoke: {
     executor: 'constant-vus',
-    vus: numberEnv('K6_SMOKE_VUS', 1),
+    vus: numberEnv('K6_SMOKE_VUS', 5),
     duration: __ENV.K6_SMOKE_DURATION || '1m',
   },
   baseline: {
@@ -63,7 +73,7 @@ const scenarioConfigs = {
 
 const ACTIVE_SCENARIO_CONFIG = scenarioConfigs[SCENARIO];
 
-http.setResponseCallback(http.expectedStatuses(EXPECTED_STATUS));
+http.setResponseCallback(http.expectedStatuses(200, 201, 204));
 
 export const options = {
   summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
@@ -82,28 +92,20 @@ export const options = {
 };
 
 export default function () {
-  group('activity-history-read', () => {
-    const targetUserId = pickTargetUserId();
-    const response = http.get(buildUrl(PATH_TEMPLATE, targetUserId), requestParams(targetUserId));
-    const body = parseJsonBody(response);
+  const actionName = pickAction();
 
-    check(response, {
-      [`status is ${EXPECTED_STATUS}`]: (res) => res.status === EXPECTED_STATUS,
-      'response body is not empty': (res) => Boolean(res.body && res.body.length > 0),
-      'response body is json': () => body !== null,
-      'activity user fields exist': () =>
-        body !== null &&
-        hasStringField(body, 'id') &&
-        hasStringField(body, 'email') &&
-        hasStringField(body, 'nickname') &&
-        hasStringField(body, 'createdAt'),
-      'activity array fields exist': () =>
-        body !== null &&
-        Array.isArray(body.subscriptions) &&
-        Array.isArray(body.comments) &&
-        Array.isArray(body.commentLikes) &&
-        Array.isArray(body.articleViews),
-    });
+  group(actionName, () => {
+    if (actionName === 'activity-history-read') {
+      readActivityHistory();
+    } else if (actionName === 'comment-create') {
+      createComment();
+    } else if (actionName === 'comment-like-toggle') {
+      toggleCommentLike();
+    } else if (actionName === 'article-view') {
+      viewArticle();
+    } else if (actionName === 'subscription-toggle') {
+      toggleSubscription();
+    }
   });
 
   if (shouldSleepBetweenIterations() && SLEEP_SECONDS > 0) {
@@ -116,13 +118,21 @@ export function handleSummary(data) {
     ticket: 'MID4-206',
     scenario: SCENARIO,
     variant: VARIANT,
+    workload: 'mixed',
+    mixRatio: MIX_RATIO,
+    apiWeights: API_WEIGHTS,
     url: SAMPLE_ACTIVITY_HISTORY_URL,
     pathTemplate: PATH_TEMPLATE,
     targetUserId: PRIMARY_TARGET_USER_ID,
     targetUserIds: TARGET_USER_IDS,
     targetUserCount: TARGET_USER_IDS.length,
     userPickStrategy: USER_PICK_STRATEGY,
-    expectedStatus: EXPECTED_STATUS,
+    writePoolSizes: {
+      users: WRITE_USER_IDS.length,
+      articles: ARTICLE_IDS.length,
+      comments: COMMENT_IDS.length,
+      interests: INTEREST_IDS.length,
+    },
     requestedRate: scenarioInputValue('rate'),
     vus: scenarioInputValue('vus'),
     startVUs: scenarioInputValue('startVUs'),
@@ -148,14 +158,17 @@ export function handleSummary(data) {
       durationP99Ms: metricValue(data, 'http_req_duration', 'p(99)'),
       checksRate: metricValue(data, 'checks', 'rate'),
     },
+    apiMetrics: apiMetricSummary(data),
   };
 
   const output = {};
   output.stdout = [
-    'Activity history k6 summary',
+    'Activity history mixed k6 summary',
     `ticket: ${summary.ticket}`,
     `scenario: ${summary.scenario}`,
     `variant: ${summary.variant}`,
+    `workload: ${summary.workload}`,
+    `mixRatio: ${summary.mixRatio}`,
     `url: ${summary.url}`,
     `targetUserId: ${summary.targetUserId}`,
     `targetUserCount: ${summary.targetUserCount}`,
@@ -171,20 +184,128 @@ export function handleSummary(data) {
     `duration.p95: ${formatNumber(summary.metrics.durationP95Ms, 2)} ms`,
     `duration.p99: ${formatNumber(summary.metrics.durationP99Ms, 2)} ms`,
     `checksRate: ${formatPercent(summary.metrics.checksRate)}`,
+    apiMetricLines(summary.apiMetrics),
     '',
-  ].join('\n');
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
   output[SUMMARY_PATH] = JSON.stringify(summary, null, 2);
 
   return output;
 }
 
-function requestParams(targetUserId) {
+function readActivityHistory() {
+  const userId = pickTargetUserId();
+  const response = apiRequest(
+    'activity-history-read',
+    'GET',
+    buildUrl(PATH_TEMPLATE, userId),
+    null,
+    requestParams('activity-history-read', userId),
+    [200],
+    (res) => {
+      const body = parseJsonBody(res);
+      return (
+        res.status === 200 &&
+        Boolean(res.body && res.body.length > 0) &&
+        body !== null &&
+        hasStringField(body, 'id') &&
+        hasStringField(body, 'email') &&
+        hasStringField(body, 'nickname') &&
+        hasStringField(body, 'createdAt') &&
+        Array.isArray(body.subscriptions) &&
+        Array.isArray(body.comments) &&
+        Array.isArray(body.commentLikes) &&
+        Array.isArray(body.articleViews)
+      );
+    }
+  );
+
+  return response;
+}
+
+function createComment() {
+  const sequence = sequenceNumber();
+  const userId = pickWriteUserId(sequence);
+  const articleId = pickFrom(ARTICLE_IDS, sequence * 17);
+  const body = JSON.stringify({
+    articleId,
+    userId,
+    content: `MID4-206 mixed comment ${__VU}-${__ITER}-${Date.now()}`,
+  });
+  const params = requestParams('comment-create', userId, {
+    'Content-Type': 'application/json',
+  });
+
+  return apiRequest('comment-create', 'POST', `${BASE_URL}/api/comments`, body, params, [201], (res) => {
+    const parsedBody = parseJsonBody(res);
+    return res.status === 201 && parsedBody !== null && hasStringField(parsedBody, 'id');
+  });
+}
+
+function toggleCommentLike() {
+  const sequence = sequenceNumber();
+  const userId = pickWriteUserId(sequence);
+  const commentId = pickFrom(COMMENT_IDS, sequence * 31);
+  const url = `${BASE_URL}/api/comments/${encodeURIComponent(commentId)}/comment-likes`;
+  const params = requestParams('comment-like-toggle', userId);
+
+  apiRequest('comment-like-toggle', 'POST', url, null, params, [200], (res) => {
+    const body = parseJsonBody(res);
+    return res.status === 200 && body !== null && hasStringField(body, 'id');
+  });
+
+  return apiRequest('comment-like-toggle', 'DELETE', url, null, params, [204], (res) => res.status === 204);
+}
+
+function viewArticle() {
+  const sequence = sequenceNumber();
+  const userId = pickWriteUserId(sequence);
+  const articleId = pickFrom(ARTICLE_IDS, sequence * 43);
+  const url = `${BASE_URL}/api/articles/${encodeURIComponent(articleId)}/article-views`;
+
+  return apiRequest('article-view', 'POST', url, null, requestParams('article-view', userId), [200], (res) => {
+    const body = parseJsonBody(res);
+    return res.status === 200 && body !== null && hasStringField(body, 'id');
+  });
+}
+
+function toggleSubscription() {
+  const sequence = sequenceNumber();
+  const userId = pickWriteUserId(sequence);
+  const interestId = pickFrom(INTEREST_IDS, sequence * 53);
+  const url = `${BASE_URL}/api/interests/${encodeURIComponent(interestId)}/subscriptions`;
+  const params = requestParams('subscription-toggle', userId);
+
+  apiRequest('subscription-toggle', 'POST', url, null, params, [200], (res) => {
+    const body = parseJsonBody(res);
+    return res.status === 200 && body !== null && hasStringField(body, 'id');
+  });
+
+  return apiRequest('subscription-toggle', 'DELETE', url, null, params, [204], (res) => res.status === 204);
+}
+
+function apiRequest(apiName, method, url, body, params, expectedStatuses, checkFn) {
+  const start = Date.now();
+  const response = http.request(method, url, body, params);
+  const duration = Date.now() - start;
+  const expectedStatus = expectedStatuses.indexOf(response.status) >= 0;
+  const checksPassed = check(response, {
+    [`${apiName} response is valid`]: (res) => expectedStatus && checkFn(res),
+  });
+
+  recordApiMetric(apiName, duration, !expectedStatus, checksPassed, params.tags);
+  return response;
+}
+
+function requestParams(apiName, userId, additionalHeaders = {}) {
   const headers = {
     Accept: 'application/json',
+    ...additionalHeaders,
   };
 
-  if (USER_ID_HEADER_NAME) {
-    headers[USER_ID_HEADER_NAME] = targetUserId;
+  if (USER_ID_HEADER_NAME && userId) {
+    headers[USER_ID_HEADER_NAME] = userId;
   }
 
   if (__ENV.K6_AUTHORIZATION) {
@@ -194,12 +315,104 @@ function requestParams(targetUserId) {
   return {
     headers,
     tags: {
-      api: 'activity-history',
+      api: apiName,
       scenario: SCENARIO,
       variant: VARIANT,
+      workload: 'mixed',
+      mixRatio: MIX_RATIO,
       userPickStrategy: USER_PICK_STRATEGY,
     },
   };
+}
+
+function buildApiMetrics(apiNames) {
+  const metrics = {};
+
+  for (const apiName of apiNames) {
+    const key = metricKey(apiName);
+    metrics[apiName] = {
+      requests: new Counter(`api_${key}_requests`),
+      duration: new Trend(`api_${key}_duration`, true),
+      failed: new Rate(`api_${key}_failed`),
+      checks: new Rate(`api_${key}_checks`),
+    };
+  }
+
+  return metrics;
+}
+
+function recordApiMetric(apiName, duration, failed, checksPassed, tags) {
+  API_METRICS[apiName].requests.add(1, tags);
+  API_METRICS[apiName].duration.add(duration, tags);
+  API_METRICS[apiName].failed.add(failed, tags);
+  API_METRICS[apiName].checks.add(checksPassed, tags);
+}
+
+function apiMetricSummary(data) {
+  const result = {};
+
+  for (const apiName of API_NAMES) {
+    const key = metricKey(apiName);
+    result[apiName] = {
+      requests: metricValue(data, `api_${key}_requests`, 'count'),
+      rps: metricValue(data, `api_${key}_requests`, 'rate'),
+      errorRate: metricValue(data, `api_${key}_failed`, 'rate'),
+      durationAvgMs: metricValue(data, `api_${key}_duration`, 'avg'),
+      durationP95Ms: metricValue(data, `api_${key}_duration`, 'p(95)'),
+      durationP99Ms: metricValue(data, `api_${key}_duration`, 'p(99)'),
+      checksRate: metricValue(data, `api_${key}_checks`, 'rate'),
+    };
+  }
+
+  return result;
+}
+
+function apiMetricLines(apiMetrics) {
+  return API_NAMES.map((apiName) => {
+    const metrics = apiMetrics[apiName];
+    return [
+      `${apiName}:`,
+      `requests=${formatNumber(metrics.requests, 0)}`,
+      `p95=${formatNumber(metrics.durationP95Ms, 2)}ms`,
+      `p99=${formatNumber(metrics.durationP99Ms, 2)}ms`,
+      `errorRate=${formatPercent(metrics.errorRate)}`,
+      `checksRate=${formatPercent(metrics.checksRate)}`,
+    ].join(' ');
+  }).join('\n');
+}
+
+function apiWeights(mixRatio) {
+  if (mixRatio === '50/50') {
+    return [
+      { name: 'activity-history-read', weight: 50 },
+      { name: 'comment-create', weight: 10 },
+      { name: 'comment-like-toggle', weight: 15 },
+      { name: 'article-view', weight: 15 },
+      { name: 'subscription-toggle', weight: 10 },
+    ];
+  }
+
+  return [
+    { name: 'activity-history-read', weight: 80 },
+    { name: 'comment-create', weight: 5 },
+    { name: 'comment-like-toggle', weight: 5 },
+    { name: 'article-view', weight: 5 },
+    { name: 'subscription-toggle', weight: 5 },
+  ];
+}
+
+function pickAction() {
+  const value = Math.random() * 100;
+  let lowerBound = 0;
+
+  for (const entry of API_WEIGHTS) {
+    lowerBound += entry.weight;
+    if (value < lowerBound) {
+      return entry.name;
+    }
+  }
+
+  return API_WEIGHTS[API_WEIGHTS.length - 1].name;
 }
 
 function pickTargetUserId() {
@@ -212,6 +425,18 @@ function pickTargetUserId() {
   }
 
   return TARGET_USER_IDS[Math.floor(Math.random() * TARGET_USER_IDS.length)];
+}
+
+function pickWriteUserId(sequence) {
+  return pickFrom(WRITE_USER_IDS, sequence);
+}
+
+function pickFrom(pool, sequence) {
+  return pool[Math.abs(sequence) % pool.length];
+}
+
+function sequenceNumber() {
+  return (__ITER * 1009) + (__VU * 7919);
 }
 
 function shouldSleepBetweenIterations() {
@@ -250,7 +475,7 @@ function summaryPath(pathTemplate) {
     return __ENV.K6_SUMMARY_PATH;
   }
 
-  return `/results/${summaryName(pathTemplate)}-${VARIANT}-${SCENARIO}-summary.json`;
+  return `/results/${summaryName(pathTemplate)}-${VARIANT}-mixed-${MIX_RATIO.replace('/', '-')}-${SCENARIO}-summary.json`;
 }
 
 function summaryName(pathTemplate) {
@@ -303,16 +528,61 @@ function stringChoiceEnv(name, defaultValue, allowedValues) {
 
 function targetUserIdsEnv() {
   const rawValue = __ENV.K6_TARGET_USER_IDS || __ENV.K6_TARGET_USER_ID || DEFAULT_TARGET_USER_ID;
-  const userIds = rawValue
+  return csvEnvValues(rawValue, 'K6_TARGET_USER_IDS or K6_TARGET_USER_ID');
+}
+
+function idPoolEnv(name, fallbackFactory) {
+  const rawValue = __ENV[name];
+  if (!rawValue) {
+    return fallbackFactory();
+  }
+
+  return csvEnvValues(rawValue, name);
+}
+
+function csvEnvValues(rawValue, name) {
+  const values = rawValue
     .split(',')
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
 
-  if (userIds.length === 0) {
-    throw new Error('K6_TARGET_USER_IDS or K6_TARGET_USER_ID must include at least one user id.');
+  if (values.length === 0) {
+    throw new Error(`${name} must include at least one value.`);
   }
 
-  return userIds;
+  return values;
+}
+
+function buildActiveUserPool(startSeq, count) {
+  const result = [];
+  let seq = startSeq;
+
+  while (result.length < count) {
+    if (seq % 100 !== 0) {
+      result.push(perfUuid(1, seq));
+    }
+    seq += 1;
+  }
+
+  return result;
+}
+
+function buildPerfUuidPool(namespaceCode, startSeq, count) {
+  const result = [];
+
+  for (let offset = 0; offset < count; offset += 1) {
+    result.push(perfUuid(namespaceCode, startSeq + offset));
+  }
+
+  return result;
+}
+
+function perfUuid(namespaceCode, seq) {
+  return `${hexPad(namespaceCode, 8)}-0000-4000-8000-${hexPad(seq, 12)}`;
+}
+
+function hexPad(value, width) {
+  return Number(value).toString(16).padStart(width, '0');
 }
 
 function stressStagesEnv(name, defaultValue) {
@@ -394,28 +664,6 @@ function nonNegativeIntegerEnv(name, defaultValue) {
   return parsedValue;
 }
 
-function httpStatusEnv(name, defaultValue) {
-  const rawValue = __ENV[name];
-
-  if (!rawValue) {
-    return defaultValue;
-  }
-
-  const parsedValue = Number(rawValue);
-
-  if (!Number.isInteger(parsedValue) || parsedValue < 100 || parsedValue > 599 || isBodylessStatus(parsedValue)) {
-    throw new Error(
-      `${name} must be an integer HTTP status code from 100 to 599 that can include a response body. value=${rawValue}`
-    );
-  }
-
-  return parsedValue;
-}
-
-function isBodylessStatus(status) {
-  return (status >= 100 && status < 200) || status === 204 || status === 205 || status === 304;
-}
-
 function scenarioInputValue(name) {
   const value = ACTIVE_SCENARIO_CONFIG[name];
   return value === undefined ? null : value;
@@ -429,6 +677,10 @@ function metricValue(data, metricName, statName) {
   }
 
   return metric.values[statName];
+}
+
+function metricKey(apiName) {
+  return apiName.replace(/-/g, '_');
 }
 
 function formatNumber(value, fractionDigits) {
