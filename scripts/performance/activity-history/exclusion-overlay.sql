@@ -29,7 +29,8 @@ BEGIN
         content,
         created_at,
         updated_at,
-        deleted_at
+        deleted_at,
+        visibility_status
     )
     SELECT
         perf_uuid(96, g),
@@ -38,7 +39,8 @@ BEGIN
         'MID4-206 exclusion deleted recent comment ' || g,
         base_time + interval '1 hour' - (g * interval '1 millisecond'),
         NULL,
-        base_time + interval '1 hour' - (g * interval '1 millisecond') + interval '1 second'
+        base_time + interval '1 hour' - (g * interval '1 millisecond') + interval '1 second',
+        'COMMENT_DELETED'
     FROM generate_series(1, invalid_recent_comment_count) AS g
     ON CONFLICT (id) DO NOTHING;
 
@@ -50,7 +52,8 @@ BEGIN
         content,
         created_at,
         updated_at,
-        deleted_at
+        deleted_at,
+        visibility_status
     )
     SELECT
         perf_uuid(97, g),
@@ -59,7 +62,8 @@ BEGIN
         'MID4-206 exclusion deleted liked comment ' || g,
         base_time + interval '2 hours' - (g * interval '1 millisecond'),
         NULL,
-        base_time + interval '2 hours' - (g * interval '1 millisecond') + interval '1 second'
+        base_time + interval '2 hours' - (g * interval '1 millisecond') + interval '1 second',
+        'COMMENT_DELETED'
     FROM generate_series(1, invalid_liked_comment_count) AS g
     ON CONFLICT (id) DO NOTHING;
 
@@ -67,13 +71,15 @@ BEGIN
         id,
         comment_id,
         liked_by,
-        created_at
+        created_at,
+        visibility_status
     )
     SELECT
         perf_uuid(98, g),
         perf_uuid(97, g),
         target_user_id,
-        base_time + interval '2 hours' - (g * interval '1 millisecond')
+        base_time + interval '2 hours' - (g * interval '1 millisecond'),
+        'COMMENT_DELETED'
     FROM generate_series(1, invalid_liked_comment_count) AS g
     ON CONFLICT (id) DO NOTHING;
 
@@ -112,14 +118,16 @@ BEGIN
         article_id,
         user_id,
         viewed_at,
-        created_at
+        created_at,
+        visibility_status
     )
     SELECT
         perf_uuid(100, g),
         perf_uuid(99, g),
         target_user_id,
         base_time + interval '3 hours' - (g * interval '1 millisecond'),
-        base_time + interval '3 hours' - (g * interval '1 millisecond')
+        base_time + interval '3 hours' - (g * interval '1 millisecond'),
+        'ARTICLE_DELETED'
     FROM generate_series(1, invalid_viewed_article_count) AS g
     ON CONFLICT (id) DO NOTHING;
 
@@ -162,13 +170,15 @@ BEGIN
         id,
         interest_id,
         user_id,
-        created_at
+        created_at,
+        visibility_status
     )
     SELECT
         perf_uuid(102, generated.seq),
         generated.interest_id,
         perf_uuid(101, generated.seq),
-        base_time - interval '1 day' - (generated.seq * interval '1 millisecond')
+        base_time - interval '1 day' - (generated.seq * interval '1 millisecond'),
+        'USER_DELETED'
     FROM (
         SELECT
             interest_id,

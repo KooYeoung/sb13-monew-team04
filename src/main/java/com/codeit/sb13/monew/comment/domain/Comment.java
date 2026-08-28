@@ -2,15 +2,10 @@ package com.codeit.sb13.monew.comment.domain;
 
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.global.domain.DeletedAtEntity;
+import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
 import com.codeit.sb13.monew.global.exception.comment.InvalidCommentException;
 import com.codeit.sb13.monew.user.domain.User;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.Index;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -39,11 +34,16 @@ public class Comment extends DeletedAtEntity { // DeletedAtEntity를 상속받�
   @Column(nullable = false, length = 500)
   private String content;
 
+  @Enumerated(EnumType.STRING)
+  @Column(name = "visibility_status", nullable = false, length = 50)
+  private ActivityVisibilityStatus visibilityStatus;
+
   @Builder
   public Comment(Article article, User user, String content) {
     this.article = article;
     this.user = user;
     this.content = content;
+    this.visibilityStatus = ActivityVisibilityStatus.ACTIVE;
   }
 
   public void changeContent(String content) {

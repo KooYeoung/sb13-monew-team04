@@ -306,6 +306,79 @@ BEGIN
         article_viewed_at
     FROM rows;
 
+    -- visibility_status는 조회에서 반복 삭제 확인 조인을 줄이기 위한 노출 상태입니다.
+    -- 기본값 ACTIVE로 삽입한 뒤 현재 seed의 논리 삭제 상태를 기준으로 보정합니다.
+    -- 여러 삭제 조건이 겹치면 더 가까운 도메인 삭제 사유를 먼저 반영하고, 사용자 삭제는 마지막에 반영합니다.
+    UPDATE subscriptions s
+    SET visibility_status = 'USER_DELETED'
+    FROM users u
+    WHERE s.user_id = u.id
+      AND u.deleted_at IS NOT NULL
+      AND s.visibility_status = 'ACTIVE';
+
+    UPDATE article_views av
+    SET visibility_status = 'ARTICLE_DELETED'
+    FROM articles a
+    WHERE av.article_id = a.id
+      AND a.deleted_at IS NOT NULL
+      AND av.visibility_status = 'ACTIVE';
+
+    UPDATE article_views av
+    SET visibility_status = 'USER_DELETED'
+    FROM users u
+    WHERE av.user_id = u.id
+      AND u.deleted_at IS NOT NULL
+      AND av.visibility_status = 'ACTIVE';
+
+    UPDATE comments c
+    SET visibility_status = 'COMMENT_DELETED'
+    WHERE c.deleted_at IS NOT NULL
+      AND c.visibility_status = 'ACTIVE';
+
+    UPDATE comments c
+    SET visibility_status = 'ARTICLE_DELETED'
+    FROM articles a
+    WHERE c.article_id = a.id
+      AND a.deleted_at IS NOT NULL
+      AND c.visibility_status = 'ACTIVE';
+
+    UPDATE comments c
+    SET visibility_status = 'USER_DELETED'
+    FROM users u
+    WHERE c.user_id = u.id
+      AND u.deleted_at IS NOT NULL
+      AND c.visibility_status = 'ACTIVE';
+
+    UPDATE comment_likes cl
+    SET visibility_status = 'COMMENT_DELETED'
+    FROM comments c
+    WHERE cl.comment_id = c.id
+      AND c.deleted_at IS NOT NULL
+      AND cl.visibility_status = 'ACTIVE';
+
+    UPDATE comment_likes cl
+    SET visibility_status = 'ARTICLE_DELETED'
+    FROM comments c
+    JOIN articles a ON c.article_id = a.id
+    WHERE cl.comment_id = c.id
+      AND a.deleted_at IS NOT NULL
+      AND cl.visibility_status = 'ACTIVE';
+
+    UPDATE comment_likes cl
+    SET visibility_status = 'USER_DELETED'
+    FROM users liked_by_user
+    WHERE cl.liked_by = liked_by_user.id
+      AND liked_by_user.deleted_at IS NOT NULL
+      AND cl.visibility_status = 'ACTIVE';
+
+    UPDATE comment_likes cl
+    SET visibility_status = 'USER_DELETED'
+    FROM comments c
+    JOIN users comment_user ON c.user_id = comment_user.id
+    WHERE cl.comment_id = c.id
+      AND comment_user.deleted_at IS NOT NULL
+      AND cl.visibility_status = 'ACTIVE';
+
     ANALYZE users;
     ANALYZE interests;
     ANALYZE keywords;

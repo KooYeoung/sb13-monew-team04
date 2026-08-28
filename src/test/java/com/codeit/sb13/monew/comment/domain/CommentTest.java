@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
+import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
 import com.codeit.sb13.monew.user.domain.User;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Assertions;
@@ -35,7 +36,8 @@ public class CommentTest {
     Assertions.assertAll(
         ()->assertThat(comment.getArticle()).isEqualTo(article),
         ()->assertThat(comment.getUser()).isEqualTo(user),
-        ()->assertThat(comment.getContent()).isEqualTo("테스트 댓글")
+        ()->assertThat(comment.getContent()).isEqualTo("테스트 댓글"),
+        ()->assertThat(comment.getVisibilityStatus()).isEqualTo(ActivityVisibilityStatus.ACTIVE)
     );
   }
 }

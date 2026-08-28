@@ -1,6 +1,7 @@
 package com.codeit.sb13.monew.article.domain;
 
 import com.codeit.sb13.monew.global.domain.CreatedAtEntity;
+import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
 import com.codeit.sb13.monew.user.domain.User;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -37,10 +38,15 @@ public class ArticleView extends CreatedAtEntity {
     @Column(nullable = false, updatable = true)
     private LocalDateTime viewedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "visibility_status", nullable = false, length = 50)
+    private ActivityVisibilityStatus visibilityStatus;
+
     private ArticleView(Article article, User user, LocalDateTime viewedAt) {
         this.article = article;
         this.user = user;
         this.viewedAt = viewedAt;
+        this.visibilityStatus = ActivityVisibilityStatus.ACTIVE;
     }
 
     // 조회 기록 생성 팩토리 메서드

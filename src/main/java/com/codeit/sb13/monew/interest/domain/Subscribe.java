@@ -1,14 +1,9 @@
 package com.codeit.sb13.monew.interest.domain;
 
 import com.codeit.sb13.monew.global.domain.CreatedAtEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.Index;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
+import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
+import jakarta.persistence.*;
+
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -37,10 +32,15 @@ public class Subscribe extends CreatedAtEntity {
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "visibility_status", nullable = false, length = 50)
+    private ActivityVisibilityStatus visibilityStatus;
+
     @Builder
     private Subscribe(Interest interest, UUID userId) {
         this.interest = interest;
         this.userId = userId;
+        this.visibilityStatus = ActivityVisibilityStatus.ACTIVE;
     }
 
     public static Subscribe of(Interest interest, UUID userId) {

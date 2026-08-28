@@ -2,6 +2,7 @@ package com.codeit.sb13.monew.interest.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,5 +22,6 @@ class SubscribeTest {
         // then
         assertThat(subscribe.getInterest()).isEqualTo(interest);
         assertThat(subscribe.getUserId()).isEqualTo(userId);
+        assertThat(subscribe.getVisibilityStatus()).isEqualTo(ActivityVisibilityStatus.ACTIVE);
     }
 }

@@ -127,20 +127,20 @@ RDB 기준에서 190 rps 30분은 통과했다. 250 rps 10분도 수치상 통�
 | `COMMENT_DELETED` | 관련 댓글이 삭제되어 현재 노출하면 안 되는 상태 |
 | `ARTICLE_DELETED` | 관련 기사가 삭제되어 현재 노출하면 안 되는 상태 |
 
-이렇게 두면 조회 쿼리는 매번 사용자, 댓글, 기사 테이블을 조인해서 삭제 여부를 확인하지 않고 `status = 'ACTIVE'`만 확인할 수 있다.
+이렇게 두면 조회 쿼리는 매번 사용자, 댓글, 기사 테이블을 조인해서 삭제 여부를 확인하지 않고 `visibility_status = 'ACTIVE'`만 확인할 수 있다.
 
 ```sql
 SELECT COUNT(*)
 FROM comment_likes
 WHERE comment_id = :commentId
-  AND status = 'ACTIVE';
+  AND visibility_status = 'ACTIVE';
 ```
 
 ```sql
 SELECT COUNT(*)
 FROM subscriptions
 WHERE interest_id = :interestId
-  AND status = 'ACTIVE';
+  AND visibility_status = 'ACTIVE';
 ```
 
 이 상태는 단순한 성능용 컬럼만은 아니다. “삭제된 사용자, 삭제된 댓글, 삭제된 기사와 연결된 활동을 현재 사용자 화면과 카운트에 포함할 것인가”라는 비즈니스 기준을 저장한 값으로 볼 수 있다.

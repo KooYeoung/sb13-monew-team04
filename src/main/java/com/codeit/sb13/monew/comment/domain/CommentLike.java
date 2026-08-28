@@ -1,14 +1,9 @@
 package com.codeit.sb13.monew.comment.domain;
 
 import com.codeit.sb13.monew.global.domain.CreatedAtEntity;
+import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
 import com.codeit.sb13.monew.user.domain.User;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.Index;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -46,9 +41,14 @@ public class CommentLike extends CreatedAtEntity {
   @JoinColumn(name = "liked_by", nullable = false)
   private User likedBy;
 
+  @Enumerated(EnumType.STRING)
+  @Column(name = "visibility_status", nullable = false, length = 50)
+  private ActivityVisibilityStatus visibilityStatus;
+
   @Builder
   public CommentLike(Comment comment, User likedBy) {
     this.comment = comment;
     this.likedBy = likedBy;
+    this.visibilityStatus = ActivityVisibilityStatus.ACTIVE;
   }
 }

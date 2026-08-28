@@ -2,6 +2,7 @@ package com.codeit.sb13.monew;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,5 +41,25 @@ class FlywayMigrationIntegrationTest {
 
         assertThat(appliedCount).isNotNull().isPositive();
         assertThat(failedCount).isNotNull().isZero();
+    }
+
+    @Test
+    void activityVisibilityStatusColumnsAreCreated() {
+        List<String> tableNames = List.of("subscriptions", "article_views", "comments", "comment_likes");
+
+        for (String tableName : tableNames) {
+            var column = jdbcTemplate.queryForMap("""
+                            select is_nullable, column_default
+                            from information_schema.columns
+                            where table_schema = current_schema()
+                              and table_name = ?
+                              and column_name = 'visibility_status'
+                            """,
+                    tableName
+            );
+
+            assertThat(column.get("is_nullable")).isEqualTo("NO");
+            assertThat((String) column.get("column_default")).contains("ACTIVE");
+        }
     }
 }
