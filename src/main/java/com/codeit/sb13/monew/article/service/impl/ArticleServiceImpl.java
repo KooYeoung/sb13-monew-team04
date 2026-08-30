@@ -1,31 +1,32 @@
 package com.codeit.sb13.monew.article.service.impl;
 
-import com.codeit.sb13.monew.article.repository.dto.ArticleSearchCondition;
-import com.codeit.sb13.monew.article.repository.dto.ArticleSearchPage;
-import com.codeit.sb13.monew.article.repository.dto.ArticleSearchRow;
-import com.codeit.sb13.monew.article.s3.service.dto.ArticleBackupItem;
-import com.codeit.sb13.monew.article.service.dto.ArticleDto;
+import com.codeit.sb13.monew.activity.service.ActivityVisibilityUpdater;
+import com.codeit.sb13.monew.activity.service.ArticleActivityVisibilityUpdateResult;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.mapper.ArticleMapper;
 import com.codeit.sb13.monew.article.repository.ArticleRepository;
 import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
+import com.codeit.sb13.monew.article.repository.dto.ArticleSearchCondition;
+import com.codeit.sb13.monew.article.repository.dto.ArticleSearchPage;
+import com.codeit.sb13.monew.article.repository.dto.ArticleSearchRow;
+import com.codeit.sb13.monew.article.s3.service.dto.ArticleBackupItem;
 import com.codeit.sb13.monew.article.service.ArticleService;
-import com.codeit.sb13.monew.article.service.dto.ArticleOrderBy;
+import com.codeit.sb13.monew.article.service.dto.ArticleDto;
 import com.codeit.sb13.monew.article.service.dto.ArticleRequest;
 import com.codeit.sb13.monew.article.service.dto.ArticleSearchCommand;
 import com.codeit.sb13.monew.comment.repository.CommentLikeRepository;
 import com.codeit.sb13.monew.comment.repository.CommentRepository;
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
-import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
-import com.codeit.sb13.monew.global.exception.article.ArticleDuplicateException;
 import com.codeit.sb13.monew.global.exception.article.ArticleBackupDateInvalidException;
+import com.codeit.sb13.monew.global.exception.article.ArticleDuplicateException;
+import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
 import com.codeit.sb13.monew.user.service.UserService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -33,6 +34,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional(readOnly = true)
 public class ArticleServiceImpl implements ArticleService {
 
@@ -40,6 +42,7 @@ public class ArticleServiceImpl implements ArticleService {
     private final ArticleViewRepository articleViewRepository;
     private final CommentRepository commentRepository;
     private final CommentLikeRepository commentLikeRepository;
+    private final ActivityVisibilityUpdater activityVisibilityUpdater;
     private final ArticleMapper articleMapper;
     private final UserService userService;
 
@@ -161,6 +164,16 @@ public class ArticleServiceImpl implements ArticleService {
         Article article = findById(id);
         article.softDelete();
         articleRepository.save(article);
+
+        ArticleActivityVisibilityUpdateResult updateResult =
+                activityVisibilityUpdater.hideActiveByDeletedArticle(id);
+        log.info(
+                "기사 논리 삭제 완료 - articleId: {}, 숨김 처리된 조회 기록 수: {}, 댓글 수: {}, 댓글 좋아요 수: {}",
+                id,
+                updateResult.articleViewCount(),
+                updateResult.commentCount(),
+                updateResult.commentLikeCount()
+        );
     }
 
     @Override

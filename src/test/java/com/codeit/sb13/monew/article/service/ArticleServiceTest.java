@@ -1,5 +1,7 @@
 package com.codeit.sb13.monew.article.service;
 
+import com.codeit.sb13.monew.activity.service.ActivityVisibilityUpdater;
+import com.codeit.sb13.monew.activity.service.ArticleActivityVisibilityUpdateResult;
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchCondition;
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchPage;
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchRow;
@@ -67,6 +69,9 @@ class ArticleServiceTest {
 
     @Mock
     private UserService userService;
+
+    @Mock
+    private ActivityVisibilityUpdater activityVisibilityUpdater;
 
     @InjectMocks
     private ArticleServiceImpl articleService;
@@ -236,6 +241,8 @@ class ArticleServiceTest {
                 .thenReturn(Optional.of(testArticle));
         when(articleRepository.save(any(Article.class)))
                 .thenReturn(testArticle);
+        when(activityVisibilityUpdater.hideActiveByDeletedArticle(testArticleId))
+                .thenReturn(new ArticleActivityVisibilityUpdateResult(1L, 2L, 3L));
 
         // when
         articleService.softDelete(testArticleId);
@@ -243,6 +250,7 @@ class ArticleServiceTest {
         // then
         verify(articleRepository, times(1)).findByIdAndDeletedAtIsNull(testArticleId);
         verify(articleRepository, times(1)).save(any(Article.class));
+        verify(activityVisibilityUpdater, times(1)).hideActiveByDeletedArticle(testArticleId);
     }
 
     @Test
@@ -257,6 +265,7 @@ class ArticleServiceTest {
                 .isInstanceOf(ArticleNotFoundException.class);
         verify(articleRepository, times(1)).findByIdAndDeletedAtIsNull(testArticleId);
         verify(articleRepository, never()).save(any(Article.class));
+        verify(activityVisibilityUpdater, never()).hideActiveByDeletedArticle(any(UUID.class));
     }
 
     @Test
