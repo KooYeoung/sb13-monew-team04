@@ -22,12 +22,6 @@ public interface ArticleViewRepository extends JpaRepository<ArticleView, UUID> 
     @EntityGraph(attributePaths = {"article", "user"})
     Optional<ArticleView> findByArticleAndUser(Article article, User user);
 
-    // 특정 기사의 조회 기록 목록 조회 (최신순)
-    List<ArticleView> findByArticleOrderByViewedAtDesc(Article article);
-
-    // 특정 사용자의 조회 기록 목록 조회 (최신순)
-    List<ArticleView> findByUserOrderByViewedAtDesc(User user);
-
     // 특정 기사의 조회수 집계
     long countByArticleAndUser_DeletedAtIsNull(Article article);
 

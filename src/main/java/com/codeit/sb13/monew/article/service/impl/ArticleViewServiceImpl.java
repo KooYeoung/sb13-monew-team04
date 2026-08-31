@@ -17,7 +17,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -49,24 +48,6 @@ public class ArticleViewServiceImpl implements ArticleViewService {
                 .countByArticle_IdAndDeletedAtIsNullAndUser_DeletedAtIsNull(articleId);
 
         return articleMapper.toViewDto(articleView, commentCount, viewCount);
-    }
-
-    @Override
-    public long getViewCount(UUID articleId) {
-        Article article = articleService.findById(articleId);
-        return articleViewRepository.countByArticleAndUser_DeletedAtIsNull(article);
-    }
-
-    @Override
-    public List<ArticleView> getUserArticleViews(UUID userId) {
-        User user = userService.findById(userId);
-        return articleViewRepository.findByUserOrderByViewedAtDesc(user);
-    }
-
-    @Override
-    public List<ArticleView> getArticleViews(UUID articleId) {
-        Article article = articleService.findById(articleId);
-        return articleViewRepository.findByArticleOrderByViewedAtDesc(article);
     }
 
     // 기존 조회 기록의 조회 시각만 갱신한다.
