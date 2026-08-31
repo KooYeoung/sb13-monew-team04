@@ -3,7 +3,6 @@ package com.codeit.sb13.monew.interest.repository;
 import com.codeit.sb13.monew.interest.domain.Subscribe;
 import com.codeit.sb13.monew.interest.repository.dto.InterestSubscriberRow;
 import com.codeit.sb13.monew.interest.repository.dto.SubscribedInterestActivityProjection;
-import com.codeit.sb13.monew.user.domain.User;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -124,21 +123,16 @@ public interface SubscribeRepository extends JpaRepository<Subscribe, UUID> {
      */
     @Query("""
         SELECT new com.codeit.sb13.monew.interest.repository.dto.SubscribedInterestActivityProjection(
-            s.id,
-            s.createdAt,
-            i,
-            (SELECT COUNT(s2)
-             FROM Subscribe s2
-             JOIN User u2 ON s2.userId = u2.id
-             JOIN s2.interest i2
-             WHERE i2.id = i.id
-                 AND u2.deletedAt IS NULL)
-            )
+            s.id, s.createdAt, i,
+        (SELECT COUNT(s2)
+            FROM Subscribe s2
+            WHERE s2.interest.id = i.id
+            AND s2.visibilityStatus = 'ACTIVE')
+        )
         FROM Subscribe s
-        JOIN s.interest i
-        JOIN User u ON u.id = s.userId
+            JOIN s.interest i
         WHERE s.userId = :userId
-            AND u.deletedAt IS NULL
+            AND s.visibilityStatus = 'ACTIVE'
         ORDER BY s.createdAt DESC, s.id DESC
     """)
     List<SubscribedInterestActivityProjection> findSubscribedInterestActivities(@Param("userId") UUID userId);

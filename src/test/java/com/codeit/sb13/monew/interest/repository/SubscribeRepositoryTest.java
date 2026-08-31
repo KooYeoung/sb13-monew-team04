@@ -6,6 +6,7 @@ import static org.assertj.core.groups.Tuple.tuple;
 
 import com.codeit.sb13.monew.global.config.JpaAuditingConfig;
 import com.codeit.sb13.monew.global.config.QueryDslConfig;
+import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
 import com.codeit.sb13.monew.interest.domain.Interest;
 import com.codeit.sb13.monew.interest.domain.Subscribe;
 import com.codeit.sb13.monew.interest.repository.dto.InterestSubscriberRow;
@@ -53,6 +54,14 @@ class SubscribeRepositoryTest {
 
     @Autowired
     private TestEntityManager em;
+
+    private void updateSubscribeVisibilityStatus(UUID subscribeId, ActivityVisibilityStatus status) {
+        em.getEntityManager()
+                .createQuery("UPDATE Subscribe s SET s.visibilityStatus = :status WHERE s.id = :id")
+                .setParameter("status", status)
+                .setParameter("id", subscribeId)
+                .executeUpdate();
+    }
 
     @Nested
     @DisplayName("findByInterest_IdAndUserId()")
@@ -319,7 +328,8 @@ class SubscribeRepositoryTest {
     void findSubscribedInterestActivities_deletedRequester_returnsEmptyList() {
         User requester = persistDeletedUser("삭제사용자");
         Interest interest = persistInterest("스포츠", "축구");
-        persistSubscribe(interest, requester);
+        Subscribe subscribe = persistSubscribe(interest, requester);
+        updateSubscribeVisibilityStatus(subscribe.getId(), ActivityVisibilityStatus.USER_DELETED);
 
         List<SubscribedInterestActivityProjection> activities = findActivities(requester.getId());
 
@@ -335,7 +345,8 @@ class SubscribeRepositoryTest {
         Interest interest = persistInterest("스포츠", "축구");
         persistSubscribe(interest, requester);
         persistSubscribe(interest, activeUser);
-        persistSubscribe(interest, deletedUser);
+        Subscribe deletedUserSubscribe = persistSubscribe(interest, deletedUser);
+        updateSubscribeVisibilityStatus(deletedUserSubscribe.getId(), ActivityVisibilityStatus.USER_DELETED);
 
         List<SubscribedInterestActivityProjection> activities = findActivities(requester.getId());
 
