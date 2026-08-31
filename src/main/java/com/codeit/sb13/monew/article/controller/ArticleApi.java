@@ -227,6 +227,10 @@ public interface ArticleApi {
             summary = "뉴스 기사 복구",
             description = "지정한 from/to 날짜 범위의 백업 파일을 읽어 유실된 기사를 복구합니다. 정적 웹 프론트 호환성을 위해 GET 계약을 유지하며, 응답은 캐시하지 않습니다."
     )
+    @Parameters({
+            @Parameter(name = "from", description = "복구 대상 백업의 시작 일시(포함)", required = true),
+            @Parameter(name = "to", description = "복구 대상 백업의 종료 일시(포함)", required = true)
+    })
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
@@ -244,5 +248,6 @@ public interface ArticleApi {
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
             )
     })
-    ResponseEntity<List<ArticleRestoreResult>> restore(@Valid @ModelAttribute ArticleRestoreRequest request);
+    ResponseEntity<List<ArticleRestoreResult>> restore(
+            @ParameterObject @Valid @ModelAttribute ArticleRestoreRequest request);
 }
