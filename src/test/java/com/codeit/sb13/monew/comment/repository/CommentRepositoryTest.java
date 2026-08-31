@@ -11,10 +11,12 @@ import com.codeit.sb13.monew.comment.repository.dto.CommentSearchProjection;
 import com.codeit.sb13.monew.comment.repository.dto.CommentSearchResult;
 import com.codeit.sb13.monew.comment.repository.dto.RecentCommentActivityProjection;
 import com.codeit.sb13.monew.comment.service.CommentOrderBy;
+
 import static com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus.ARTICLE_DELETED;
 import static com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus.COMMENT_DELETED;
 import com.codeit.sb13.monew.global.config.JpaAuditingConfig;
 import com.codeit.sb13.monew.global.config.QueryDslConfig;
+import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
 import com.codeit.sb13.monew.global.exception.comment.CommentSearchConditionInvalidException;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.repository.UserRepository;
@@ -53,6 +55,18 @@ class CommentRepositoryTest {
 
     @Autowired
     private TestEntityManager em;
+
+    private void updateCommentVisibilityStatus(UUID commentId, ActivityVisibilityStatus status) {
+        em.getEntityManager()
+                .createQuery("""
+            UPDATE Comment C
+            SET C.visibilityStatus = :status
+            WHERE C.id = :id
+            """)
+                .setParameter("status", status)
+                .setParameter("id", commentId)
+                .executeUpdate();
+    }
 
     @Test
     @DisplayName("작성한 댓글이 없으면 빈 목록 반환")
@@ -166,10 +180,11 @@ class CommentRepositoryTest {
         userRepository.saveAndFlush(targetUser);
 
         Article article = articleRepository.saveAndFlush(createArticle("testTitle", "testContent", "link"));
-        commentRepository.saveAndFlush(new Comment(article, targetUser, "deletedUserComment"));
+        Comment comment = commentRepository.saveAndFlush(new Comment(article, targetUser, "deletedUserComment"));
 
         targetUser.softDelete();
         userRepository.saveAndFlush(targetUser);
+        updateCommentVisibilityStatus(comment.getId(), ActivityVisibilityStatus.USER_DELETED);
         em.clear();
 
         // when
@@ -196,8 +211,7 @@ class CommentRepositoryTest {
         updateCommentCreatedAt(middleComment.getId(), baseTime.minusMinutes(1));
         updateCommentCreatedAt(newestComment.getId(), baseTime);
 
-        middleComment.softDelete();
-        commentRepository.saveAndFlush(middleComment);
+        commentRepository.softDeleteIfNotDeleted(middleComment.getId(), LocalDateTime.now());
 
         em.clear();
 
@@ -230,6 +244,7 @@ class CommentRepositoryTest {
 
         deletedArticle.softDelete();
         articleRepository.saveAndFlush(deletedArticle);
+        updateCommentVisibilityStatus(deletedArticleComment.getId(), ActivityVisibilityStatus.ARTICLE_DELETED);
 
         em.clear();
 
@@ -240,6 +255,33 @@ class CommentRepositoryTest {
         assertThat(recentCommentActivities)
                 .extracting(RecentCommentActivityProjection::content)
                 .containsExactly("activeArticleComment");
+    }
+
+    @Test
+    @DisplayName("최근 작성 댓글의 좋아요 수는 ACTIVE 좋아요만 집계한다")
+    void countsOnlyActiveLikesInRecentCommentActivities() {
+        User targetUser = userRepository.saveAndFlush(new User("writer@email.com", "작성자", "pw"));
+        User activeLiker = userRepository.saveAndFlush(new User("active-liker@email.com", "닉네임1", "pw"));
+        User deletedLiker = userRepository.saveAndFlush(new User("deleted-liker@email.com", "닉네임2", "pw"));
+        Article article = articleRepository.saveAndFlush(createArticle("t", "c", "link"));
+        Comment comment = commentRepository.saveAndFlush(new Comment(article, targetUser, "댓글"));
+
+        CommentLike activeLike = commentLikeRepository.saveAndFlush(
+                CommentLike.builder().comment(comment).likedBy(activeLiker).build());
+        CommentLike deletedLike = commentLikeRepository.saveAndFlush(
+                CommentLike.builder().comment(comment).likedBy(deletedLiker).build());
+
+        em.getEntityManager()
+                .createQuery("UPDATE CommentLike CL SET CL.visibilityStatus = :s WHERE CL.id = :id")
+                .setParameter("s", ActivityVisibilityStatus.USER_DELETED)
+                .setParameter("id", deletedLike.getId())
+                .executeUpdate();
+        em.clear();
+
+        List<RecentCommentActivityProjection> result =
+                commentRepository.findRecentCommentActivities(targetUser.getId());
+
+        assertThat(result).extracting(RecentCommentActivityProjection::likeCount).containsExactly(1L);
     }
 
     private void updateCommentCreatedAt(UUID commentId, LocalDateTime createdAt) {
