@@ -9,6 +9,7 @@ import com.codeit.sb13.monew.comment.domain.CommentLike;
 import com.codeit.sb13.monew.comment.repository.dto.RecentCommentLikeActivityProjection;
 import com.codeit.sb13.monew.global.config.JpaAuditingConfig;
 import com.codeit.sb13.monew.global.config.QueryDslConfig;
+import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
 import com.codeit.sb13.monew.user.domain.User;
 import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
@@ -133,23 +134,31 @@ class CommentLikeRepositoryTest {
     User deletedWriter = persistUser("deleted-writer");
     deletedWriter.softDelete();
     Comment commentByDeletedWriter = persistComment(article, deletedWriter, "deleted writer comment");
-    persistCommentLike(commentByDeletedWriter, requester);
+    CommentLike deletedWriterLike = persistCommentLike(commentByDeletedWriter, requester);
 
     Comment deletedComment = persistComment(article, writer, "deleted comment");
     deletedComment.softDelete();
-    persistCommentLike(deletedComment, requester);
+    CommentLike deletedCommentLike = persistCommentLike(deletedComment, requester);
 
     Article deletedArticle = persistArticle("deleted article");
     deletedArticle.softDelete();
     Comment commentOnDeletedArticle = persistComment(deletedArticle, writer, "deleted article comment");
-    persistCommentLike(commentOnDeletedArticle, requester);
+    CommentLike deletedArticleLike = persistCommentLike(commentOnDeletedArticle, requester);
 
     User deletedRequester = persistUser("deleted-requester");
     deletedRequester.softDelete();
     Comment likedByDeletedRequester = persistComment(article, writer, "liked by deleted requester");
-    persistCommentLike(likedByDeletedRequester, deletedRequester);
+    CommentLike deletedRequesterLike = persistCommentLike(likedByDeletedRequester, deletedRequester);
 
     em.flush();
+    updateCommentLikeVisibilityStatus(
+        deletedWriterLike.getId(), ActivityVisibilityStatus.USER_DELETED);
+    updateCommentLikeVisibilityStatus(
+        deletedCommentLike.getId(), ActivityVisibilityStatus.COMMENT_DELETED);
+    updateCommentLikeVisibilityStatus(
+        deletedArticleLike.getId(), ActivityVisibilityStatus.ARTICLE_DELETED);
+    updateCommentLikeVisibilityStatus(
+        deletedRequesterLike.getId(), ActivityVisibilityStatus.USER_DELETED);
     em.clear();
 
     List<RecentCommentLikeActivityProjection> activeRequesterResults =
@@ -197,11 +206,13 @@ class CommentLikeRepositoryTest {
     CommentLike requesterLike = persistCommentLike(comment, requester);
     persistCommentLike(comment, activeLiker1);
     persistCommentLike(comment, activeLiker2);
-    persistCommentLike(comment, deletedLiker);
+    CommentLike deletedLikerLike = persistCommentLike(comment, deletedLiker);
     em.flush();
 
     LocalDateTime commentCreatedAt = LocalDateTime.of(2026, 8, 22, 9, 0);
     LocalDateTime likeCreatedAt = LocalDateTime.of(2026, 8, 22, 10, 0);
+    updateCommentLikeVisibilityStatus(
+        deletedLikerLike.getId(), ActivityVisibilityStatus.USER_DELETED);
     updateCommentCreatedAt(comment, commentCreatedAt);
     updateCommentLikeCreatedAt(requesterLike, likeCreatedAt);
     em.clear();
@@ -280,6 +291,21 @@ class CommentLikeRepositoryTest {
         .executeUpdate();
   }
 
+  private void updateCommentLikeVisibilityStatus(
+      UUID commentLikeId,
+      ActivityVisibilityStatus status
+  ) {
+    em.getEntityManager()
+        .createQuery("""
+            UPDATE CommentLike cl
+            SET cl.visibilityStatus = :status
+            WHERE cl.id = :id
+            """)
+        .setParameter("status", status)
+        .setParameter("id", commentLikeId)
+        .executeUpdate();
+  }
+
   private List<UUID> findExpectedLikeIdsByNativeOrder(UUID userId) {
     List<?> rows = em.getEntityManager()
         .createNativeQuery("""
@@ -315,24 +341,45 @@ class CommentLikeRepositoryTest {
 
 
   @Test
-  @DisplayName("활성되어 있는 사용자의 좋아요만 집계하고 likedByMe 여부를 확인한다")
-  void countActiveLikesAndExistsActiveLike_excludeSoftDeletedLiker() {
+  @DisplayName("ACTIVE 좋아요만 집계하고 존재 여부와 상세 조회에 포함한다")
+  void activeQueriesUseVisibilityStatus() {
     User writer = persistUser("writer");
     User activeLiker = persistUser("active-liker");
-    User deletedLiker = persistUser("deleted-liker");
+    User userDeletedLiker = persistUser("user-deleted-liker");
+    User commentDeletedLiker = persistUser("comment-deleted-liker");
+    User articleDeletedLiker = persistUser("article-deleted-liker");
     Article article = persistArticle("article");
     Comment comment = persistComment(article, writer, "comment");
     persistCommentLike(comment, activeLiker);
-    persistCommentLike(comment, deletedLiker);
-    deletedLiker.softDelete();
+    CommentLike userDeletedLike = persistCommentLike(comment, userDeletedLiker);
+    CommentLike commentDeletedLike = persistCommentLike(comment, commentDeletedLiker);
+    CommentLike articleDeletedLike = persistCommentLike(comment, articleDeletedLiker);
     em.flush();
+    updateCommentLikeVisibilityStatus(
+        userDeletedLike.getId(), ActivityVisibilityStatus.USER_DELETED);
+    updateCommentLikeVisibilityStatus(
+        commentDeletedLike.getId(), ActivityVisibilityStatus.COMMENT_DELETED);
+    updateCommentLikeVisibilityStatus(
+        articleDeletedLike.getId(), ActivityVisibilityStatus.ARTICLE_DELETED);
     em.clear();
 
     assertThat(commentLikeRepository.countActiveLikesByCommentId(comment.getId())).isEqualTo(1L);
     assertThat(commentLikeRepository.existsActiveByCommentIdAndLikedById(
         comment.getId(), activeLiker.getId())).isTrue();
     assertThat(commentLikeRepository.existsActiveByCommentIdAndLikedById(
-        comment.getId(), deletedLiker.getId())).isFalse();
+        comment.getId(), userDeletedLiker.getId())).isFalse();
+    assertThat(commentLikeRepository.existsActiveByCommentIdAndLikedById(
+        comment.getId(), commentDeletedLiker.getId())).isFalse();
+    assertThat(commentLikeRepository.existsActiveByCommentIdAndLikedById(
+        comment.getId(), articleDeletedLiker.getId())).isFalse();
+    assertThat(commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(
+        comment.getId(), activeLiker.getId())).isPresent();
+    assertThat(commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(
+        comment.getId(), userDeletedLiker.getId())).isEmpty();
+    assertThat(commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(
+        comment.getId(), commentDeletedLiker.getId())).isEmpty();
+    assertThat(commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(
+        comment.getId(), articleDeletedLiker.getId())).isEmpty();
   }
 
 

@@ -17,31 +17,17 @@ public interface CommentLikeRepository extends JpaRepository<CommentLike, UUID> 
   @Query("""
   SELECT COUNT(CL)
       FROM CommentLike CL
-      JOIN CL.comment C
-      JOIN CL.likedBy LB
-      JOIN C.article A
-      JOIN C.user U
-      WHERE C.id = :commentId
-          AND LB.deletedAt IS NULL
-          AND C.deletedAt IS NULL
-          AND A.deletedAt IS NULL
-          AND U.deletedAt IS NULL
-  """) // 탈퇴 또는 논리 삭제된 유저의 좋아요는 카운트에서 제외
+      WHERE CL.comment.id = :commentId
+        AND CL.visibilityStatus = 'ACTIVE'
+  """) // ACTIVE 상태의 좋아요만 카운트
   Long countActiveLikesByCommentId(@Param("commentId") UUID commentId);
 
   @Query("""
       SELECT CASE WHEN COUNT(CL) > 0 THEN TRUE ELSE FALSE END
       FROM CommentLike CL
-      JOIN CL.comment C
-      JOIN CL.likedBy LB
-      JOIN C.article A
-      JOIN C.user U
-      WHERE C.id = :commentId
-          AND LB.id = :likedById
-          AND LB.deletedAt IS NULL
-          AND C.deletedAt IS NULL
-          AND A.deletedAt IS NULL
-          AND U.deletedAt IS NULL
+      WHERE CL.comment.id = :commentId
+          AND CL.likedBy.id = :likedById
+          AND CL.visibilityStatus = 'ACTIVE'
       """) // 조건에 맞는 데이터가 0개 이상이면 true, 없으면 false 반환
   boolean existsActiveByCommentIdAndLikedById(
       @Param("commentId") UUID commentId,
@@ -58,11 +44,8 @@ public interface CommentLikeRepository extends JpaRepository<CommentLike, UUID> 
       JOIN FETCH CL.likedBy LB
       WHERE C.id = :commentId
           AND CL.likedBy.id = :likedById
-          AND C.deletedAt IS NULL
-          AND U.deletedAt IS NULL
-          AND A.deletedAt IS NULL
-          AND LB.deletedAt IS NULL
-      """) // 활성 조건 추가, 논리 삭제된 데이터는 제외
+          AND CL.visibilityStatus = 'ACTIVE'
+      """) // ACTIVE 상태의 좋아요만 조회
   Optional<CommentLike> findWithCommentDetailsByCommentIdAndLikedById(
       @Param("commentId") UUID commentId,
       @Param("likedById") UUID likedById
@@ -87,22 +70,16 @@ public interface CommentLikeRepository extends JpaRepository<CommentLike, UUID> 
         C.content,
          (SELECT COUNT(CL2)
           FROM CommentLike CL2
-          JOIN CL2.comment C2
-          JOIN CL2.likedBy LB2
-          WHERE C2.id = C.id
-              AND LB2.deletedAt IS NULL),
+          WHERE CL2.comment.id = C.id
+              AND CL2.visibilityStatus = 'ACTIVE'),
           C.createdAt
         )
     FROM CommentLike CL
     JOIN CL.comment C
-    JOIN CL.likedBy LB
     JOIN C.user U
     JOIN C.article A
-    WHERE LB.id = :userId
-        AND LB.deletedAt IS NULL
-        AND U.deletedAt IS NULL
-        AND A.deletedAt IS NULL
-        AND C.deletedAt IS NULL
+    WHERE CL.likedBy.id = :userId
+        AND CL.visibilityStatus = 'ACTIVE'
     ORDER BY CL.createdAt DESC, CL.id DESC
     LIMIT 10
     """)
