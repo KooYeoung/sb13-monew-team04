@@ -49,9 +49,7 @@ public class CommentRepositoryCustomImpl implements CommentRepositoryCustom {
         .from(comment)
         .where(
             articleCondition,
-            comment.deletedAt.isNull(),
-            comment.user.deletedAt.isNull(),
-            comment.article.deletedAt.isNull(),
+            comment.visibilityStatus.eq(ActivityVisibilityStatus.ACTIVE),
             keysetCondition)
         .orderBy(orderSpecifiers(condition.orderBy(), condition.direction(), likeCount))
         .limit(limit + 1L)
@@ -63,10 +61,10 @@ public class CommentRepositoryCustomImpl implements CommentRepositoryCustom {
     Long totalElements = queryFactory
         .select(comment.count())
         .from(comment)
-        .where(articleCondition,
-            comment.deletedAt.isNull(),
-            comment.user.deletedAt.isNull(),
-            comment.article.deletedAt.isNull())
+        .where(
+            articleCondition,
+            comment.visibilityStatus.eq(ActivityVisibilityStatus.ACTIVE)
+        )
         .fetchOne();
 
     return new CommentSearchResult(
@@ -123,9 +121,8 @@ public class CommentRepositoryCustomImpl implements CommentRepositoryCustom {
         .where(
             comment.id.eq(cursorId),
             condition.articleId() == null ? null : comment.article.id.eq(condition.articleId()),
-            comment.deletedAt.isNull(),
-            comment.user.deletedAt.isNull(),
-            comment.article.deletedAt.isNull())
+            comment.visibilityStatus.eq(ActivityVisibilityStatus.ACTIVE)
+        )
         .fetchOne();
 
     if (anchor == null) {

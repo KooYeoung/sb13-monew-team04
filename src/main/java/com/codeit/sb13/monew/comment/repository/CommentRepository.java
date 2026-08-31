@@ -13,19 +13,19 @@ import org.springframework.data.repository.query.Param;
 
 public interface CommentRepository extends JpaRepository<Comment, UUID>, CommentRepositoryCustom {
 
+  // 댓글 노출 여부는 visibilityStatus를 단일 기준으로 사용한다.
+  // 작성자와 기사는 댓글 응답 구성에 필요한 연관 데이터를 가져오기 위해 fetch join한다.
   @Query("""
       SELECT C
       FROM Comment C
       JOIN FETCH C.user U
       JOIN FETCH C.article A
       WHERE C.id = :commentId
-          AND C.deletedAt IS NULL
-          AND U.deletedAt IS NULL
-          AND A.deletedAt IS NULL
-      """) // 댓글, 작성자, 기사 모두 활성 상태인 경우에만 조회
+          AND C.visibilityStatus = com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus.ACTIVE
+      """)
   Optional<Comment> findActiveById(@Param("commentId") UUID commentId);
 
-  // 논리 삭제는 이미 삭제된 댓글을 다시 성공 처리하지 않도록 DB에서 조건부로 수행한다
+  // deletedAt이 null인 댓글만 논리 삭제해 이미 삭제된 댓글의 재시도는 0건으로 처리한다.
   // 댓글 자신의 논리 삭제는 조회 시 노출 상태 판단 우선순위가 가장 높으므로
   // 기존에 ARTICLE_DELETED/USER_DELETED로 표시되어 있었더라도 COMMENT_DELETED로 갱신한다
   @Modifying(clearAutomatically = true)
@@ -42,7 +42,7 @@ public interface CommentRepository extends JpaRepository<Comment, UUID>, Comment
       @Param("deletedAt") LocalDateTime deletedAt
   );
 
-  // 댓글은 논리 삭제 여부와 관계 없이 물리 삭제 정리 대상에 포함해 조회한다
+  // 물리 삭제 대상은 deletedAt과 visibilityStatus에 관계 없이 조회한다.
   @Query("""
      SELECT C
      FROM Comment C

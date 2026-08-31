@@ -719,6 +719,163 @@ class CommentRepositoryTest {
     }
 
     @Test
+    @DisplayName("일반 댓글 조회는 ACTIVE 상태 댓글만 결과와 전체 개수에 포함한다")
+    void search_includesOnlyActiveCommentsInRowsAndTotalElements() {
+        User requestUser = userRepository.saveAndFlush(new User(
+            "active-search-request@email.com", "요청자", "testPassword!"));
+        User writer = userRepository.saveAndFlush(new User(
+            "active-search-writer@email.com", "작성자", "testPassword!"));
+        User deletedWriter = userRepository.saveAndFlush(new User(
+            "active-search-deleted-writer@email.com", "삭제된 작성자", "testPassword!"));
+        Article article = articleRepository.saveAndFlush(
+            createArticle("ACTIVE 댓글 조회 기사", "기사 내용", "active-search-link"));
+        Article deletedArticle = articleRepository.saveAndFlush(
+            createArticle("삭제된 기사", "기사 내용", "active-search-deleted-article-link"));
+
+        Comment active = commentRepository.saveAndFlush(new Comment(article, writer, "ACTIVE 댓글"));
+        Comment activeWithDeletedWriter = commentRepository.saveAndFlush(
+            new Comment(article, deletedWriter, "삭제된 작성자의 ACTIVE 댓글"));
+        Comment activeWithDeletedArticle = commentRepository.saveAndFlush(
+            new Comment(deletedArticle, writer, "삭제된 기사의 ACTIVE 댓글"));
+        Comment commentDeleted = commentRepository.saveAndFlush(
+            new Comment(article, writer, "COMMENT_DELETED 댓글"));
+        Comment userDeleted = commentRepository.saveAndFlush(
+            new Comment(article, writer, "USER_DELETED 댓글"));
+        Comment articleDeleted = commentRepository.saveAndFlush(
+            new Comment(article, writer, "ARTICLE_DELETED 댓글"));
+
+        deletedWriter.softDelete();
+        userRepository.saveAndFlush(deletedWriter);
+        deletedArticle.softDelete();
+        articleRepository.saveAndFlush(deletedArticle);
+        updateCommentVisibilityStatus(commentDeleted.getId(), COMMENT_DELETED);
+        updateCommentVisibilityStatus(userDeleted.getId(), ActivityVisibilityStatus.USER_DELETED);
+        updateCommentVisibilityStatus(articleDeleted.getId(), ARTICLE_DELETED);
+        em.clear();
+
+        CommentSearchResult result = commentRepository.search(new CommentSearchCondition(
+            null, CommentOrderBy.CREATED_AT, Direction.ASC,
+            null, null, 10, requestUser.getId()));
+
+        Assertions.assertAll(
+            () -> assertThat(result.rows())
+                .extracting(CommentSearchProjection::id)
+                .containsExactlyInAnyOrder(
+                    active.getId(),
+                    activeWithDeletedWriter.getId(),
+                    activeWithDeletedArticle.getId()),
+            () -> assertThat(result.totalElements()).isEqualTo(3L),
+            () -> assertThat(result.hasNext()).isFalse()
+        );
+    }
+
+    @Test
+    @DisplayName("비ACTIVE 댓글은 일반 댓글 조회의 cursor anchor로 사용할 수 없다")
+    void search_rejectsNonActiveCommentAsCursorAnchor() {
+        User writer = userRepository.saveAndFlush(new User(
+            "non-active-cursor-writer@email.com", "작성자", "testPassword!"));
+        Article article = articleRepository.saveAndFlush(
+            createArticle("비ACTIVE cursor 기사", "기사 내용", "non-active-cursor-link"));
+
+        Comment commentDeleted = commentRepository.saveAndFlush(
+            new Comment(article, writer, "COMMENT_DELETED 댓글"));
+        Comment userDeleted = commentRepository.saveAndFlush(
+            new Comment(article, writer, "USER_DELETED 댓글"));
+        Comment articleDeleted = commentRepository.saveAndFlush(
+            new Comment(article, writer, "ARTICLE_DELETED 댓글"));
+
+        updateCommentVisibilityStatus(commentDeleted.getId(), COMMENT_DELETED);
+        updateCommentVisibilityStatus(userDeleted.getId(), ActivityVisibilityStatus.USER_DELETED);
+        updateCommentVisibilityStatus(articleDeleted.getId(), ARTICLE_DELETED);
+        em.clear();
+
+        for (Comment nonActiveComment : List.of(commentDeleted, userDeleted, articleDeleted)) {
+            assertThatThrownBy(() -> commentRepository.search(new CommentSearchCondition(
+                article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
+                nonActiveComment.getId().toString(), null, 10, null)))
+                .isInstanceOf(CommentSearchConditionInvalidException.class);
+        }
+    }
+
+    @Test
+    @DisplayName("findActiveById는 ACTIVE 상태 댓글만 반환한다")
+    void findActiveById_returnsOnlyActiveComment() {
+        User writer = userRepository.saveAndFlush(new User(
+            "find-active-writer@email.com", "작성자", "testPassword!"));
+        User deletedWriter = userRepository.saveAndFlush(new User(
+            "find-active-deleted-writer@email.com", "삭제된 작성자", "testPassword!"));
+        Article article = articleRepository.saveAndFlush(
+            createArticle("단건 ACTIVE 조회 기사", "기사 내용", "find-active-link"));
+        Article deletedArticle = articleRepository.saveAndFlush(
+            createArticle("삭제된 단건 조회 기사", "기사 내용", "find-active-deleted-article-link"));
+
+        Comment active = commentRepository.saveAndFlush(new Comment(article, writer, "ACTIVE 댓글"));
+        Comment activeWithDeletedWriter = commentRepository.saveAndFlush(
+            new Comment(article, deletedWriter, "삭제된 작성자의 ACTIVE 댓글"));
+        Comment activeWithDeletedArticle = commentRepository.saveAndFlush(
+            new Comment(deletedArticle, writer, "삭제된 기사의 ACTIVE 댓글"));
+        Comment commentDeleted = commentRepository.saveAndFlush(
+            new Comment(article, writer, "COMMENT_DELETED 댓글"));
+        Comment userDeleted = commentRepository.saveAndFlush(
+            new Comment(article, writer, "USER_DELETED 댓글"));
+        Comment articleDeleted = commentRepository.saveAndFlush(
+            new Comment(article, writer, "ARTICLE_DELETED 댓글"));
+
+        deletedWriter.softDelete();
+        userRepository.saveAndFlush(deletedWriter);
+        deletedArticle.softDelete();
+        articleRepository.saveAndFlush(deletedArticle);
+        updateCommentVisibilityStatus(commentDeleted.getId(), COMMENT_DELETED);
+        updateCommentVisibilityStatus(userDeleted.getId(), ActivityVisibilityStatus.USER_DELETED);
+        updateCommentVisibilityStatus(articleDeleted.getId(), ARTICLE_DELETED);
+        em.clear();
+
+        Assertions.assertAll(
+            () -> assertThat(commentRepository.findActiveById(active.getId())).isPresent(),
+            () -> assertThat(commentRepository.findActiveById(activeWithDeletedWriter.getId())).isPresent(),
+            () -> assertThat(commentRepository.findActiveById(activeWithDeletedArticle.getId())).isPresent(),
+            () -> assertThat(commentRepository.findActiveById(commentDeleted.getId())).isEmpty(),
+            () -> assertThat(commentRepository.findActiveById(userDeleted.getId())).isEmpty(),
+            () -> assertThat(commentRepository.findActiveById(articleDeleted.getId())).isEmpty()
+        );
+    }
+
+    @Test
+    @DisplayName("일반 댓글 조회는 ACTIVE 좋아요만 집계하고 비ACTIVE 요청자 좋아요는 제외한다")
+    void search_countsOnlyActiveLikesAndExcludesNonActiveRequesterLike() {
+        User writer = userRepository.saveAndFlush(new User(
+            "active-like-search-writer@email.com", "작성자", "testPassword!"));
+        User requestUser = userRepository.saveAndFlush(new User(
+            "active-like-search-request@email.com", "요청자", "testPassword!"));
+        User activeLiker = userRepository.saveAndFlush(new User(
+            "active-like-search-liker@email.com", "활성 좋아요 사용자", "testPassword!"));
+        Article article = articleRepository.saveAndFlush(
+            createArticle("ACTIVE 좋아요 조회 기사", "기사 내용", "active-like-search-link"));
+        Comment comment = commentRepository.saveAndFlush(new Comment(article, writer, "댓글"));
+
+        commentLikeRepository.saveAndFlush(CommentLike.builder()
+            .comment(comment)
+            .likedBy(activeLiker)
+            .build());
+        CommentLike inactiveRequesterLike = commentLikeRepository.saveAndFlush(CommentLike.builder()
+            .comment(comment)
+            .likedBy(requestUser)
+            .build());
+        updateCommentLikeVisibilityStatus(
+            inactiveRequesterLike.getId(), ActivityVisibilityStatus.USER_DELETED);
+        em.clear();
+
+        CommentSearchResult result = commentRepository.search(new CommentSearchCondition(
+            article.getId(), CommentOrderBy.CREATED_AT, Direction.ASC,
+            null, null, 10, requestUser.getId()));
+
+        assertThat(result.rows()).singleElement().satisfies(row -> {
+            assertThat(row.likeCount()).isEqualTo(1L);
+            assertThat(row.likedByMe()).isFalse();
+        });
+    }
+
+    @Test
     @DisplayName("잘못된 커서 형식이면 목록 조회에 실패한다")
     void search_fails_when_cursor_format_is_invalid() {
         User writer = userRepository.saveAndFlush(new User("invalid-cursor-writer@email.com", "작성자", "testPassword?"));
@@ -856,6 +1013,22 @@ class CommentRepositoryTest {
                 """)
             .setParameter("status", status)
             .setParameter("commentId", commentId)
+            .executeUpdate();
+    }
+
+    private void updateCommentLikeVisibilityStatus(
+        UUID commentLikeId,
+        ActivityVisibilityStatus status
+    ) {
+        em.flush();
+        em.getEntityManager()
+            .createQuery("""
+                UPDATE CommentLike cl
+                SET cl.visibilityStatus = :status
+                WHERE cl.id = :commentLikeId
+                """)
+            .setParameter("status", status)
+            .setParameter("commentLikeId", commentLikeId)
             .executeUpdate();
     }
 }
