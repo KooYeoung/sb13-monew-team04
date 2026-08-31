@@ -1,5 +1,7 @@
 package com.codeit.sb13.monew.user.service.impl;
 
+import com.codeit.sb13.monew.activity.service.ActivityVisibilityUpdater;
+import com.codeit.sb13.monew.activity.service.UserActivityVisibilityUpdateResult;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.exception.AlreadyDeletedUserException;
@@ -35,6 +37,7 @@ public class UserServiceImpl implements UserService {
   private final UserHardDeleteExecutor userHardDeleteExecutor;
   private final PasswordEncoder passwordEncoder;
   private final UserMapper userMapper;
+  private final ActivityVisibilityUpdater activityVisibilityUpdater;
 
   @Transactional
   public UserCreateResult signUp(UserCreateCommand command) {
@@ -135,7 +138,17 @@ public class UserServiceImpl implements UserService {
       validateExists(userId);
       throw new AlreadyDeletedUserException(userId);
     }
-    log.info("논리 삭제 성공 - userId: {}", userId);
+
+    UserActivityVisibilityUpdateResult updateResult =
+            activityVisibilityUpdater.hideActiveByDeletedUser(userId);
+    log.info(
+            "논리 삭제 성공 - userId: {}, 숨김 처리된 구독 수: {}, 조회 기록 수: {}, 댓글 수: {}, 댓글 좋아요 수: {}",
+            userId,
+            updateResult.subscriptionCount(),
+            updateResult.articleViewCount(),
+            updateResult.commentCount(),
+            updateResult.commentLikeCount()
+    );
   }
 
   @Override

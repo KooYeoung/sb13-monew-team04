@@ -1,6 +1,7 @@
 package com.codeit.sb13.monew.activity.service;
 
 import static com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus.ARTICLE_DELETED;
+import static com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus.USER_DELETED;
 
 import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
 
@@ -11,7 +12,7 @@ import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
  * USER/COMMENT 삭제 이벤트는 각 도메인 작업에서 갱신 대상을 확정한 뒤 추가한다.</p>
  */
 enum ActivityDeletionCause {
-    // TODO: USER 삭제 작업 진행 시 USER_DELETED 매핑 추가 검토 필요.
+    USER(USER_DELETED),
     // TODO: COMMENT 삭제 작업 진행 시 COMMENT_DELETED 매핑 추가 검토 필요.
     ARTICLE(ARTICLE_DELETED);
 

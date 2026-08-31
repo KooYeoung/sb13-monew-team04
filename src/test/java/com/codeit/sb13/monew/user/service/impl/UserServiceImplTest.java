@@ -1,5 +1,7 @@
 package com.codeit.sb13.monew.user.service.impl;
 
+import com.codeit.sb13.monew.activity.service.ActivityVisibilityUpdater;
+import com.codeit.sb13.monew.activity.service.UserActivityVisibilityUpdateResult;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.exception.AlreadyDeletedUserException;
@@ -50,6 +52,9 @@ public class UserServiceImplTest {
 
   @Mock
   UserHardDeleteExecutor userHardDeleteExecutor;
+
+  @Mock
+  private ActivityVisibilityUpdater activityVisibilityUpdater;
 
   @Mock
   PasswordEncoder passwordEncoder;
@@ -393,12 +398,15 @@ public class UserServiceImplTest {
     when(userRepository.softDeleteIfNotDeleted(eq(userId),
          any(LocalDateTime.class)))
         .thenReturn(1);
+    when(activityVisibilityUpdater.hideActiveByDeletedUser(eq(userId)))
+            .thenReturn(new UserActivityVisibilityUpdateResult(0, 0, 0, 0));
 
     // when & then
     assertThatCode(() -> userServiceImpl.deleteUser(userId))
         .doesNotThrowAnyException();
     verify(userRepository).softDeleteIfNotDeleted(eq(userId),
         any(LocalDateTime.class));
+    verify(activityVisibilityUpdater).hideActiveByDeletedUser(eq(userId));
     verify(userRepository, never()).existsById(any());
   }
 

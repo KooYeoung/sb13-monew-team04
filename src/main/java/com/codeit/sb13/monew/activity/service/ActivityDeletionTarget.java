@@ -24,7 +24,10 @@ record ActivityDeletionTarget(
         return new ActivityDeletionTarget(ActivityDeletionCause.ARTICLE, articleId);
     }
 
-    // TODO: USER 삭제 작업 진행 시 대상 factory 추가 여부 검토 필요.
+    static ActivityDeletionTarget deletedUser(UUID userId) {
+        return new ActivityDeletionTarget(ActivityDeletionCause.USER, userId);
+    }
+
     // TODO: COMMENT 삭제 작업 진행 시 대상 factory 추가 여부 검토 필요.
 
     /**

@@ -4,6 +4,7 @@ import static com.codeit.sb13.monew.article.domain.QArticleView.articleView;
 import static com.codeit.sb13.monew.comment.domain.QComment.comment;
 import static com.codeit.sb13.monew.comment.domain.QCommentLike.commentLike;
 import static com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus.ACTIVE;
+import static com.codeit.sb13.monew.interest.domain.QSubscribe.subscribe;
 
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQueryFactory;
@@ -42,6 +43,11 @@ public class ActivityVisibilityUpdater {
         return hideActive(ActivityDeletionTarget.deletedArticle(articleId));
     }
 
+    @Transactional
+    public UserActivityVisibilityUpdateResult hideActiveByDeletedUser(UUID userId) {
+        return hideActiveForUser(ActivityDeletionTarget.deletedUser(userId));
+    }
+
     private ArticleActivityVisibilityUpdateResult hideActive(ActivityDeletionTarget target) {
         entityManager.flush();
 
@@ -56,6 +62,22 @@ public class ActivityVisibilityUpdater {
         );
         entityManager.clear();
 
+        return result;
+    }
+
+    private UserActivityVisibilityUpdateResult hideActiveForUser(ActivityDeletionTarget target) {
+        entityManager.flush();
+
+        long subscriptionCount = hideSubscriptions(target);
+        long articleViewCount = hideArticleViews(target);
+        long commentCount = hideComments(target);
+        long commentLikeCount = hideCommentLikes(target);
+
+        UserActivityVisibilityUpdateResult result = new UserActivityVisibilityUpdateResult(
+                subscriptionCount, articleViewCount, commentCount, commentLikeCount
+        );
+
+        entityManager.clear();
         return result;
     }
 
@@ -92,20 +114,38 @@ public class ActivityVisibilityUpdater {
                 .execute();
     }
 
+    private long hideSubscriptions(ActivityDeletionTarget target) {
+        return queryFactory
+                .update(subscribe)
+                .set(subscribe.visibilityStatus, target.targetStatus())
+                .where(
+                        subscribe.userId.eq(target.targetId()),
+                        subscribe.visibilityStatus.eq(ACTIVE)
+                )
+                .execute();
+    }
+
     private BooleanExpression articleViewTargetCondition(ActivityDeletionTarget target) {
-        // TODO: USER 삭제 작업 진행 시 articleView 대상 조건 검토 필요.
-        return articleView.article.id.eq(target.targetId());
+        return switch (target.cause()) {
+            case ARTICLE -> articleView.article.id.eq(target.targetId());
+            case USER -> articleView.user.id.eq(target.targetId());
+        };
     }
 
     private BooleanExpression commentTargetCondition(ActivityDeletionTarget target) {
-        // TODO: USER 삭제 작업 진행 시 comment 대상 조건 검토 필요.
         // TODO: COMMENT 삭제 작업 진행 시 comment 대상 조건 검토 필요.
-        return comment.article.id.eq(target.targetId());
+        return switch (target.cause()) {
+            case ARTICLE -> comment.article.id.eq(target.targetId());
+            case USER -> comment.user.id.eq(target.targetId());
+        };
     }
 
     private BooleanExpression commentLikeTargetCondition(ActivityDeletionTarget target) {
-        // TODO: USER 삭제 작업 진행 시 commentLike 대상 조건 검토 필요.
         // TODO: COMMENT 삭제 작업 진행 시 commentLike 대상 조건 검토 필요.
-        return commentLike.comment.article.id.eq(target.targetId());
+        return switch (target.cause()) {
+            case ARTICLE -> commentLike.comment.article.id.eq(target.targetId());
+            case USER -> commentLike.likedBy.id.eq(target.targetId())
+                    .or(commentLike.comment.user.id.eq(target.targetId()));
+        };
     }
 }
