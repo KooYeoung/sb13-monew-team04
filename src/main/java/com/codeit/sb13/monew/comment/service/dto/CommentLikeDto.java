@@ -1,6 +1,6 @@
 package com.codeit.sb13.monew.comment.service.dto;
 
-import com.codeit.sb13.monew.comment.domain.CommentLike;
+import com.codeit.sb13.monew.comment.repository.dto.CommentLikeResponseProjection;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -37,18 +37,18 @@ public record CommentLikeDto(
     LocalDateTime commentCreatedAt
 ) {
 
-  public static CommentLikeDto from(CommentLike commentLike, Long commentLikeCount) {
+  public static CommentLikeDto from(CommentLikeResponseProjection projection) {
     return new CommentLikeDto(
-        commentLike.getId(),
-        commentLike.getLikedBy().getId(),
-        commentLike.getCreatedAt(),
-        commentLike.getComment().getId(),
-        commentLike.getComment().getArticle().getId(),
-        commentLike.getComment().getUser().getId(),
-        commentLike.getComment().getUser().getNickname(),
-        commentLike.getComment().getContent(),
-        commentLikeCount,
-        commentLike.getComment().getCreatedAt()
+        projection.id(),
+        projection.likedBy(),
+        projection.createdAt(),
+        projection.commentId(),
+        projection.articleId(),
+        projection.commentUserId(),
+        projection.commentUserNickname(),
+        projection.commentContent(),
+        projection.commentLikeCount(),
+        projection.commentCreatedAt()
     );
   }
 }

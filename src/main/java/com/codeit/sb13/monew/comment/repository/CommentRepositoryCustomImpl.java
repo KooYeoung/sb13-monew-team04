@@ -3,6 +3,7 @@ package com.codeit.sb13.monew.comment.repository;
 import static com.codeit.sb13.monew.comment.domain.QComment.comment;
 import static com.codeit.sb13.monew.comment.domain.QCommentLike.commentLike;
 
+import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
 import com.codeit.sb13.monew.comment.repository.dto.CommentSearchCondition;
 import com.codeit.sb13.monew.comment.repository.dto.CommentSearchProjection;
 import com.codeit.sb13.monew.comment.repository.dto.CommentSearchResult;
@@ -84,7 +85,7 @@ public class CommentRepositoryCustomImpl implements CommentRepositoryCustom {
         .from(commentLike)
         .where(commentLike.comment.eq(comment),
             commentLike.likedBy.id.eq(requestUserId),
-            commentLike.likedBy.deletedAt.isNull())
+            commentLike.visibilityStatus.eq(ActivityVisibilityStatus.ACTIVE))
         .exists();
   }
 
@@ -94,7 +95,7 @@ public class CommentRepositoryCustomImpl implements CommentRepositoryCustom {
         JPAExpressions.select(commentLike.count())
             .from(commentLike)
             .where(commentLike.comment.eq(comment),
-                commentLike.likedBy.deletedAt.isNull())
+                commentLike.visibilityStatus.eq(ActivityVisibilityStatus.ACTIVE))
     );
   }
 

@@ -12,9 +12,9 @@ import static org.mockito.Mockito.times;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.comment.domain.Comment;
-import com.codeit.sb13.monew.comment.domain.CommentLike;
 import com.codeit.sb13.monew.comment.repository.CommentLikeRepository;
 import com.codeit.sb13.monew.comment.repository.CommentRepository;
+import com.codeit.sb13.monew.comment.repository.dto.CommentLikeResponseProjection;
 import com.codeit.sb13.monew.comment.service.dto.CommentLikeDto;
 import com.codeit.sb13.monew.comment.service.dto.CommentLikeRegisterCommand;
 import com.codeit.sb13.monew.comment.service.impl.CommentLikeSaveService;
@@ -111,18 +111,12 @@ public class CommentLikeServiceTest {
 
     CommentLikeRegisterCommand command = new CommentLikeRegisterCommand(comment.getId(), likedBy.getId());
 
-    CommentLike newCommentLike = CommentLike.builder()
-        .comment(comment)
-        .likedBy(likedBy)
-        .build();
-    ReflectionTestUtils.setField(newCommentLike, "id", commentLikeId);
-    ReflectionTestUtils.setField(newCommentLike, "createdAt", likeCreatedAt);
+    CommentLikeResponseProjection responseProjection = responseProjection(commentLikeId, 1L);
 
     given(userRepository.findByIdAndDeletedAtIsNull(likedBy.getId())).willReturn(Optional.of(likedBy));
     given(commentRepository.findActiveById(comment.getId())).willReturn(Optional.of(comment));
-    given(commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(comment.getId(), likedBy.getId()))
-        .willReturn(Optional.empty(), Optional.of(newCommentLike));
-    given(commentLikeRepository.countActiveLikesByCommentId(comment.getId())).willReturn(1L);
+    given(commentLikeRepository.findActiveResponseProjection(comment.getId(), likedBy.getId()))
+        .willReturn(Optional.empty(), Optional.of(responseProjection));
 
     // when
     CommentLikeDto result = commentLikeService.likeComment(command);
@@ -144,9 +138,9 @@ public class CommentLikeServiceTest {
     then(commentRepository).should(times(1)).findActiveById(comment.getId());
     then(userRepository).should(times(1)).findByIdAndDeletedAtIsNull(likedBy.getId());
     then(commentLikeRepository).should(times(2))
-        .findWithCommentDetailsByCommentIdAndLikedById(comment.getId(), likedBy.getId());
+        .findActiveResponseProjection(comment.getId(), likedBy.getId());
     then(commentLikeSaveService).should(times(1)).create(comment.getId(), likedBy.getId());
-    then(commentLikeRepository).should(times(1)).countActiveLikesByCommentId(comment.getId());
+    then(commentLikeRepository).should(never()).countActiveLikesByCommentId(any(UUID.class));
     then(notificationService).should(times(1))
             .notifyCommentLiked(new CommentLikedDto(likedBy, commentUser, comment.getId()));
   }
@@ -157,12 +151,7 @@ public class CommentLikeServiceTest {
     // given
     CommentLikeRegisterCommand command = new CommentLikeRegisterCommand(comment.getId(), likedBy.getId());
 
-    CommentLike existingLike = CommentLike.builder()
-        .comment(comment)
-        .likedBy(likedBy)
-        .build();
-    ReflectionTestUtils.setField(existingLike, "id", UUID.randomUUID());
-    ReflectionTestUtils.setField(existingLike, "createdAt", likeCreatedAt);
+    CommentLikeResponseProjection responseProjection = responseProjection(UUID.randomUUID(), 1L);
 
     DataIntegrityViolationException duplicateException =
         new DataIntegrityViolationException("UNIQUE 제약 위반 발생",
@@ -174,20 +163,19 @@ public class CommentLikeServiceTest {
     given(commentRepository.findActiveById(comment.getId())).willReturn(Optional.of(comment));
     given(userRepository.findByIdAndDeletedAtIsNull(likedBy.getId())).willReturn(Optional.of(likedBy));
 
-    given(commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(comment.getId(), likedBy.getId()))
-        .willReturn(Optional.empty(), Optional.of(existingLike));
+    given(commentLikeRepository.findActiveResponseProjection(comment.getId(), likedBy.getId()))
+        .willReturn(Optional.empty(), Optional.of(responseProjection));
 
     doThrow(duplicateException)
         .when(commentLikeSaveService)
         .create(comment.getId(), likedBy.getId());
-    given(commentLikeRepository.countActiveLikesByCommentId(comment.getId())).willReturn(1L);
 
     // when
     CommentLikeDto result = commentLikeService.likeComment(command);
 
     // then
     Assertions.assertAll(
-        () -> assertThat(result.id()).isEqualTo(existingLike.getId()),
+        () -> assertThat(result.id()).isEqualTo(responseProjection.id()),
         () -> assertThat(result.likedBy()).isEqualTo(likedBy.getId()),
         () -> assertThat(result.createdAt()).isEqualTo(likeCreatedAt),
         () -> assertThat(result.commentId()).isEqualTo(comment.getId()),
@@ -202,9 +190,9 @@ public class CommentLikeServiceTest {
     then(commentRepository).should(times(1)).findActiveById(comment.getId());
     then(userRepository).should(times(1)).findByIdAndDeletedAtIsNull(likedBy.getId());
     then(commentLikeRepository).should(times(2))
-        .findWithCommentDetailsByCommentIdAndLikedById(comment.getId(), likedBy.getId());
-    then(commentLikeRepository).should(times(1)).countActiveLikesByCommentId(comment.getId());
+        .findActiveResponseProjection(comment.getId(), likedBy.getId());
     then(commentLikeSaveService).should(times(1)).create(comment.getId(), likedBy.getId());
+    then(commentLikeRepository).should(never()).countActiveLikesByCommentId(any(UUID.class));
     then(notificationService).should(never()).notifyCommentLiked(any(CommentLikedDto.class));
   }
 
@@ -222,7 +210,7 @@ public class CommentLikeServiceTest {
 
     given(commentRepository.findActiveById(comment.getId())).willReturn(Optional.of(comment));
     given(userRepository.findByIdAndDeletedAtIsNull(likedBy.getId())).willReturn(Optional.of(likedBy));
-    given(commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(comment.getId(), likedBy.getId()))
+    given(commentLikeRepository.findActiveResponseProjection(comment.getId(), likedBy.getId()))
         .willReturn(Optional.empty());
     doThrow(foreignKeyException).when(commentLikeSaveService)
         .create(comment.getId(), likedBy.getId());
@@ -231,7 +219,7 @@ public class CommentLikeServiceTest {
         .isSameAs(foreignKeyException);
 
     then(commentLikeRepository).should(times(1))
-        .findWithCommentDetailsByCommentIdAndLikedById(comment.getId(), likedBy.getId());
+        .findActiveResponseProjection(comment.getId(), likedBy.getId());
     then(notificationService).shouldHaveNoInteractions();
   }
 
@@ -239,27 +227,21 @@ public class CommentLikeServiceTest {
   @DisplayName("이미 좋아요한 댓글에 대해 다시 좋아요 요청 시 기존 좋아요 정보 반환 - GREEN")
   void 중복_좋아요_기존_좋아요_반환() {
     // given
-    CommentLike existingLike = CommentLike.builder()
-        .comment(comment)
-        .likedBy(likedBy)
-        .build();
-    ReflectionTestUtils.setField(existingLike, "id", UUID.randomUUID());
-    ReflectionTestUtils.setField(existingLike, "createdAt", likeCreatedAt);
+    CommentLikeResponseProjection responseProjection = responseProjection(UUID.randomUUID(), 1L);
 
     CommentLikeRegisterCommand command = new CommentLikeRegisterCommand(comment.getId(), likedBy.getId());
 
     given(commentRepository.findActiveById(comment.getId())).willReturn(Optional.of(comment));
-    given(commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(comment.getId(), likedBy.getId()))
-        .willReturn(Optional.of(existingLike));
+    given(commentLikeRepository.findActiveResponseProjection(comment.getId(), likedBy.getId()))
+        .willReturn(Optional.of(responseProjection));
     given(userRepository.findByIdAndDeletedAtIsNull(likedBy.getId())).willReturn(Optional.of(likedBy));
-    given(commentLikeRepository.countActiveLikesByCommentId(comment.getId())).willReturn(1L);
 
     // when
     CommentLikeDto result = commentLikeService.likeComment(command);
 
     // then
     Assertions.assertAll(
-        () -> assertThat(result.id()).isEqualTo(existingLike.getId()),
+        () -> assertThat(result.id()).isEqualTo(responseProjection.id()),
         () -> assertThat(result.likedBy()).isEqualTo(likedBy.getId()),
         () -> assertThat(result.createdAt()).isEqualTo(likeCreatedAt),
         () -> assertThat(result.commentId()).isEqualTo(comment.getId()),
@@ -273,9 +255,9 @@ public class CommentLikeServiceTest {
     then(commentRepository).should(times(1)).findActiveById(comment.getId());
     then(userRepository).should(times(1)).findByIdAndDeletedAtIsNull(likedBy.getId());
     then(commentLikeRepository).should(times(1))
-        .findWithCommentDetailsByCommentIdAndLikedById(comment.getId(), likedBy.getId());
+        .findActiveResponseProjection(comment.getId(), likedBy.getId());
     then(commentLikeSaveService).should(never()).create(any(UUID.class), any(UUID.class));
-    then(commentLikeRepository).should(times(1)).countActiveLikesByCommentId(comment.getId());
+    then(commentLikeRepository).should(never()).countActiveLikesByCommentId(any(UUID.class));
     then(notificationService).shouldHaveNoInteractions();
   }
 
@@ -357,18 +339,12 @@ public class CommentLikeServiceTest {
     UUID commentLikeId = UUID.randomUUID();
     CommentLikeRegisterCommand command = new CommentLikeRegisterCommand(comment.getId(), likedBy.getId());
 
-    CommentLike newCommentLike = CommentLike.builder()
-            .comment(comment)
-            .likedBy(likedBy)
-            .build();
-    ReflectionTestUtils.setField(newCommentLike, "id", commentLikeId);
-    ReflectionTestUtils.setField(newCommentLike, "createdAt", likeCreatedAt);
+    CommentLikeResponseProjection responseProjection = responseProjection(commentLikeId, 1L);
 
     given(userRepository.findByIdAndDeletedAtIsNull(likedBy.getId())).willReturn(Optional.of(likedBy));
     given(commentRepository.findActiveById(comment.getId())).willReturn(Optional.of(comment));
-    given(commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(comment.getId(), likedBy.getId()))
-            .willReturn(Optional.empty(), Optional.of(newCommentLike));
-    given(commentLikeRepository.countActiveLikesByCommentId(comment.getId())).willReturn(1L);
+    given(commentLikeRepository.findActiveResponseProjection(comment.getId(), likedBy.getId()))
+            .willReturn(Optional.empty(), Optional.of(responseProjection));
 
     doThrow(new DataIntegrityViolationException("알림 저장 실패 - content 길이 초과 등"))
             .when(notificationService)
@@ -387,5 +363,20 @@ public class CommentLikeServiceTest {
 
     then(commentLikeSaveService).should(times(1)).create(comment.getId(), likedBy.getId());
     then(notificationService).should(times(1)).notifyCommentLiked(any(CommentLikedDto.class));
+  }
+
+  private CommentLikeResponseProjection responseProjection(UUID commentLikeId, Long likeCount) {
+    return new CommentLikeResponseProjection(
+        commentLikeId,
+        likedBy.getId(),
+        likeCreatedAt,
+        comment.getId(),
+        article.getId(),
+        commentUser.getId(),
+        commentUser.getNickname(),
+        comment.getContent(),
+        likeCount,
+        commentCreatedAt
+    );
   }
 }

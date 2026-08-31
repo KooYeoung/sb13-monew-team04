@@ -1,12 +1,13 @@
 package com.codeit.sb13.monew.comment.repository;
 
 import com.codeit.sb13.monew.comment.domain.CommentLike;
+import com.codeit.sb13.monew.comment.repository.dto.CommentLikeResponseProjection;
+import com.codeit.sb13.monew.comment.repository.dto.RecentCommentLikeActivityProjection;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import com.codeit.sb13.monew.comment.repository.dto.RecentCommentLikeActivityProjection;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -34,19 +35,33 @@ public interface CommentLikeRepository extends JpaRepository<CommentLike, UUID> 
       @Param("likedById") UUID likedById
   );
 
-  // CommentLikeDto 생성에는 좋아요 자체와 댓글·기사·작성자 정보가 모두 필요하다
+  // 등록 응답에는 필요한 스칼라 값과 활성 좋아요 수만 projection으로 조회한다.
   @Query("""
-      SELECT CL
+      SELECT new com.codeit.sb13.monew.comment.repository.dto.CommentLikeResponseProjection(
+          CL.id,
+          LB.id,
+          CL.createdAt,
+          C.id,
+          A.id,
+          U.id,
+          U.nickname,
+          C.content,
+          (SELECT COUNT(CL2)
+           FROM CommentLike CL2
+           WHERE CL2.comment.id = C.id
+             AND CL2.visibilityStatus = 'ACTIVE'),
+          C.createdAt
+      )
       FROM CommentLike CL
-      JOIN FETCH CL.comment C
-      JOIN FETCH C.article A
-      JOIN FETCH C.user U
-      JOIN FETCH CL.likedBy LB
+      JOIN CL.comment C
+      JOIN C.article A
+      JOIN C.user U
+      JOIN CL.likedBy LB
       WHERE C.id = :commentId
           AND CL.likedBy.id = :likedById
           AND CL.visibilityStatus = 'ACTIVE'
-      """) // ACTIVE 상태의 좋아요만 조회
-  Optional<CommentLike> findWithCommentDetailsByCommentIdAndLikedById(
+      """)
+  Optional<CommentLikeResponseProjection> findActiveResponseProjection(
       @Param("commentId") UUID commentId,
       @Param("likedById") UUID likedById
   );

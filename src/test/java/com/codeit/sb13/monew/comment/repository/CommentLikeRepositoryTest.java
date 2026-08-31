@@ -6,6 +6,7 @@ import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.comment.domain.Comment;
 import com.codeit.sb13.monew.comment.domain.CommentLike;
+import com.codeit.sb13.monew.comment.repository.dto.CommentLikeResponseProjection;
 import com.codeit.sb13.monew.comment.repository.dto.RecentCommentLikeActivityProjection;
 import com.codeit.sb13.monew.global.config.JpaAuditingConfig;
 import com.codeit.sb13.monew.global.config.QueryDslConfig;
@@ -341,7 +342,7 @@ class CommentLikeRepositoryTest {
 
 
   @Test
-  @DisplayName("ACTIVE 좋아요만 집계하고 존재 여부와 상세 조회에 포함한다")
+  @DisplayName("ACTIVE 좋아요만 집계하고 존재 여부와 응답 projection에 포함한다")
   void activeQueriesUseVisibilityStatus() {
     User writer = persistUser("writer");
     User activeLiker = persistUser("active-liker");
@@ -372,20 +373,20 @@ class CommentLikeRepositoryTest {
         comment.getId(), commentDeletedLiker.getId())).isFalse();
     assertThat(commentLikeRepository.existsActiveByCommentIdAndLikedById(
         comment.getId(), articleDeletedLiker.getId())).isFalse();
-    assertThat(commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(
+    assertThat(commentLikeRepository.findActiveResponseProjection(
         comment.getId(), activeLiker.getId())).isPresent();
-    assertThat(commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(
+    assertThat(commentLikeRepository.findActiveResponseProjection(
         comment.getId(), userDeletedLiker.getId())).isEmpty();
-    assertThat(commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(
+    assertThat(commentLikeRepository.findActiveResponseProjection(
         comment.getId(), commentDeletedLiker.getId())).isEmpty();
-    assertThat(commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(
+    assertThat(commentLikeRepository.findActiveResponseProjection(
         comment.getId(), articleDeletedLiker.getId())).isEmpty();
   }
 
 
 
   @Test
-  @DisplayName("댓글 물리 삭제 시 해당 ID에 해당하는 모든 좋아요 삭제한다 - RED")
+  @DisplayName("댓글 물리 삭제 시 해당 ID에 해당하는 모든 좋아요 삭제한다 - GREEN")
   void deleteByCommentId_deletesOnlyTargetCommentLikes() {
     // given
     User writer = persistUser("writer");
@@ -420,4 +421,69 @@ class CommentLikeRepositoryTest {
         ()->assertThat(commentLikeRepository.countActiveLikesByCommentId(otherComment.getId())).isEqualTo(1L)
     );
   }
+
+
+  @Test
+  @DisplayName("댓글 좋아요 응답 projection은 응답에 필요한 필드와 활성 좋아요 수만 반환한다. - GREEN")
+  void findActiveResponseProjection_returnsResponseFieldsAndActiveLikeCount() {
+    // given
+    User writer = persistUser("writer");
+    User requester = persistUser("requester");
+    User activeLiker = persistUser("active-liker");
+    User inactiveLiker = persistUser("inactive-liker");
+    Article article = persistArticle("projection article");
+    Comment comment = persistComment(article, writer, "projection comment");
+    CommentLike requesterLike = persistCommentLike(comment, requester);
+    persistCommentLike(comment, activeLiker);
+    CommentLike inactiveLike = persistCommentLike(comment, inactiveLiker);
+
+    LocalDateTime commentCreatedAt = LocalDateTime.of(2026, 7, 9, 8, 30);
+    LocalDateTime likeCreatedAt = LocalDateTime.of(2026, 8, 24, 10, 0);
+    em.flush();
+    updateCommentLikeVisibilityStatus(
+        inactiveLike.getId(), ActivityVisibilityStatus.USER_DELETED);
+    updateCommentCreatedAt(comment, commentCreatedAt);
+    updateCommentLikeCreatedAt(requesterLike, likeCreatedAt);
+    em.clear();
+
+    // when
+    CommentLikeResponseProjection result = commentLikeRepository
+        .findActiveResponseProjection(comment.getId(), requester.getId())
+        .orElseThrow();
+
+    // then
+    Assertions.assertAll(
+        () -> assertThat(result.id()).isEqualTo(requesterLike.getId()),
+        () -> assertThat(result.likedBy()).isEqualTo(requester.getId()),
+        () -> assertThat(result.createdAt()).isEqualTo(likeCreatedAt),
+        () -> assertThat(result.commentId()).isEqualTo(comment.getId()),
+        () -> assertThat(result.articleId()).isEqualTo(article.getId()),
+        () -> assertThat(result.commentUserId()).isEqualTo(writer.getId()),
+        () -> assertThat(result.commentUserNickname()).isEqualTo("writer"),
+        () -> assertThat(result.commentContent()).isEqualTo("projection comment"),
+        () -> assertThat(result.commentLikeCount()).isEqualTo(2L),
+        () -> assertThat(result.commentCreatedAt()).isEqualTo(commentCreatedAt)
+    );
+  }
+
+
+  @Test
+  @DisplayName("논리 삭제된 연관 데이터의 좋아요는 댓글 좋아요 응답 projection 조회 시 제외된다")
+  void findActiveResponseProjection_excludesSoftDeletedRows() {
+    User writer = persistUser("writer");
+    User requester = persistUser("requester");
+    Article article = persistArticle("article");
+    Comment comment = persistComment(article, writer, "comment");
+    CommentLike commentLike = persistCommentLike(comment, requester);
+    em.flush();
+    updateCommentLikeVisibilityStatus(
+        commentLike.getId(), ActivityVisibilityStatus.COMMENT_DELETED);
+    em.clear();
+
+    assertThat(commentLikeRepository.findActiveResponseProjection(
+        comment.getId(), requester.getId())).isEmpty();
+  }
+
+
+
 }

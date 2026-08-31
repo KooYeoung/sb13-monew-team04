@@ -1,7 +1,6 @@
 package com.codeit.sb13.monew.comment.service.impl;
 
 import com.codeit.sb13.monew.comment.domain.Comment;
-import com.codeit.sb13.monew.comment.domain.CommentLike;
 import com.codeit.sb13.monew.comment.repository.CommentLikeRepository;
 import com.codeit.sb13.monew.comment.repository.CommentRepository;
 import com.codeit.sb13.monew.comment.service.CommentLikeService;
@@ -48,8 +47,8 @@ public class CommentLikeServiceImpl implements CommentLikeService {
     User likedByUser = userRepository.findByIdAndDeletedAtIsNull(likedById)
             .orElseThrow(() -> new UserNotFoundException(likedById));
 
-    return commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(commentId, likedById)
-        .map(this::toDto)
+    return commentLikeRepository.findActiveResponseProjection(commentId, likedById)
+        .map(CommentLikeDto::from)
         .orElseGet(() -> createOrReturnExisting(comment, likedByUser));
   }
 
@@ -63,11 +62,11 @@ public class CommentLikeServiceImpl implements CommentLikeService {
       if (!isDuplicateCommentLike(e)) {
         throw e;
       }
-      return commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(
+      return commentLikeRepository.findActiveResponseProjection(
               comment.getId(), likedByUser.getId())
           .map(existingLike -> {
             log.debug("댓글 좋아요 중복 감지 -> 기존 댓글 좋아요 반환 - 댓글 아이디: {}", comment.getId());
-            return toDto(existingLike);
+            return CommentLikeDto.from(existingLike);
           })
           .orElseThrow(() -> e);
     }
@@ -79,9 +78,9 @@ public class CommentLikeServiceImpl implements CommentLikeService {
               comment.getId(), likedByUser.getId(), comment.getUser().getId(), e);
     }
 
-    return commentLikeRepository.findWithCommentDetailsByCommentIdAndLikedById(
+    return commentLikeRepository.findActiveResponseProjection(
             comment.getId(), likedByUser.getId())
-        .map(this::toDto)
+        .map(CommentLikeDto::from)
         .orElseThrow(()->new IllegalStateException("댓글 좋아요 등록 후 조회 실패 - 댓글 아이디: " + comment.getId()));
   }
 
@@ -117,11 +116,5 @@ public class CommentLikeServiceImpl implements CommentLikeService {
     }
 
     log.info("댓글 좋아요 취소 완료 - 댓글 아이디: {}", commentId);
-  }
-
-  // 댓글 좋아요가 성공적으로 등록되면 재조회하여 좋아요 수를 포함한 DTO 반환
-  private CommentLikeDto toDto(CommentLike commentLike) {
-    Long likeCount = commentLikeRepository.countActiveLikesByCommentId(commentLike.getComment().getId());
-    return CommentLikeDto.from(commentLike, likeCount);
   }
 }
