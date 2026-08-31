@@ -6,6 +6,8 @@ on:
   push:
     branches:
       - main
+  # workflow_dispatch로 git actions 수동으로 develop 브랜치에서 테스트
+  workflow_dispatch:
 
 # 전역 권한은 read로 최소화하고, 실제로 필요한 job에만 필요한 권한만 따로 부여한다.
 # (deploy job은 이 GITHUB_TOKEN을 EC2로 전달하는데, EC2가 침해되더라도
