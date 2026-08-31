@@ -28,8 +28,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -116,9 +114,8 @@ class ArticleViewServiceTest {
         // 1회차: 기존 기록 없음 -> INSERT, 2회차: 저장 결과 재조회
         when(articleViewRepository.findByArticleAndUser(testArticle, testUser))
                 .thenReturn(Optional.empty(), Optional.of(savedView));
-        when(articleViewRepository.countByArticleAndUser_DeletedAtIsNull(testArticle)).thenReturn(1L);
-        when(commentRepository
-                .countByArticle_IdAndDeletedAtIsNullAndUser_DeletedAtIsNull(testArticleId))
+        when(articleViewRepository.countActiveByArticleId(testArticleId)).thenReturn(1L);
+        when(commentRepository.countActiveByArticleId(testArticleId))
                 .thenReturn(4L);
         when(articleMapper.toViewDto(savedView, 4L, 1L)).thenReturn(testViewDto);
 
@@ -146,9 +143,8 @@ class ArticleViewServiceTest {
                 .thenReturn(Optional.of(existingView));
         when(articleViewRepository.save(any(ArticleView.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(articleViewRepository.countByArticleAndUser_DeletedAtIsNull(testArticle)).thenReturn(3L);
-        when(commentRepository
-                .countByArticle_IdAndDeletedAtIsNullAndUser_DeletedAtIsNull(testArticleId))
+        when(articleViewRepository.countActiveByArticleId(testArticleId)).thenReturn(3L);
+        when(commentRepository.countActiveByArticleId(testArticleId))
                 .thenReturn(4L);
         when(articleMapper.toViewDto(any(ArticleView.class), eq(4L), eq(3L)))
                 .thenReturn(testViewDto);
@@ -213,9 +209,8 @@ class ArticleViewServiceTest {
                 .create(eq(testArticleId), eq(testUserId), any(LocalDateTime.class));
         when(articleViewRepository.save(any(ArticleView.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(articleViewRepository.countByArticleAndUser_DeletedAtIsNull(testArticle)).thenReturn(1L);
-        when(commentRepository
-                .countByArticle_IdAndDeletedAtIsNullAndUser_DeletedAtIsNull(testArticleId))
+        when(articleViewRepository.countActiveByArticleId(testArticleId)).thenReturn(1L);
+        when(commentRepository.countActiveByArticleId(testArticleId))
                 .thenReturn(4L);
         when(articleMapper.toViewDto(concurrentView, 4L, 1L)).thenReturn(testViewDto);
 

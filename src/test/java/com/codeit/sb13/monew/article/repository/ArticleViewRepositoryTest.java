@@ -8,6 +8,7 @@ import com.codeit.sb13.monew.comment.domain.Comment;
 import com.codeit.sb13.monew.comment.repository.CommentRepository;
 import com.codeit.sb13.monew.global.config.JpaAuditingConfig;
 import com.codeit.sb13.monew.global.config.QueryDslConfig;
+import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -44,6 +45,27 @@ class ArticleViewRepositoryTest {
 
     @Autowired
     private TestEntityManager em;
+
+    @Test
+    @DisplayName("기사 조회수는 ACTIVE 조회 기록만 집계한다")
+    void countsOnlyActiveArticleViews() {
+        // given
+        Article article = saveArticle("count", LocalDateTime.of(2026, 8, 22, 10, 0));
+        saveArticleView(article, saveUser("active-viewer"), LocalDateTime.of(2026, 8, 22, 11, 0));
+        ArticleView hiddenView = saveArticleView(
+                article,
+                saveUser("hidden-viewer"),
+                LocalDateTime.of(2026, 8, 22, 12, 0)
+        );
+        updateArticleViewVisibilityStatus(hiddenView.getId(), ActivityVisibilityStatus.USER_DELETED);
+        flushAndClear();
+
+        // when
+        long result = articleViewRepository.countActiveByArticleId(article.getId());
+
+        // then
+        assertThat(result).isEqualTo(1L);
+    }
 
     @Test
     @DisplayName("조회한 뉴스 기사가 없으면 빈 목록을 반환한다")
@@ -144,15 +166,20 @@ class ArticleViewRepositoryTest {
     }
 
     @Test
-    @DisplayName("논리삭제된 사용자의 조회 이력은 제외한다")
-    void excludesArticleViewsOfSoftDeletedUser() {
+    @DisplayName("USER_DELETED 조회 이력은 제외한다")
+    void excludesUserDeletedArticleViews() {
         // given
         User targetUser = saveUser("deleted-user");
         Article article = saveArticle("article", LocalDateTime.of(2026, 8, 22, 10, 0));
-        saveArticleView(article, targetUser, LocalDateTime.of(2026, 8, 22, 11, 0));
+        ArticleView hiddenView = saveArticleView(
+                article,
+                targetUser,
+                LocalDateTime.of(2026, 8, 22, 11, 0)
+        );
 
         targetUser.softDelete();
         userRepository.saveAndFlush(targetUser);
+        updateArticleViewVisibilityStatus(hiddenView.getId(), ActivityVisibilityStatus.USER_DELETED);
         flushAndClear();
 
         // when
@@ -164,8 +191,8 @@ class ArticleViewRepositoryTest {
     }
 
     @Test
-    @DisplayName("논리삭제된 뉴스 기사의 조회 이력은 제외한다")
-    void excludesArticleViewsOfSoftDeletedArticle() {
+    @DisplayName("ARTICLE_DELETED 조회 이력은 제외한다")
+    void excludesArticleDeletedArticleViews() {
         // given
         User targetUser = saveUser("target");
         LocalDateTime baseTime = LocalDateTime.of(2026, 8, 22, 10, 0);
@@ -173,10 +200,15 @@ class ArticleViewRepositoryTest {
         Article activeArticle = saveArticle("active", baseTime);
         Article deletedArticle = saveArticle("deleted", baseTime.plusMinutes(1));
         saveArticleView(activeArticle, targetUser, baseTime);
-        saveArticleView(deletedArticle, targetUser, baseTime.plusMinutes(1));
+        ArticleView hiddenView = saveArticleView(
+                deletedArticle,
+                targetUser,
+                baseTime.plusMinutes(1)
+        );
 
         deletedArticle.softDelete();
         articleRepository.saveAndFlush(deletedArticle);
+        updateArticleViewVisibilityStatus(hiddenView.getId(), ActivityVisibilityStatus.ARTICLE_DELETED);
         flushAndClear();
 
         // when
@@ -234,7 +266,8 @@ class ArticleViewRepositoryTest {
 
         ArticleView targetView = saveArticleView(article, targetUser, targetViewedAt);
         saveArticleView(article, activeViewer, targetViewedAt.minusMinutes(1));
-        saveArticleView(article, deletedViewer, targetViewedAt.minusMinutes(2));
+        ArticleView deletedViewerView =
+                saveArticleView(article, deletedViewer, targetViewedAt.minusMinutes(2));
 
         Comment activeComment = new Comment(article, activeCommenter, "active comment");
         Comment deletedComment = new Comment(article, activeCommenter, "deleted comment");
@@ -249,6 +282,18 @@ class ArticleViewRepositoryTest {
         userRepository.saveAndFlush(deletedViewer);
         deletedCommenter.softDelete();
         userRepository.saveAndFlush(deletedCommenter);
+        updateArticleViewVisibilityStatus(
+                deletedViewerView.getId(),
+                ActivityVisibilityStatus.USER_DELETED
+        );
+        updateCommentVisibilityStatus(
+                deletedComment.getId(),
+                ActivityVisibilityStatus.COMMENT_DELETED
+        );
+        updateCommentVisibilityStatus(
+                deletedUserComment.getId(),
+                ActivityVisibilityStatus.USER_DELETED
+        );
         flushAndClear();
 
         // when
@@ -296,6 +341,38 @@ class ArticleViewRepositoryTest {
     private void flushAndClear() {
         em.flush();
         em.clear();
+    }
+
+    private void updateArticleViewVisibilityStatus(
+            UUID articleViewId,
+            ActivityVisibilityStatus status
+    ) {
+        em.flush();
+        em.getEntityManager()
+                .createQuery("""
+                        UPDATE ArticleView at
+                        SET at.visibilityStatus = :status
+                        WHERE at.id = :articleViewId
+                        """)
+                .setParameter("status", status)
+                .setParameter("articleViewId", articleViewId)
+                .executeUpdate();
+    }
+
+    private void updateCommentVisibilityStatus(
+            UUID commentId,
+            ActivityVisibilityStatus status
+    ) {
+        em.flush();
+        em.getEntityManager()
+                .createQuery("""
+                        UPDATE Comment c
+                        SET c.visibilityStatus = :status
+                        WHERE c.id = :commentId
+                        """)
+                .setParameter("status", status)
+                .setParameter("commentId", commentId)
+                .executeUpdate();
     }
 
     private List<UUID> findExpectedArticleViewIdsByNativeOrder(UUID userId) {

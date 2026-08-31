@@ -12,6 +12,7 @@ import com.codeit.sb13.monew.article.repository.dto.ArticleSearchRow;
 import com.codeit.sb13.monew.article.service.dto.ArticleOrderBy;
 import com.codeit.sb13.monew.comment.domain.Comment;
 import com.codeit.sb13.monew.global.config.JpaAuditingConfig;
+import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
 import com.codeit.sb13.monew.global.exception.article.ArticleSearchConditionInvalidException;
 import com.codeit.sb13.monew.interest.domain.Interest;
 import org.springframework.data.domain.Sort;
@@ -71,8 +72,10 @@ class ArticleRepositoryCustomImplTest {
         return article;
     }
 
-    private void view(Article article, User user) {
-        em.persist(ArticleView.create(article, user, LocalDateTime.now()));
+    private ArticleView view(Article article, User user) {
+        ArticleView articleView = ArticleView.create(article, user, LocalDateTime.now());
+        em.persist(articleView);
+        return articleView;
     }
 
     private Comment comment(Article article, User user) {
@@ -83,6 +86,38 @@ class ArticleRepositoryCustomImplTest {
                 .build();
         em.persist(comment);
         return comment;
+    }
+
+    private void updateArticleViewVisibilityStatus(
+            ArticleView articleView,
+            ActivityVisibilityStatus status
+    ) {
+        em.flush();
+        em.getEntityManager()
+                .createQuery("""
+                        UPDATE ArticleView at
+                        SET at.visibilityStatus = :status
+                        WHERE at.id = :articleViewId
+                        """)
+                .setParameter("status", status)
+                .setParameter("articleViewId", articleView.getId())
+                .executeUpdate();
+    }
+
+    private void updateCommentVisibilityStatus(
+            Comment comment,
+            ActivityVisibilityStatus status
+    ) {
+        em.flush();
+        em.getEntityManager()
+                .createQuery("""
+                        UPDATE Comment c
+                        SET c.visibilityStatus = :status
+                        WHERE c.id = :commentId
+                        """)
+                .setParameter("status", status)
+                .setParameter("commentId", comment.getId())
+                .executeUpdate();
     }
 
     /**
@@ -324,13 +359,14 @@ class ArticleRepositoryCustomImplTest {
     }
 
     @Test
-    @DisplayName("탈퇴한 사용자의 조회 이력은 viewCount에서 제외한다")
-    void searchExcludesDeletedUserViews() {
+    @DisplayName("USER_DELETED 조회 이력은 viewCount에서 제외한다")
+    void searchExcludesUserDeletedViews() {
         Article article = persistArticle("기사", "요약", D1, ArticleSource.NAVER);
         view(article, persistUser());
         User deleted = persistUser();
-        view(article, deleted);
+        ArticleView hiddenView = view(article, deleted);
         deleted.softDelete();
+        updateArticleViewVisibilityStatus(hiddenView, ActivityVisibilityStatus.USER_DELETED);
 
         List<ArticleSearchRow> rows = search(condition(null, null, null, null, null));
 
@@ -368,8 +404,8 @@ class ArticleRepositoryCustomImplTest {
 
 
     @Test
-    @DisplayName("commentCount는 논리 삭제된 댓글과 탈퇴 사용자의 댓글을 제외한다")
-    void commentCountExcludesDeletedCommentsAndWithdrawnUsers() {
+    @DisplayName("commentCount는 비활성 댓글을 제외한다")
+    void commentCountExcludesInactiveComments() {
         Article article = persistArticle("기사", "요약", D1, ArticleSource.NAVER);
         User active = persistUser();
         User withdrawn = persistUser();
@@ -378,8 +414,10 @@ class ArticleRepositoryCustomImplTest {
         comment(article, active);              // 집계 대상
         Comment deleted = comment(article, active);
         deleted.softDelete();                  // 논리 삭제 -> 제외
-        comment(article, withdrawn);
+        Comment withdrawnComment = comment(article, withdrawn);
         withdrawn.softDelete();                // 탈퇴 사용자 -> 제외
+        updateCommentVisibilityStatus(deleted, ActivityVisibilityStatus.COMMENT_DELETED);
+        updateCommentVisibilityStatus(withdrawnComment, ActivityVisibilityStatus.USER_DELETED);
 
         List<ArticleSearchRow> rows = search(condition(null, null, null, null, null));
 
@@ -615,6 +653,7 @@ class ArticleRepositoryCustomImplTest {
         User u1 = persistUser();
         User u2 = persistUser();
         User u3 = persistUser();
+        User u4 = persistUser();
 
         Article three = persistArticle("조회3", "요약", D1, ArticleSource.NAVER);
         Article two = persistArticle("조회2", "요약", D2, ArticleSource.CHOSUN);
@@ -627,6 +666,14 @@ class ArticleRepositoryCustomImplTest {
         view(two, u1);
         view(two, u2);
         view(one, u1);
+        updateArticleViewVisibilityStatus(
+                view(zero, u1), ActivityVisibilityStatus.USER_DELETED);
+        updateArticleViewVisibilityStatus(
+                view(zero, u2), ActivityVisibilityStatus.ARTICLE_DELETED);
+        updateArticleViewVisibilityStatus(
+                view(zero, u3), ActivityVisibilityStatus.USER_DELETED);
+        updateArticleViewVisibilityStatus(
+                view(zero, u4), ActivityVisibilityStatus.ARTICLE_DELETED);
 
         List<String> collected = new ArrayList<>();
         ArticleSearchPage p = firstPage(ArticleOrderBy.VIEW_COUNT, Sort.Direction.DESC, 2);
@@ -649,7 +696,7 @@ class ArticleRepositoryCustomImplTest {
         Article three = persistArticle("댓글3", "요약", D1, ArticleSource.NAVER);
         Article two = persistArticle("댓글2", "요약", D2, ArticleSource.CHOSUN);
         Article one = persistArticle("댓글1", "요약", D3, ArticleSource.HANKYUNG);
-        persistArticle("댓글0", "요약", D1, ArticleSource.NAVER);
+        Article zero = persistArticle("댓글0", "요약", D1, ArticleSource.NAVER);
 
         comment(three, user);
         comment(three, user);
@@ -657,6 +704,14 @@ class ArticleRepositoryCustomImplTest {
         comment(two, user);
         comment(two, user);
         comment(one, user);
+        updateCommentVisibilityStatus(
+                comment(zero, user), ActivityVisibilityStatus.COMMENT_DELETED);
+        updateCommentVisibilityStatus(
+                comment(zero, user), ActivityVisibilityStatus.USER_DELETED);
+        updateCommentVisibilityStatus(
+                comment(zero, user), ActivityVisibilityStatus.ARTICLE_DELETED);
+        updateCommentVisibilityStatus(
+                comment(zero, user), ActivityVisibilityStatus.COMMENT_DELETED);
 
         List<String> collected = new ArrayList<>();
         ArticleSearchPage p = firstPage(ArticleOrderBy.COMMENT_COUNT, Sort.Direction.ASC, 2);

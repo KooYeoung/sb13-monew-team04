@@ -65,10 +65,9 @@ public class ArticleServiceImpl implements ArticleService {
 
         boolean viewedByMe = articleViewRepository
                 .existsByArticle_IdAndUser_Id(articleId, requestUserId);
-        long viewCount = articleViewRepository.countByArticle_IdAndUser_DeletedAtIsNull(articleId);
+        long viewCount = articleViewRepository.countActiveByArticleId(articleId);
 
-        long commentCount = commentRepository
-                .countByArticle_IdAndDeletedAtIsNullAndUser_DeletedAtIsNull(articleId);
+        long commentCount = commentRepository.countActiveByArticleId(articleId);
 
         return articleMapper.toDto(article, viewedByMe, commentCount, viewCount);
     }

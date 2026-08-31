@@ -22,14 +22,17 @@ public interface ArticleViewRepository extends JpaRepository<ArticleView, UUID> 
     @EntityGraph(attributePaths = {"article", "user"})
     Optional<ArticleView> findByArticleAndUser(Article article, User user);
 
-    // 특정 기사의 조회수 집계
-    long countByArticleAndUser_DeletedAtIsNull(Article article);
-
     // 요청자의 조회 여부 (viewedByMe)
     boolean existsByArticle_IdAndUser_Id(UUID articleId, UUID userId);
 
-    // 기사 조회수 집계 (탈퇴 사용자 조회 이력 제외)
-    long countByArticle_IdAndUser_DeletedAtIsNull(UUID articleId);
+    // 기사 조회수 집계 (활성 조회 기록만 포함)
+    @Query("""
+        SELECT COUNT(at)
+        FROM ArticleView at
+        WHERE at.article.id = :articleId
+           AND at.visibilityStatus = 'ACTIVE'
+    """)
+    long countActiveByArticleId(@Param("articleId") UUID articleId);
 
 
     void deleteByUser_Id(UUID userId);
@@ -39,34 +42,29 @@ public interface ArticleViewRepository extends JpaRepository<ArticleView, UUID> 
 
     @Query("""
                 SELECT new com.codeit.sb13.monew.article.repository.dto.RecentArticleViewActivityProjection(
-                    AT.id,
-                    U.id,
-                    AT.viewedAt,
-                    A.id,
-                    A.source,
-                    A.link,
-                    A.title,
-                    A.date,
-                    A.summary,
-                    (SELECT COUNT(C)
-                     FROM Comment C
-                     JOIN C.user U2
-                     WHERE C.article.id = A.id
-                          AND C.deletedAt IS NULL
-                          AND U2.deletedAt IS NULL),
-                    (SELECT COUNT(AT2)
-                     FROM ArticleView AT2
-                     JOIN AT2.user U2
-                     WHERE AT2.article.id = A.id
-                           AND U2.deletedAt IS NULL)
+                    at.id,
+                    at.user.id,
+                    at.viewedAt,
+                    a.id,
+                    a.source,
+                    a.link,
+                    a.title,
+                    a.date,
+                    a.summary,
+                    (SELECT COUNT(c)
+                     FROM Comment c
+                     WHERE c.article.id = a.id
+                       AND c.visibilityStatus = 'ACTIVE'),
+                    (SELECT COUNT(at2)
+                     FROM ArticleView at2
+                     WHERE at2.article.id = a.id
+                       AND at2.visibilityStatus = 'ACTIVE')
                     )
-                FROM ArticleView AT
-                JOIN AT.article A
-                JOIN AT.user U
-                WHERE U.id = :userId
-                AND A.deletedAt IS NULL
-                AND U.deletedAt IS NULL
-                ORDER BY AT.viewedAt DESC, AT.id DESC
+                FROM ArticleView at
+                JOIN at.article a
+                WHERE at.user.id = :userId
+                AND at.visibilityStatus = 'ACTIVE'
+                ORDER BY at.viewedAt DESC, at.id DESC
                 LIMIT 10
             """)
     List<RecentArticleViewActivityProjection> findRecentArticleViewActivities(@Param("userId") UUID userId);

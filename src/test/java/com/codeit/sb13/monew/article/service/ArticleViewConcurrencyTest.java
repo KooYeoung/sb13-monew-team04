@@ -110,7 +110,7 @@ class ArticleViewConcurrencyTest {
         // then
         assertThat(failures).isEmpty();
         assertThat(successCount.get()).isEqualTo(threadCount);
-        assertThat(articleViewRepository.countByArticle_IdAndUser_DeletedAtIsNull(articleId))
+        assertThat(articleViewRepository.countActiveByArticleId(articleId))
                 .isEqualTo(1L);
     }
 }

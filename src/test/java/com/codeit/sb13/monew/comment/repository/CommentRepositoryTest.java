@@ -56,18 +56,6 @@ class CommentRepositoryTest {
     @Autowired
     private TestEntityManager em;
 
-    private void updateCommentVisibilityStatus(UUID commentId, ActivityVisibilityStatus status) {
-        em.getEntityManager()
-                .createQuery("""
-            UPDATE Comment C
-            SET C.visibilityStatus = :status
-            WHERE C.id = :id
-            """)
-                .setParameter("status", status)
-                .setParameter("id", commentId)
-                .executeUpdate();
-    }
-
     @Test
     @DisplayName("작성한 댓글이 없으면 빈 목록 반환")
     void returns_empty_list_when_user_has_no_comments() {
@@ -766,6 +754,33 @@ class CommentRepositoryTest {
 
 
     @Test
+    @DisplayName("기사 댓글 수는 ACTIVE 댓글만 집계한다")
+    void countActiveByArticleId_countsOnlyActiveComments() {
+        User writer = userRepository.saveAndFlush(new User(
+            "active-count-writer@email.com", "작성자", "testPassword!"));
+        Article article = articleRepository.saveAndFlush(
+            createArticle("집계 기사", "기사 내용", "active-count-link"));
+
+        commentRepository.saveAndFlush(new Comment(article, writer, "활성 댓글"));
+        Comment commentDeleted = commentRepository.saveAndFlush(
+            new Comment(article, writer, "댓글 삭제"));
+        Comment userDeleted = commentRepository.saveAndFlush(
+            new Comment(article, writer, "사용자 삭제"));
+        Comment articleDeleted = commentRepository.saveAndFlush(
+            new Comment(article, writer, "기사 삭제"));
+
+        updateCommentVisibilityStatus(
+            commentDeleted.getId(), ActivityVisibilityStatus.COMMENT_DELETED);
+        updateCommentVisibilityStatus(
+            userDeleted.getId(), ActivityVisibilityStatus.USER_DELETED);
+        updateCommentVisibilityStatus(
+            articleDeleted.getId(), ActivityVisibilityStatus.ARTICLE_DELETED);
+        em.clear();
+
+        assertThat(commentRepository.countActiveByArticleId(article.getId())).isEqualTo(1L);
+    }
+
+    @Test
     @DisplayName("활성화된 댓글만 조건부로 논리 삭제하고, 삭제 재시도는 0건을 반환한다")
     void softDeleteIfNotDeleted_updatesOnlyActiveComment() {
         User writer = userRepository.saveAndFlush(new User(
@@ -826,5 +841,21 @@ class CommentRepositoryTest {
         em.clear();
 
         assertThat(commentRepository.findForHardDeleteById(comment.getId())).isPresent();
+    }
+
+    private void updateCommentVisibilityStatus(
+        UUID commentId,
+        ActivityVisibilityStatus status
+    ) {
+        em.flush();
+        em.getEntityManager()
+            .createQuery("""
+                UPDATE Comment c
+                SET c.visibilityStatus = :status
+                WHERE c.id = :commentId
+                """)
+            .setParameter("status", status)
+            .setParameter("commentId", commentId)
+            .executeUpdate();
     }
 }

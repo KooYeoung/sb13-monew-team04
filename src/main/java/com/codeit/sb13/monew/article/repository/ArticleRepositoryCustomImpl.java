@@ -3,7 +3,7 @@ package com.codeit.sb13.monew.article.repository;
 import static com.codeit.sb13.monew.article.domain.QArticle.article;
 import static com.codeit.sb13.monew.article.domain.QArticleView.articleView;
 import static com.codeit.sb13.monew.comment.domain.QComment.comment;
-import static com.codeit.sb13.monew.user.domain.QUser.user;
+import static com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus.ACTIVE;
 
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.interest.domain.QKeyword;
@@ -12,7 +12,6 @@ import com.codeit.sb13.monew.article.repository.dto.ArticleSearchPage;
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchRow;
 import com.codeit.sb13.monew.article.service.dto.ArticleOrderBy;
 import com.codeit.sb13.monew.global.exception.article.ArticleSearchConditionInvalidException;
-import com.codeit.sb13.monew.user.domain.QUser;
 import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.BooleanExpression;
@@ -31,7 +30,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ArticleRepositoryCustomImpl implements ArticleRepositoryCustom {
 
-    private static final QUser commentUser = new QUser("commentUser");
     private static final QKeyword interestKeyword = new QKeyword("interestKeyword");
 
     private final JPAQueryFactory queryFactory;
@@ -89,11 +87,9 @@ public class ArticleRepositoryCustomImpl implements ArticleRepositoryCustom {
         return Expressions.asNumber(
                 JPAExpressions.select(comment.count())
                         .from(comment)
-                        .join(comment.user, commentUser)
                         .where(
                                 comment.article.eq(article),
-                                comment.deletedAt.isNull(),
-                                commentUser.deletedAt.isNull()
+                                comment.visibilityStatus.eq(ACTIVE)
                         )
         );
     }
@@ -102,8 +98,10 @@ public class ArticleRepositoryCustomImpl implements ArticleRepositoryCustom {
         return Expressions.asNumber(
                 JPAExpressions.select(articleView.count())
                         .from(articleView)
-                        .join(articleView.user, user)
-                        .where(articleView.article.eq(article), user.deletedAt.isNull())
+                        .where(
+                                articleView.article.eq(article),
+                                articleView.visibilityStatus.eq(ACTIVE)
+                        )
         );
     }
 

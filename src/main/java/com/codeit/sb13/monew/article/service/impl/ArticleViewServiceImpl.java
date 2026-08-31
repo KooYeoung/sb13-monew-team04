@@ -42,10 +42,9 @@ public class ArticleViewServiceImpl implements ArticleViewService {
                 .map(this::touch)
                 .orElseGet(() -> createOrTouchExisting(article, user));
 
-        long viewCount = articleViewRepository.countByArticleAndUser_DeletedAtIsNull(article);
+        long viewCount = articleViewRepository.countActiveByArticleId(articleId);
 
-        long commentCount = commentRepository
-                .countByArticle_IdAndDeletedAtIsNullAndUser_DeletedAtIsNull(articleId);
+        long commentCount = commentRepository.countActiveByArticleId(articleId);
 
         return articleMapper.toViewDto(articleView, commentCount, viewCount);
     }
