@@ -28,7 +28,9 @@ record ActivityDeletionTarget(
         return new ActivityDeletionTarget(ActivityDeletionCause.USER, userId);
     }
 
-    // TODO: COMMENT 삭제 작업 진행 시 대상 factory 추가 여부 검토 필요.
+    static ActivityDeletionTarget deletedComment(UUID commentId) {
+        return new ActivityDeletionTarget(ActivityDeletionCause.COMMENT, commentId);
+    }
 
     /**
      * 삭제 원인에 대응하는 저장 상태를 반환한다.

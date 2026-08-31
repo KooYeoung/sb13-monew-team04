@@ -1,9 +1,8 @@
 package com.codeit.sb13.monew.activity.service;
 
-import static com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus.ARTICLE_DELETED;
-import static com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus.USER_DELETED;
-
 import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
+
+import static com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus.*;
 
 /**
  * 삭제 원인과 해당 원인이 활동 row에 반영할 노출 상태를 연결한다.
@@ -13,7 +12,7 @@ import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
  */
 enum ActivityDeletionCause {
     USER(USER_DELETED),
-    // TODO: COMMENT 삭제 작업 진행 시 COMMENT_DELETED 매핑 추가 검토 필요.
+    COMMENT(COMMENT_DELETED),
     ARTICLE(ARTICLE_DELETED);
 
     private final ActivityVisibilityStatus visibilityStatus;

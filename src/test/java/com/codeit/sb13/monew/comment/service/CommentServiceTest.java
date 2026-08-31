@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.*;
 
+import com.codeit.sb13.monew.activity.service.ActivityVisibilityUpdater;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.repository.ArticleRepository;
@@ -56,6 +57,9 @@ public class CommentServiceTest {
 
   @Mock
   CommentLikeRepository commentLikeRepository;
+
+  @Mock
+  private ActivityVisibilityUpdater activityVisibilityUpdater;
 
   @InjectMocks
   private CommentServiceImpl commentService;
@@ -372,6 +376,8 @@ public class CommentServiceTest {
     UUID commentId = UUID.randomUUID();
     given(commentRepository.softDeleteIfNotDeleted(eq(commentId), any(LocalDateTime.class)))
         .willReturn(1);
+    given(activityVisibilityUpdater.hideActiveByDeletedComment(eq(commentId)))
+            .willReturn(0L);
 
     // when
     commentService.softDelete(commentId);
@@ -379,6 +385,8 @@ public class CommentServiceTest {
     // then
     then(commentRepository).should(times(1))
         .softDeleteIfNotDeleted(eq(commentId), any(LocalDateTime.class));
+    then(activityVisibilityUpdater).should(times(1))
+            .hideActiveByDeletedComment(eq(commentId));
   }
 
   @Test

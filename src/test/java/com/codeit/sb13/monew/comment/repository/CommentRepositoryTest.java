@@ -11,6 +11,8 @@ import com.codeit.sb13.monew.comment.repository.dto.CommentSearchProjection;
 import com.codeit.sb13.monew.comment.repository.dto.CommentSearchResult;
 import com.codeit.sb13.monew.comment.repository.dto.RecentCommentActivityProjection;
 import com.codeit.sb13.monew.comment.service.CommentOrderBy;
+import static com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus.ARTICLE_DELETED;
+import static com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus.COMMENT_DELETED;
 import com.codeit.sb13.monew.global.config.JpaAuditingConfig;
 import com.codeit.sb13.monew.global.config.QueryDslConfig;
 import com.codeit.sb13.monew.global.exception.comment.CommentSearchConditionInvalidException;
@@ -742,6 +744,31 @@ class CommentRepositoryTest {
         Comment deletedComment = commentRepository.findById(comment.getId()).orElseThrow();
         assertThat(deletedComment.getDeletedAt()).isEqualTo(deletedAt);
         assertThat(deletedComment.getUpdatedAt()).isEqualTo(deletedAt);
+        assertThat(deletedComment.getVisibilityStatus()).isEqualTo(COMMENT_DELETED);
+    }
+
+    @Test
+    @DisplayName("이미 다른 사유로 노출 상태가 갱신된 댓글도 자신의 논리 삭제 시 COMMENT_DELETED로 덮어쓴다")
+    void softDeleteIfNotDeleted_overwritesExistingNonActiveVisibilityStatus() {
+        User writer = userRepository.saveAndFlush(new User(
+            "soft-delete-overwrite-writer@email.com", "작성자", "testPassword!"));
+        Article article = articleRepository.saveAndFlush(
+            createArticle("테스트 기사", "테스트 기사 내용", "soft-delete-overwrite-link"));
+        Comment comment = commentRepository.saveAndFlush(new Comment(article, writer, "삭제할 댓글"));
+        em.getEntityManager()
+            .createQuery("UPDATE Comment c SET c.visibilityStatus = :status WHERE c.id = :id")
+            .setParameter("status", ARTICLE_DELETED)
+            .setParameter("id", comment.getId())
+            .executeUpdate();
+        em.clear();
+
+        LocalDateTime deletedAt = LocalDateTime.of(2026, 8, 26, 12, 0);
+        int updatedCount = commentRepository.softDeleteIfNotDeleted(comment.getId(), deletedAt);
+        em.clear();
+
+        assertThat(updatedCount).isEqualTo(1);
+        Comment deletedComment = commentRepository.findById(comment.getId()).orElseThrow();
+        assertThat(deletedComment.getVisibilityStatus()).isEqualTo(COMMENT_DELETED);
     }
 
     @Test

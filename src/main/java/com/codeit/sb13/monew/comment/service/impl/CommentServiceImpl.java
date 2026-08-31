@@ -1,5 +1,6 @@
 package com.codeit.sb13.monew.comment.service.impl;
 
+import com.codeit.sb13.monew.activity.service.ActivityVisibilityUpdater;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.repository.ArticleRepository;
 import com.codeit.sb13.monew.comment.domain.Comment;
@@ -39,6 +40,7 @@ public class CommentServiceImpl implements CommentService {
   private final UserRepository userRepository;
   private final ArticleRepository articleRepository;
   private final CommentLikeRepository commentLikeRepository;
+  private final ActivityVisibilityUpdater activityVisibilityUpdater;
   // TODO: 추후 UserService나 사용자 조회 전용 컴포넌트에 조회 메서드를 두고 해당 서비스를 통해 사용자 정보 가져오도록 변경
 
   @Transactional
@@ -129,6 +131,9 @@ public class CommentServiceImpl implements CommentService {
       // API 계약상 이미 삭제된 댓글과 존재하지 않는 댓글 모두 404로 응답한다 ("404 댓글 정보 없음")
       throw new CommentNotFoundException(commentId);
     }
+
+    long commentLikeCount = activityVisibilityUpdater.hideActiveByDeletedComment(commentId);
+    log.info("댓글 논리 삭제 성공 - commentId: {}, 숨김 처리된 댓글 좋아요 수: {}", commentId, commentLikeCount);
   }
 
   @Transactional
