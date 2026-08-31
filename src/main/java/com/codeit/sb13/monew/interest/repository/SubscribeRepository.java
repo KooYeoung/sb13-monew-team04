@@ -5,10 +5,10 @@ import com.codeit.sb13.monew.interest.repository.dto.InterestSubscriberRow;
 import com.codeit.sb13.monew.interest.repository.dto.SubscribedInterestActivityProjection;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import java.util.UUID;
 
 public interface SubscribeRepository extends JpaRepository<Subscribe, UUID> {
 
@@ -43,12 +43,18 @@ public interface SubscribeRepository extends JpaRepository<Subscribe, UUID> {
     void deleteByInterest_IdAndUserId(UUID interestId, UUID userId);
 
     /**
-     * 특정 관심사를 구독 중인 사용자 수를 센다.
+     * 특정 관심사의 활성 구독 수를 센다.
      *
      * @param interestId 구독자 수를 셀 관심사의 id
-     * @return 해당 관심사를 구독 중인 사용자 수
+     * @return 해당 관심사의 활성 구독자 수
      */
-    long countByInterest_Id(UUID interestId);
+    @Query("""
+        SELECT COUNT(s)
+        FROM Subscribe s
+        WHERE s.interest.id = :interestId
+            AND s.visibilityStatus = 'ACTIVE'
+    """)
+    long countActiveByInterestId(@Param("interestId") UUID interestId);
 
     /**
      * 특정 사용자가 특정 관심사를 이미 구독하고 있는지 조회한다.
@@ -64,18 +70,18 @@ public interface SubscribeRepository extends JpaRepository<Subscribe, UUID> {
     Optional<Subscribe> findByInterest_IdAndUserId(UUID interestId, UUID userId);
 
     /**
-     * 여러 관심사를 구독 중인 (논리 삭제되지 않은) 사용자들을, 관심사 id와 사용자를
+     * 여러 관심사를 활성 상태로 구독 중인 사용자들을, 관심사 id와 사용자를
      * 한 쌍씩 묶어 한 번의 쿼리로 조회한다.
      *
      * <p>신규 기사가 여러 관심사의 키워드와 동시에 매칭됐을 때,
      * {@link com.codeit.sb13.monew.interest.service.InterestServiceImpl#notifyForNewArticles}가
      * 매칭된 관심사 수만큼 이 조회를 반복하지 않고, 매칭된 관심사 id 전체를 모아 이
-     * 메서드를 한 번만 호출해 알림 수신자를 가져온다. {@code Subscribe}는 {@code User}를
-     * 정식 연관관계로 갖지 않고 {@code userId} 값만 가지므로, 이 조회에서
-     * {@code User}를 직접 조인해 논리 삭제된 사용자를 걸러낸다.</p>
+     * 메서드를 한 번만 호출해 알림 수신자를 가져온다. 구독 노출 여부는
+     * {@code Subscribe.visibilityStatus}로 판단하고, {@code User} 조인은 알림 수신자
+     * 엔티티를 projection에 담기 위해서만 사용한다.</p>
      *
      * @param interestIds 구독자를 조회할 관심사 id 목록
-     * @return 관심사 id와 그 관심사를 구독 중인, 논리 삭제되지 않은 사용자를 한 쌍씩 담은 목록.
+     * @return 관심사 id와 그 관심사를 활성 상태로 구독 중인 사용자를 한 쌍씩 담은 목록.
      *         호출부에서 {@code interestId} 기준으로 그룹화해 사용한다.
      */
     @Query("""
@@ -83,7 +89,7 @@ public interface SubscribeRepository extends JpaRepository<Subscribe, UUID> {
         FROM Subscribe s
         JOIN User u ON u.id = s.userId
         WHERE s.interest.id IN :interestIds
-            AND u.deletedAt IS NULL
+            AND s.visibilityStatus = 'ACTIVE'
     """)
     List<InterestSubscriberRow> findSubscriberUsersByInterestIds(@Param("interestIds") List<UUID> interestIds);
 
@@ -92,18 +98,17 @@ public interface SubscribeRepository extends JpaRepository<Subscribe, UUID> {
      * 중복 제거해 조회한다.
      *
      * <p>{@link com.codeit.sb13.monew.interest.service.InterestServiceImpl#findSubscribedKeywords}가
-     * 네이버 뉴스 검색어를 정하기 위해 이 메서드를 쓴다. 구독자가 논리 삭제된 경우는
-     * 구독이 없는 것으로 본다.</p>
+     * 네이버 뉴스 검색어를 정하기 위해 이 메서드를 쓴다. ACTIVE 상태의 구독이 없는
+     * 관심사는 수집 대상에서 제외한다.</p>
      *
-     * @return 구독 중인 관심사들의 키워드 문자열 목록 (중복 제거, 순서는 보장하지 않는다)
+     * @return 활성 구독이 있는 관심사들의 키워드 문자열 목록 (중복 제거, 순서는 보장하지 않는다)
      */
     @Query("""
         SELECT DISTINCT k.keyword
         FROM Subscribe s
         JOIN s.interest i
         JOIN i.keywords k
-        JOIN User u ON u.id = s.userId
-        WHERE u.deletedAt IS NULL
+        WHERE s.visibilityStatus = 'ACTIVE'
     """)
     List<String> findDistinctKeywordsOfSubscribedInterests();
 
@@ -114,9 +119,8 @@ public interface SubscribeRepository extends JpaRepository<Subscribe, UUID> {
      * 관심사 전체를 반환한다. 구독 해제는 {@code subscriptions} 행이 물리적으로 사라진
      * 상태로 보므로, 구독 행이 없는 관심사는 자연스럽게 결과에서 제외된다.</p>
      *
-     * <p>요청 사용자 자체가 논리삭제된 경우에는 활동내역을 보여주지 않기 위해 결과를
-     * 반환하지 않는다. 관심사별 구독자 수 역시 논리삭제되지 않은 사용자들의 구독만
-     * 집계한다.</p>
+     * <p>요청 사용자의 구독이 비ACTIVE 상태이면 활동내역에서 제외한다. 관심사별
+     * 구독자 수 역시 ACTIVE 상태의 구독만 집계한다.</p>
      *
      * @param userId 활동내역을 조회할 사용자 id
      * @return 사용자가 현재 구독 중인 관심사 목록

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import com.codeit.sb13.monew.global.config.JpaAuditingConfig;
+import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
 import com.codeit.sb13.monew.global.exception.ApiErrorCode;
 import com.codeit.sb13.monew.global.exception.interest.InterestSearchConditionInvalidException;
 import com.codeit.sb13.monew.global.config.QueryDslConfig;
@@ -60,17 +61,6 @@ class InterestRepositoryCustomImplTest {
         return user.getId();
     }
 
-    private UUID persistDeletedUser() {
-        User user = User.builder()
-                .email(UUID.randomUUID() + "@test.com")
-                .nickname("탈퇴자")
-                .password("password")
-                .build();
-        em.persist(user);
-        user.softDelete();
-        return user.getId();
-    }
-
     private Interest persistInterest(String name, String... keywords) {
         Interest interest = Interest.create(name);
         for (String keyword : keywords) {
@@ -80,8 +70,21 @@ class InterestRepositoryCustomImplTest {
         return interest;
     }
 
-    private void subscribe(Interest interest, UUID userId) {
-        em.persist(Subscribe.of(interest, userId));
+    private Subscribe subscribe(Interest interest, UUID userId) {
+        Subscribe subscribe = Subscribe.of(interest, userId);
+        em.persist(subscribe);
+        return subscribe;
+    }
+
+    private void updateSubscribeVisibilityStatus(
+            Subscribe subscribe,
+            ActivityVisibilityStatus status
+    ) {
+        em.getEntityManager()
+                .createQuery("UPDATE Subscribe s SET s.visibilityStatus = :status WHERE s.id = :id")
+                .setParameter("status", status)
+                .setParameter("id", subscribe.getId())
+                .executeUpdate();
     }
 
     /**
@@ -175,23 +178,28 @@ class InterestRepositoryCustomImplTest {
     }
 
     @Test
-    @DisplayName("논리 삭제된 사용자의 구독은 구독자 수에서 제외한다")
-    void search_excludesSubscriptionsFromDeletedUsers() {
+    @DisplayName("USER_DELETED 상태 구독은 구독자 수와 요청자 구독 여부에서 제외한다")
+    void search_excludesInactiveSubscriptionFromCountAndSubscribedByMe() {
+        UUID requester = persistUser();
         UUID activeUser = persistUser();
-        UUID deletedUser = persistDeletedUser();
 
         Interest interest = persistInterest("관심사", "키워드");
         em.flush();
 
         subscribe(interest, activeUser);
-        subscribe(interest, deletedUser);
+        Subscribe inactiveSubscribe = subscribe(interest, requester);
         em.flush();
+        updateSubscribeVisibilityStatus(
+                inactiveSubscribe,
+                ActivityVisibilityStatus.USER_DELETED
+        );
         em.clear();
 
         InterestSearchPage page = interestRepository.search(new InterestSearchCondition(
-                null, InterestOrderBy.NAME, Sort.Direction.ASC, null, null, 10, null));
+                null, InterestOrderBy.NAME, Sort.Direction.ASC, null, null, 10, requester));
 
         assertThat(subscriberCountsOf(page).get(interest.getId())).isEqualTo(1L);
+        assertThat(subscribedInterestIdsOf(page)).doesNotContain(interest.getId());
     }
 
     @Test
@@ -208,7 +216,17 @@ class InterestRepositoryCustomImplTest {
         subscribe(twoSubscribers, userA);
         subscribe(twoSubscribers, userB);
         subscribe(oneSubscriber, userA);
+        Subscribe inactiveSubscribe1 = subscribe(oneSubscriber, persistUser());
+        Subscribe inactiveSubscribe2 = subscribe(oneSubscriber, persistUser());
         em.flush();
+        updateSubscribeVisibilityStatus(
+                inactiveSubscribe1,
+                ActivityVisibilityStatus.USER_DELETED
+        );
+        updateSubscribeVisibilityStatus(
+                inactiveSubscribe2,
+                ActivityVisibilityStatus.USER_DELETED
+        );
         em.clear();
 
         InterestSearchPage page = interestRepository.search(new InterestSearchCondition(
@@ -314,7 +332,17 @@ class InterestRepositoryCustomImplTest {
         subscribe(oneSubscriber, userA);
         subscribe(twoSubscribers, userA);
         subscribe(twoSubscribers, userB);
+        Subscribe inactiveSubscribe1 = subscribe(oneSubscriber, persistUser());
+        Subscribe inactiveSubscribe2 = subscribe(oneSubscriber, persistUser());
         em.flush();
+        updateSubscribeVisibilityStatus(
+                inactiveSubscribe1,
+                ActivityVisibilityStatus.USER_DELETED
+        );
+        updateSubscribeVisibilityStatus(
+                inactiveSubscribe2,
+                ActivityVisibilityStatus.USER_DELETED
+        );
         em.clear();
 
         InterestSearchPage firstPage = interestRepository.search(new InterestSearchCondition(

@@ -338,7 +338,7 @@ class InterestServiceTest {
         InterestUpdateCommand command = new InterestUpdateCommand(interest.getId(), List.of("농구", "배구"));
 
         when(interestRepository.findById(interest.getId())).thenReturn(Optional.of(interest));
-        when(subscribeRepository.countByInterest_Id(interest.getId())).thenReturn(3L);
+        when(subscribeRepository.countActiveByInterestId(interest.getId())).thenReturn(3L);
 
         // when
         InterestResponse response = interestServiceImpl.update(command);
@@ -361,7 +361,7 @@ class InterestServiceTest {
         assertThatThrownBy(() -> interestServiceImpl.update(command))
                 .isInstanceOf(InterestNotFoundException.class);
 
-        verify(subscribeRepository, never()).countByInterest_Id(any());
+        verify(subscribeRepository, never()).countActiveByInterestId(any());
     }
 
     @Test
@@ -378,7 +378,7 @@ class InterestServiceTest {
         assertThatThrownBy(() -> interestServiceImpl.update(command))
                 .isInstanceOf(InterestKeywordRequiredException.class);
 
-        verify(subscribeRepository, never()).countByInterest_Id(any());
+        verify(subscribeRepository, never()).countActiveByInterestId(any());
     }
 
     @Test

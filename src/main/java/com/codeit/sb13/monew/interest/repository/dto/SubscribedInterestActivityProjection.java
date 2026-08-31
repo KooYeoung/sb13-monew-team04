@@ -15,7 +15,7 @@ import java.util.UUID;
  * @param id 구독 id
  * @param createdAt 구독 생성 시각. 관심사 생성 시각이 아니라 {@code subscriptions.created_at} 값이다.
  * @param interest 조회 시점의 관심사 엔티티
- * @param interestSubscriberCount 이 관심사를 구독 중인 논리삭제되지 않은 사용자 수
+ * @param interestSubscriberCount 이 관심사의 현재 활성 구독자 수
  */
 public record SubscribedInterestActivityProjection(
         UUID id,

@@ -12,8 +12,8 @@ import java.util.UUID;
  * @param id 관심사 id
  * @param name 관심사 이름
  * @param keywords 관심사에 속한 키워드 텍스트 목록
- * @param subscriberCount 이 관심사를 구독 중인 사용자 수
- * @param subscribedByMe 이 응답을 요청한 사용자가 구독 중인지 여부
+ * @param subscriberCount 이 관심사의 현재 활성 구독자 수
+ * @param subscribedByMe 이 응답을 요청한 사용자가 활성 상태로 구독 중인지 여부
  * @param createdAt 관심사 생성 시각
  */
 public record InterestResponse(
@@ -33,8 +33,8 @@ public record InterestResponse(
      * 계산해 넘겨줘야 한다.</p>
      *
      * @param interest 응답으로 변환할 관심사 엔티티
-     * @param subscriberCount 이 관심사를 구독 중인 사용자 수
-     * @param subscribedByMe 요청한 사용자의 구독 여부
+     * @param subscriberCount 이 관심사의 현재 활성 구독자 수
+     * @param subscribedByMe 요청한 사용자의 활성 구독 여부
      * @return 변환된 응답 DTO
      */
     public static InterestResponse of(Interest interest, long subscriberCount, boolean subscribedByMe) {

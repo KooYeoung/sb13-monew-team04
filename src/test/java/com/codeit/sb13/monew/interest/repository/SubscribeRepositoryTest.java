@@ -148,13 +148,19 @@ class SubscribeRepositoryTest {
         }
 
         @Test
-        @DisplayName("논리 삭제된 사용자는 제외한다")
-        void excludesDeletedUsers() {
+        @DisplayName("USER_DELETED 상태 구독의 사용자는 제외한다")
+        void excludesUsersWithInactiveSubscriptions() {
             Interest interest = persistInterest("스포츠", "축구");
             User active = persistUser("활성사용자");
-            User deleted = persistDeletedUser("삭제사용자");
+            User inactive = persistUser("비활성구독자");
             persistSubscribe(interest, active);
-            persistSubscribe(interest, deleted);
+            Subscribe inactiveSubscribe = persistSubscribe(interest, inactive);
+            em.flush();
+            updateSubscribeVisibilityStatus(
+                    inactiveSubscribe.getId(),
+                    ActivityVisibilityStatus.USER_DELETED
+            );
+            em.clear();
 
             List<InterestSubscriberRow> result =
                     subscribeRepository.findSubscriberUsersByInterestIds(List.of(interest.getId()));
@@ -224,10 +230,19 @@ class SubscribeRepositoryTest {
         }
 
         @Test
-        @DisplayName("논리 삭제된 사용자의 구독은 제외한다")
-        void excludesSubscriptionsOfDeletedUsers() {
+        @DisplayName("USER_DELETED 상태 구독의 관심사 키워드는 제외한다")
+        void excludesKeywordsOfInactiveSubscriptions() {
             Interest interest = persistInterest("스포츠", "축구");
-            persistSubscribe(interest, persistDeletedUser("삭제사용자"));
+            Subscribe inactiveSubscribe = persistSubscribe(
+                    interest,
+                    persistUser("비활성구독자")
+            );
+            em.flush();
+            updateSubscribeVisibilityStatus(
+                    inactiveSubscribe.getId(),
+                    ActivityVisibilityStatus.USER_DELETED
+            );
+            em.clear();
 
             List<String> result = subscribeRepository.findDistinctKeywordsOfSubscribedInterests();
 
@@ -246,16 +261,24 @@ class SubscribeRepositoryTest {
     }
 
     @Test
-    @DisplayName("countByInterest_Id()는 해당 관심사를 구독 중인 사용자 수만 센다")
-    void countByInterest_Id_countsOnlyThatInterestsSubscriptions() {
+    @DisplayName("countActiveByInterestId()는 해당 관심사의 ACTIVE 구독만 센다")
+    void countActiveByInterestId_countsOnlyActiveSubscriptionsOfTargetInterest() {
         Interest target = persistInterest("스포츠", "축구");
         Interest other = persistInterest("여행", "국내여행");
 
         em.persistAndFlush(Subscribe.of(target, UUID.randomUUID()));
         em.persistAndFlush(Subscribe.of(target, UUID.randomUUID()));
+        Subscribe inactiveSubscribe = em.persistAndFlush(
+                Subscribe.of(target, UUID.randomUUID())
+        );
         em.persistAndFlush(Subscribe.of(other, UUID.randomUUID()));
+        updateSubscribeVisibilityStatus(
+                inactiveSubscribe.getId(),
+                ActivityVisibilityStatus.USER_DELETED
+        );
+        em.clear();
 
-        long count = subscribeRepository.countByInterest_Id(target.getId());
+        long count = subscribeRepository.countActiveByInterestId(target.getId());
 
         assertThat(count).isEqualTo(2L);
     }
@@ -324,7 +347,7 @@ class SubscribeRepositoryTest {
     }
 
     @Test
-    @DisplayName("논리삭제된 요청 사용자의 구독 활동은 제외된다")
+    @DisplayName("USER_DELETED 상태의 요청 사용자 구독 활동은 제외된다")
     void findSubscribedInterestActivities_deletedRequester_returnsEmptyList() {
         User requester = persistDeletedUser("삭제사용자");
         Interest interest = persistInterest("스포츠", "축구");
@@ -337,7 +360,7 @@ class SubscribeRepositoryTest {
     }
 
     @Test
-    @DisplayName("구독자 수는 논리삭제되지 않은 사용자만 집계한다")
+    @DisplayName("구독자 수는 ACTIVE 상태의 구독만 집계한다")
     void findSubscribedInterestActivities_countsOnlyActiveSubscribers() {
         User requester = persistUser("요청자");
         User activeUser = persistUser("활성사용자");

@@ -13,7 +13,7 @@ import java.util.UUID;
  * 목록을 복원할 수 있게 한다.</p>
  *
  * @param interestId 사용자가 구독 중인 관심사의 id
- * @param user       그 관심사를 구독 중인, 논리 삭제되지 않은 사용자
+ * @param user       그 관심사를 활성 상태로 구독 중인 사용자
  */
 public record InterestSubscriberRow(
         UUID interestId,

@@ -46,7 +46,7 @@ public class SubscribeServiceImpl implements SubscribeService {
         Subscribe subscribe = subscribeRepository.findByInterest_IdAndUserId(interestId, userId)
                 .orElseGet(() -> saveSubscribe(interest, userId));
 
-        long subscriberCount = subscribeRepository.countByInterest_Id(interestId);
+        long subscriberCount = subscribeRepository.countActiveByInterestId(interestId);
         return SubscribeResponse.of(subscribe, subscriberCount);
     }
 

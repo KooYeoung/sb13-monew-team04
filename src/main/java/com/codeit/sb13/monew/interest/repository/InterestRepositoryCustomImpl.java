@@ -1,8 +1,8 @@
 package com.codeit.sb13.monew.interest.repository;
 
+import static com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus.ACTIVE;
 import static com.codeit.sb13.monew.interest.domain.QInterest.interest;
 import static com.codeit.sb13.monew.interest.domain.QSubscribe.subscribe;
-import static com.codeit.sb13.monew.user.domain.QUser.user;
 
 import com.codeit.sb13.monew.global.exception.interest.InterestSearchConditionInvalidException;
 import com.codeit.sb13.monew.interest.domain.QKeyword;
@@ -36,12 +36,9 @@ import org.springframework.util.StringUtils;
  * 집계도 흐트러진다. 서브쿼리는 관심사 1건당 정확히 1행을 유지하면서 값만 끌어오므로
  * 이 문제가 생기지 않는다.</p>
  *
- * <p>구독자 수는 논리 삭제된 사용자의 구독을 제외하고 센다. {@code Subscribe.userId}가
- * {@code User}를 정식 연관관계가 아니라 값으로만 들고 있어, {@code users}를 직접 조인해
- * {@code deletedAt IS NULL}을 걸어야 한다. 이 프로젝트의 다른 구독자 조회
- * ({@code SubscribeRepository#findSubscriberUsersByInterestIds} 등)와 댓글 좋아요 수
- * ({@code CommentRepositoryCustomImpl#likeCountExpression})도 같은 방식으로 탈퇴한
- * 사용자를 제외하므로, 이 클래스만 예외를 둘 이유가 없다.</p>
+ * <p>구독자 수와 요청자의 구독 여부는 {@code Subscribe.visibilityStatus = ACTIVE}인
+ * 구독만 대상으로 계산한다. 사용자 삭제 시 구독의 노출 상태가 함께 갱신되므로,
+ * 조회마다 {@code users}를 조인해 {@code deletedAt}을 다시 확인하지 않는다.</p>
  */
 @RequiredArgsConstructor
 public class InterestRepositoryCustomImpl implements InterestRepositoryCustom {
@@ -157,7 +154,7 @@ public class InterestRepositoryCustomImpl implements InterestRepositoryCustom {
      * {@link #resolveAnchor}가 다시 조회한 앵커 행의 값을 담는 보관용 클래스.
      *
      * <p>{@code name}은 앵커 관심사의 현재 이름, {@code subscriberCount}는 앵커 관심사의
-     * 현재 구독자 수(논리 삭제된 사용자는 제외하고 센 값)이다. {@link #resolveAnchor}에서
+     * 현재 활성 구독자 수이다. {@link #resolveAnchor}에서
      * {@code Tuple} 조회 결과로 채워 넣는다.</p>
      */
     private static final class AnchorRow {
@@ -183,16 +180,15 @@ public class InterestRepositoryCustomImpl implements InterestRepositoryCustom {
         return Expressions.asNumber(
                 JPAExpressions.select(subscribe.count())
                         .from(subscribe)
-                        .join(user).on(user.id.eq(subscribe.userId))
                         .where(
                                 subscribe.interest.eq(interest),
-                                user.deletedAt.isNull()
+                                subscribe.visibilityStatus.eq(ACTIVE)
                         )
         );
     }
 
     /**
-     * 요청자가 이 관심사를 구독 중인지 여부를 서브쿼리로 계산한다.
+     * 요청자가 이 관심사를 활성 상태로 구독 중인지 여부를 서브쿼리로 계산한다.
      *
      * <p>{@code requestUserId}가 {@code null}이면(비로그인 요청) 구독 여부를 물을 대상이
      * 없으므로 서브쿼리 없이 상수 {@code false}를 돌려준다. {@code subscribe.userId.eq(null)}을
@@ -206,7 +202,11 @@ public class InterestRepositoryCustomImpl implements InterestRepositoryCustom {
 
         return JPAExpressions.selectOne()
                 .from(subscribe)
-                .where(subscribe.interest.eq(interest), subscribe.userId.eq(requestUserId))
+                .where(
+                        subscribe.interest.eq(interest),
+                        subscribe.userId.eq(requestUserId),
+                        subscribe.visibilityStatus.eq(ACTIVE)
+                )
                 .exists();
     }
 

@@ -19,7 +19,7 @@ import java.util.UUID;
  * @param interestId 구독한 관심사 id
  * @param interestName 관심사 이름
  * @param interestKeywords 관심사에 등록된 키워드 목록
- * @param interestSubscriberCount 관심사의 현재 구독자 수
+ * @param interestSubscriberCount 관심사의 현재 활성 구독자 수
  * @param createdAt 구독한 시각
  */
 public record SubscribeResponse(
