@@ -31,6 +31,14 @@ param(
     [int] $MaxVUs = 500,
     [string] $PgContainer = 'sb13-monew-team04-postgres-1',
     [string] $MongoContainer = '',
+    [ValidatePattern('^MID4-[0-9]+$')]
+    [string] $Ticket = 'MID4-206',
+    [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]*$')]
+    [string] $ResultSet = 'mid4-206-mongodb-k6-compare',
+    [ValidateRange(1, 20)]
+    [int] $RepeatCount = 1,
+    [ValidateRange(0, 3600)]
+    [int] $StabilizationSeconds = 0,
     [int] $StatsDelaySeconds = 30,
     [switch] $AllowFailure
 )
@@ -38,7 +46,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
-$resultRoot = Join-Path $repoRoot 'scripts\performance\activity-history\k6\results\mid4-206-mongodb-k6-compare'
+$resultRoot = Join-Path $repoRoot "scripts\performance\activity-history\k6\results\$ResultSet"
 $rawRoot = Join-Path $resultRoot 'raw'
 
 if (-not (Test-Path -LiteralPath $resultRoot)) {
@@ -174,13 +182,16 @@ function Get-ScenarioVus {
 function New-K6Environment {
     param(
         [int] $RunRate,
-        [string] $SummaryName
+        [string] $SummaryName,
+        [int] $RunIndex
     )
 
     $environment = @{
         K6_SCRIPT = Resolve-K6ScriptPath
         K6_SCENARIO = $Scenario
         K6_VARIANT = $Variant
+        K6_TICKET = $Ticket
+        K6_RUN_INDEX = [string] $RunIndex
         K6_BASE_URL = $BaseUrl
         K6_ACTIVITY_HISTORY_PATH_TEMPLATE = $PathTemplate
         K6_TARGET_USER_ID = $TargetUserIds[0]
@@ -193,7 +204,7 @@ function New-K6Environment {
         K6_MIX_COMMENT_IDS = ($MixCommentIds -join ',')
         K6_MIX_INTEREST_IDS = ($MixInterestIds -join ',')
         K6_MIX_WRITE_USER_IDS = ($MixWriteUserIds -join ',')
-        K6_SUMMARY_PATH = "/results/mid4-206-mongodb-k6-compare/$SummaryName"
+        K6_SUMMARY_PATH = "/results/$ResultSet/$SummaryName"
         K6_HTTP_REQ_FAILED_RATE_THRESHOLD = '0.01'
         K6_HTTP_REQ_DURATION_P95_THRESHOLD = '200'
         K6_HTTP_REQ_DURATION_P99_THRESHOLD = '500'
@@ -230,21 +241,23 @@ function New-K6Environment {
 
 function Invoke-K6Run {
     param(
-        [int] $RunRate
+        [int] $RunRate,
+        [int] $RunIndex
     )
 
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $runVariantLabel = Resolve-RunVariantLabel
+    $repeatLabel = if ($RepeatCount -gt 1) { "-run$RunIndex" } else { '' }
     $runLabel = if ($Scenario -eq 'throughput') {
-        "$runVariantLabel-$Scenario-${RunRate}rps-$timestamp"
+        "$runVariantLabel-$Scenario-${RunRate}rps$repeatLabel-$timestamp"
     } elseif ($Scenario -eq 'stress') {
-        "$runVariantLabel-$Scenario-$timestamp"
+        "$runVariantLabel-$Scenario$repeatLabel-$timestamp"
     } else {
         $vus = Get-ScenarioVus
-        "$runVariantLabel-$Scenario-${vus}vus-$timestamp"
+        "$runVariantLabel-$Scenario-${vus}vus$repeatLabel-$timestamp"
     }
     $summaryName = "$(Resolve-SummaryPrefix)-$runLabel-summary.json"
-    $k6Environment = New-K6Environment $RunRate $summaryName
+    $k6Environment = New-K6Environment $RunRate $summaryName $RunIndex
 
     Write-Output "k6 run start: $runLabel script=$K6Script"
     Invoke-DockerStats 'before' $runLabel
@@ -294,10 +307,32 @@ function Invoke-K6Run {
     }
 }
 
+function Wait-Stabilization {
+    if ($StabilizationSeconds -le 0) {
+        return
+    }
+
+    Write-Output "stabilization wait: ${StabilizationSeconds}s"
+    Start-Sleep -Seconds $StabilizationSeconds
+}
+
+$hasCompletedRun = $false
 if ($Scenario -eq 'throughput') {
     foreach ($rate in $Rates) {
-        Invoke-K6Run $rate
+        for ($runIndex = 1; $runIndex -le $RepeatCount; $runIndex++) {
+            if ($hasCompletedRun) {
+                Wait-Stabilization
+            }
+            Invoke-K6Run $rate $runIndex
+            $hasCompletedRun = $true
+        }
     }
 } else {
-    Invoke-K6Run 0
+    for ($runIndex = 1; $runIndex -le $RepeatCount; $runIndex++) {
+        if ($hasCompletedRun) {
+            Wait-Stabilization
+        }
+        Invoke-K6Run 0 $runIndex
+        $hasCompletedRun = $true
+    }
 }

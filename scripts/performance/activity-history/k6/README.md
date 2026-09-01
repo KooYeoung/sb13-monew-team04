@@ -106,6 +106,8 @@ macOS, Linux, Git Bash에서는 줄바꿈 문자를 `\`로 바꿔 실행합니�
 | `K6_BASE_URL` | `http://host.docker.internal:8080` | 애플리케이션 서버 URL |
 | `K6_ACTIVITY_HISTORY_PATH_TEMPLATE` | `/api/user-activities/{userId}` | 활동내역 API path 또는 전체 URL |
 | `K6_VARIANT` | `rdb` | 결과 구분용 variant, `rdb` 또는 `mongo` |
+| `K6_TICKET` | `MID4-206` | summary에 기록할 Jira 티켓 번호 |
+| `K6_RUN_INDEX` | `1` | 같은 조건 반복 측정의 실행 순번 |
 | `K6_TARGET_USER_ID` | `00000001-0000-4000-8000-000000000001` | 단일 측정 대상 사용자 ID |
 | `K6_TARGET_USER_IDS` | 없음 | 콤마로 구분한 측정 대상 사용자 ID 목록 |
 | `K6_USER_PICK_STRATEGY` | `single` | 사용자 선택 방식, `single`, `round-robin`, `random` |
@@ -177,5 +179,21 @@ scripts/performance/activity-history/k6/results/activity-history-{variant}-{scen
 ```text
 scripts/performance/activity-history/k6/results/mid4-206-mongodb-k6-compare/
 ```
+
+다른 Jira 측정 결과는 `-ResultSet`으로 별도 디렉터리에 저장할 수 있습니다. 값에는 영문자, 숫자, `.`, `_`, `-`만 사용할 수 있습니다.
+
+```powershell
+.\scripts\performance\activity-history\k6\run-mongodb-compare.ps1 `
+  -Ticket MID4-227 `
+  -Variant rdb `
+  -Scenario throughput `
+  -Rates 10,20,30,40,50 `
+  -Duration 1m `
+  -RepeatCount 3 `
+  -StabilizationSeconds 30 `
+  -ResultSet mid4-227-rdb-fanout
+```
+
+`-RepeatCount`는 같은 부하를 지정 횟수만큼 반복하고 summary에 `runIndex`를 기록합니다. `-StabilizationSeconds`는 첫 실행을 제외한 측정 사이의 대기 시간입니다.
 
 `results` 디렉터리는 Git에 포함하지 않습니다.

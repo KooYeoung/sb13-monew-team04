@@ -115,7 +115,8 @@ export default function () {
 
 export function handleSummary(data) {
   const summary = {
-    ticket: 'MID4-206',
+    ticket: __ENV.K6_TICKET || 'MID4-206',
+    runIndex: Number(__ENV.K6_RUN_INDEX || '1'),
     scenario: SCENARIO,
     variant: VARIANT,
     workload: 'mixed',
