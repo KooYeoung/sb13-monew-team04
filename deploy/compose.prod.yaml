@@ -19,6 +19,7 @@ services:
       - .env.prod
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      TZ: Asia/Seoul
     ports:
       # 127.0.0.1에만 바인딩한다. 즉 EC2 밖에서 8080으로 직접 접근할 수 없고,
       # 반드시 같은 서버의 Nginx(80번 포트)를 거쳐야 한다.
