@@ -122,6 +122,13 @@ public class UserServiceImpl implements UserService {
 
   @Override
   @Transactional(readOnly = true)
+  public User findActiveById(UUID userId) {
+    return userRepository.findByIdAndDeletedAtIsNull(userId)
+        .orElseThrow(() -> new UserNotFoundException(userId));
+  } // 삭제된 사용자가 댓글 생성하거나 좋아요 등록/취소 방지
+
+  @Override
+  @Transactional(readOnly = true)
   public void validateExists(UUID userId) {
     if (!userRepository.existsById(userId)) {
       throw new UserNotFoundException(userId);

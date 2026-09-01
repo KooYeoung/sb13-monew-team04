@@ -17,9 +17,8 @@ import com.codeit.sb13.monew.comment.service.dto.CommentUpdateCommand;
 import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
 import com.codeit.sb13.monew.global.exception.comment.CommentNotFoundException;
 import com.codeit.sb13.monew.global.exception.comment.CommentPermissionDeniedException;
-import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.user.domain.User;
-import com.codeit.sb13.monew.user.repository.UserRepository;
+import com.codeit.sb13.monew.user.service.UserService;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -37,18 +36,16 @@ import org.springframework.validation.annotation.Validated;
 public class CommentServiceImpl implements CommentService {
 
   private final CommentRepository commentRepository;
-  private final UserRepository userRepository;
+  private final UserService userService;
   private final ArticleRepository articleRepository;
   private final CommentLikeRepository commentLikeRepository;
   private final ActivityVisibilityUpdater activityVisibilityUpdater;
-  // TODO: 추후 UserService나 사용자 조회 전용 컴포넌트에 조회 메서드를 두고 해당 서비스를 통해 사용자 정보 가져오도록 변경
 
   @Transactional
   @Override
   public CommentDto create(CommentRegisterCommand command) { // 서비스 전용객체를 사용
     log.debug("댓글 생성 시작 - 기사 아이디: {}", command.articleId()); // 개인 정보 또는 민감한 정보는 로그에 남기지 않음
-    User user = userRepository.findByIdAndDeletedAtIsNull(command.userId())
-        .orElseThrow(()->new UserNotFoundException(command.userId()));
+    User user = userService.findActiveById(command.userId()); // 활성화된 사용자만 조회(논리 삭제된 사용자 댓글 생성 방지)
     Article article = articleRepository.findByIdAndDeletedAtIsNull(command.articleId())
         .orElseThrow(()->new ArticleNotFoundException(command.articleId()));
     Comment comment= Comment.builder()

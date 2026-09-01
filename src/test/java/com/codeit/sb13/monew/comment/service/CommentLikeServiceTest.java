@@ -25,7 +25,7 @@ import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.notification.service.NotificationService;
 import com.codeit.sb13.monew.notification.service.dto.CommentLikedDto;
 import com.codeit.sb13.monew.user.domain.User;
-import com.codeit.sb13.monew.user.repository.UserRepository;
+import com.codeit.sb13.monew.user.service.UserService;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -50,7 +50,7 @@ public class CommentLikeServiceTest {
   CommentLikeRepository commentLikeRepository;
 
   @Mock
-  UserRepository userRepository;
+  UserService userService;
 
   @Mock
   CommentRepository commentRepository;
@@ -113,7 +113,7 @@ public class CommentLikeServiceTest {
 
     CommentLikeResponseProjection responseProjection = responseProjection(commentLikeId, 1L);
 
-    given(userRepository.findByIdAndDeletedAtIsNull(likedBy.getId())).willReturn(Optional.of(likedBy));
+    given(userService.findActiveById(likedBy.getId())).willReturn(likedBy);
     given(commentRepository.findActiveById(comment.getId())).willReturn(Optional.of(comment));
     given(commentLikeRepository.findActiveResponseProjection(comment.getId(), likedBy.getId()))
         .willReturn(Optional.empty(), Optional.of(responseProjection));
@@ -136,7 +136,7 @@ public class CommentLikeServiceTest {
     );
 
     then(commentRepository).should(times(1)).findActiveById(comment.getId());
-    then(userRepository).should(times(1)).findByIdAndDeletedAtIsNull(likedBy.getId());
+    then(userService).should(times(1)).findActiveById(likedBy.getId());
     then(commentLikeRepository).should(times(2))
         .findActiveResponseProjection(comment.getId(), likedBy.getId());
     then(commentLikeSaveService).should(times(1)).create(comment.getId(), likedBy.getId());
@@ -161,7 +161,7 @@ public class CommentLikeServiceTest {
                 "uk_comment_likes_comment_liked_by"));
 
     given(commentRepository.findActiveById(comment.getId())).willReturn(Optional.of(comment));
-    given(userRepository.findByIdAndDeletedAtIsNull(likedBy.getId())).willReturn(Optional.of(likedBy));
+    given(userService.findActiveById(likedBy.getId())).willReturn(likedBy);
 
     given(commentLikeRepository.findActiveResponseProjection(comment.getId(), likedBy.getId()))
         .willReturn(Optional.empty(), Optional.of(responseProjection));
@@ -188,7 +188,7 @@ public class CommentLikeServiceTest {
     );
 
     then(commentRepository).should(times(1)).findActiveById(comment.getId());
-    then(userRepository).should(times(1)).findByIdAndDeletedAtIsNull(likedBy.getId());
+    then(userService).should(times(1)).findActiveById(likedBy.getId());
     then(commentLikeRepository).should(times(2))
         .findActiveResponseProjection(comment.getId(), likedBy.getId());
     then(commentLikeSaveService).should(times(1)).create(comment.getId(), likedBy.getId());
@@ -209,7 +209,7 @@ public class CommentLikeServiceTest {
     // ConstraintViolationException 추가, isDuplicateCommentLike 제약 조건 위반 이름 비교식의 false 경로까지 확인
 
     given(commentRepository.findActiveById(comment.getId())).willReturn(Optional.of(comment));
-    given(userRepository.findByIdAndDeletedAtIsNull(likedBy.getId())).willReturn(Optional.of(likedBy));
+    given(userService.findActiveById(likedBy.getId())).willReturn(likedBy);
     given(commentLikeRepository.findActiveResponseProjection(comment.getId(), likedBy.getId()))
         .willReturn(Optional.empty());
     doThrow(foreignKeyException).when(commentLikeSaveService)
@@ -232,9 +232,9 @@ public class CommentLikeServiceTest {
     CommentLikeRegisterCommand command = new CommentLikeRegisterCommand(comment.getId(), likedBy.getId());
 
     given(commentRepository.findActiveById(comment.getId())).willReturn(Optional.of(comment));
+    given(userService.findActiveById(likedBy.getId())).willReturn(likedBy);
     given(commentLikeRepository.findActiveResponseProjection(comment.getId(), likedBy.getId()))
         .willReturn(Optional.of(responseProjection));
-    given(userRepository.findByIdAndDeletedAtIsNull(likedBy.getId())).willReturn(Optional.of(likedBy));
 
     // when
     CommentLikeDto result = commentLikeService.likeComment(command);
@@ -253,7 +253,7 @@ public class CommentLikeServiceTest {
         () -> assertThat(result.commentCreatedAt()).isEqualTo(commentCreatedAt)
     );
     then(commentRepository).should(times(1)).findActiveById(comment.getId());
-    then(userRepository).should(times(1)).findByIdAndDeletedAtIsNull(likedBy.getId());
+    then(userService).should(times(1)).findActiveById(likedBy.getId());
     then(commentLikeRepository).should(times(1))
         .findActiveResponseProjection(comment.getId(), likedBy.getId());
     then(commentLikeSaveService).should(never()).create(any(UUID.class), any(UUID.class));
@@ -272,7 +272,7 @@ public class CommentLikeServiceTest {
     assertThatThrownBy(() -> commentLikeService.likeComment(command))
         .isInstanceOf(CommentNotFoundException.class);
 
-    then(userRepository).shouldHaveNoInteractions();
+    then(userService).shouldHaveNoInteractions();
     then(commentLikeRepository).shouldHaveNoInteractions();
     then(commentLikeSaveService).shouldHaveNoInteractions();
     then(notificationService).shouldHaveNoInteractions();
@@ -285,12 +285,14 @@ public class CommentLikeServiceTest {
     UUID unknownUserId = UUID.randomUUID();
     CommentLikeRegisterCommand command = new CommentLikeRegisterCommand(comment.getId(), unknownUserId);
     given(commentRepository.findActiveById(comment.getId())).willReturn(Optional.of(comment));
-    given(userRepository.findByIdAndDeletedAtIsNull(unknownUserId)).willReturn(Optional.empty());
+    given(userService.findActiveById(unknownUserId))
+        .willThrow(new UserNotFoundException(unknownUserId));
 
     // when & then
     assertThatThrownBy(() -> commentLikeService.likeComment(command))
         .isInstanceOf(UserNotFoundException.class);
 
+    then(userService).should(times(1)).findActiveById(unknownUserId);
     then(commentLikeRepository).shouldHaveNoInteractions();
     then(commentLikeSaveService).shouldHaveNoInteractions();
     then(notificationService).shouldHaveNoInteractions();
@@ -303,8 +305,7 @@ public class CommentLikeServiceTest {
     CommentLikeRegisterCommand command = new CommentLikeRegisterCommand(comment.getId(), likedBy.getId());
     given(commentRepository.findActiveById(comment.getId()))
         .willReturn(Optional.of(comment));
-    given(userRepository.findByIdAndDeletedAtIsNull(likedBy.getId()))
-        .willReturn(Optional.of(likedBy));
+    given(userService.findActiveById(likedBy.getId())).willReturn(likedBy);
     given(commentLikeRepository.deleteByCommentIdAndLikedById(comment.getId(), likedBy.getId()))
         .willReturn(1L);
 
@@ -314,6 +315,7 @@ public class CommentLikeServiceTest {
     // then
     then(commentLikeRepository).should(times(1))
         .deleteByCommentIdAndLikedById(comment.getId(), likedBy.getId());
+    then(userService).should(times(1)).findActiveById(likedBy.getId());
     then(notificationService).shouldHaveNoInteractions();
   }
 
@@ -323,13 +325,15 @@ public class CommentLikeServiceTest {
     // given
     CommentLikeRegisterCommand command = new CommentLikeRegisterCommand(comment.getId(), likedBy.getId());
     given(commentRepository.findActiveById(comment.getId())).willReturn(Optional.of(comment));
-    given(userRepository.findByIdAndDeletedAtIsNull(likedBy.getId())).willReturn(Optional.of(likedBy));
+    given(userService.findActiveById(likedBy.getId())).willReturn(likedBy);
     given(commentLikeRepository.deleteByCommentIdAndLikedById(comment.getId(), likedBy.getId()))
         .willReturn(0L);
 
     // when & then
     assertThatThrownBy(() -> commentLikeService.unlikeComment(command))
         .isInstanceOf(CommentLikeNotFoundException.class);
+
+    then(userService).should(times(1)).findActiveById(likedBy.getId());
   }
 
   @Test
@@ -341,7 +345,7 @@ public class CommentLikeServiceTest {
 
     CommentLikeResponseProjection responseProjection = responseProjection(commentLikeId, 1L);
 
-    given(userRepository.findByIdAndDeletedAtIsNull(likedBy.getId())).willReturn(Optional.of(likedBy));
+    given(userService.findActiveById(likedBy.getId())).willReturn(likedBy);
     given(commentRepository.findActiveById(comment.getId())).willReturn(Optional.of(comment));
     given(commentLikeRepository.findActiveResponseProjection(comment.getId(), likedBy.getId()))
             .willReturn(Optional.empty(), Optional.of(responseProjection));

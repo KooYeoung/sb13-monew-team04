@@ -1,6 +1,5 @@
 package com.codeit.sb13.monew.user.service;
 
-import com.codeit.sb13.monew.user.controller.dto.UserCreateResponse;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.service.dto.UserCreateCommand;
 import com.codeit.sb13.monew.user.service.dto.UserCreateResult;
@@ -19,6 +18,8 @@ public interface UserService {
    UserUpdateNicknameResult updateNickname(UserUpdateNicknameCommand command);
 
    User findById(UUID userId);
+
+   User findActiveById(UUID userId); // 활성 사용자 조회
 
    void validateExists(UUID userId);
 

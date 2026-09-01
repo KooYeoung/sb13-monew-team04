@@ -477,4 +477,31 @@ public class UserServiceImplTest {
   }
 
 
+
+  @Test
+  @DisplayName("논리 삭제되지 않은 사용자 ID로 findActiveById 요청 시 해당 사용자를 반환한다.")
+  void 활성_사용자_ID로_findActiveById_요청시_user_반환() {
+    UUID userId = UUID.randomUUID();
+    User user = User.builder()
+        .email("active@email.com")
+        .nickname("활성 사용자")
+        .password("PassWord123!")
+        .build();
+    when(userRepository.findByIdAndDeletedAtIsNull(userId)).thenReturn(Optional.of(user));
+
+    User actualUser = userServiceImpl.findActiveById(userId);
+
+    assertThat(actualUser).isEqualTo(user);
+  }
+
+  @Test
+  @DisplayName("삭제되었거나 존재하지 않는 사용자 ID로 findActiveById 요청 시 UserNotFoundException 예외를 던진다.")
+  void 비활성_사용자_ID로_findActiveById_요청시_예외를_던진다() {
+    UUID userId = UUID.randomUUID();
+    when(userRepository.findByIdAndDeletedAtIsNull(userId)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> userServiceImpl.findActiveById(userId))
+        .isInstanceOf(UserNotFoundException.class);
+  }
+
 }

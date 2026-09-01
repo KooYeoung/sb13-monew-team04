@@ -24,8 +24,9 @@ import com.codeit.sb13.monew.comment.service.impl.CommentServiceImpl;
 import com.codeit.sb13.monew.global.exception.comment.CommentNotFoundException;
 import com.codeit.sb13.monew.global.exception.comment.CommentPermissionDeniedException;
 import com.codeit.sb13.monew.global.exception.comment.InvalidCommentException;
+import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.user.domain.User;
-import com.codeit.sb13.monew.user.repository.UserRepository;
+import com.codeit.sb13.monew.user.service.UserService;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -50,7 +51,7 @@ public class CommentServiceTest {
   CommentRepository commentRepository;
 
   @Mock
-  UserRepository userRepository;
+  UserService userService;
 
   @Mock
   ArticleRepository articleRepository;
@@ -93,7 +94,7 @@ public class CommentServiceTest {
     UUID commentId = UUID.randomUUID();
 
     CommentRegisterCommand command=new CommentRegisterCommand(article.getId(), user.getId(), "테스트 댓글");
-    given(userRepository.findByIdAndDeletedAtIsNull(user.getId())).willReturn(java.util.Optional.of(user));
+    given(userService.findActiveById(user.getId())).willReturn(user);
     given(articleRepository.findByIdAndDeletedAtIsNull(article.getId())).willReturn(java.util.Optional.of(article));
     given(commentRepository.save(any(Comment.class))).willAnswer(invocation -> {
       Comment comment = invocation.getArgument(0);
@@ -119,6 +120,22 @@ public class CommentServiceTest {
         () -> assertThat(result.likeCount()).isEqualTo(0L),
         () -> assertThat(result.likedByMe()).isEqualTo(false)
     );
+  }
+
+  @Test
+  @DisplayName("존재하지 않는 사용자에 대해 UserNotFoundException 예외를 던진다")
+  void 존재하지_않는_사용자_댓글_생성_실패() {
+    articleUserSetUp();
+    CommentRegisterCommand command = new CommentRegisterCommand(
+        article.getId(), user.getId(), "테스트 댓글");
+    given(userService.findActiveById(user.getId()))
+        .willThrow(new UserNotFoundException(user.getId()));
+
+    assertThatThrownBy(() -> commentService.create(command))
+        .isInstanceOf(UserNotFoundException.class);
+
+    then(articleRepository).shouldHaveNoInteractions();
+    then(commentRepository).should(never()).save(any(Comment.class));
   }
 
   @Test
