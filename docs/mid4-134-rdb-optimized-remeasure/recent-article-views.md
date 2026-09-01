@@ -1,12 +1,20 @@
 # 최근 조회 기사 재측정
 
-## 해석
+> [MID4-134 요약](README.md) · [활동내역 성능 문서 통합 안내서](../activity-history-performance-guide.md)
+
+## 한눈에 보기
+
+- 사용자별 최근 조회와 기사별 댓글 인덱스를 적용하자 가장 큰 테스트 데이터의 실행 시간 가운데 값이 `1,825.932 ms`에서 `0.525 ms`로 99.97% 줄었다.
+- 개선 전에는 조회 기록과 댓글을 넓게 반복해서 읽었지만, 개선 후에는 필요한 사용자와 기사 데이터부터 인덱스로 찾았다.
+- 기사별 댓글 수와 조회 수를 세는 하위 조회는 남아 있지만 현재 결과가 1ms 미만이어서 이번 작업에서는 분리하지 않았다.
+
+아래부터는 이 결론의 측정값과 실행계획을 기록한다.
 
 MID4-132 baseline의 가장 큰 SQL 병목 후보였던 최근 조회 기사는 `article_views.user_id` 접근과 `comments.article_id` subquery 접근이 모두 인덱스를 사용한다. 10m seed scale median은 `0.525 ms`로 baseline `1825.932 ms` 대비 `99.97%` 감소했다.
 
 또한 이 조회는 최신 조회 기사 10건만 반환하므로 댓글 수와 조회 수 subquery도 최종 반환 row 기준으로 최대 10회 반복된다. optimized 측정에서 100k, 1m, 10m scale의 median 차이가 크지 않고 모두 1ms 미만이므로, count subquery를 별도 쿼리로 분리할 근거는 현재 수치상 부족하다. 별도 count 쿼리로 나누면 SQL 자체는 단순해질 수 있지만, 추가 round-trip과 애플리케이션 조립 비용이 생기므로 MID4-134에서는 현재 쿼리 구조를 유지하고 인덱스 적용 결과만 기록한다.
 
-## 적용 인덱스
+## 어떤 인덱스를 적용했나
 
 | index | columns | 목적 |
 | --- | --- | --- |
@@ -28,7 +36,7 @@ MID4-132 baseline의 가장 큰 SQL 병목 후보였던 최근 조회 기사는 
 | `1m` | `235.410` ms | `0.111` ms | `236.583`, `226.549`, `231.003`, `234.893`, `226.372` ms | `0.607`, `0.472`, `0.591`, `0.539`, `0.463` ms | `231.003` ms | `0.539` ms |
 | `10m` | `1820.813` ms | `0.113` ms | `1825.932`, `1805.697`, `1861.183`, `1813.368`, `1832.137` ms | `0.477`, `0.599`, `0.525`, `0.493`, `0.622` ms | `1825.932` ms | `0.525` ms |
 
-## Median 비교
+## 실행 시간 가운데 값 비교
 
 | seed scale | baseline median | optimized median | delta | change |
 | --- | ---: | ---: | ---: | ---: |
@@ -36,7 +44,7 @@ MID4-132 baseline의 가장 큰 SQL 병목 후보였던 최근 조회 기사는 
 | `1m` | `231.003` ms | `0.539` ms | `-230.464` ms | `-99.77`% |
 | `10m` | `1825.932` ms | `0.525` ms | `-1825.407` ms | `-99.97`% |
 
-## EXPLAIN 실행계획 요약
+## DB가 데이터를 찾은 방법
 
 | seed scale | 주요 접근 경로 | Execution Time |
 | --- | --- | ---: |
@@ -44,7 +52,7 @@ MID4-132 baseline의 가장 큰 SQL 병목 후보였던 최근 조회 기사는 
 | `1m` | `idx_article_views_user_viewed_id`, `pk_articles`, `pk_users`, `idx_comments_article`, `uk_article_views_article_user` | `0.111` ms |
 | `10m` | `idx_article_views_user_viewed_id`, `pk_articles`, `pk_users`, `idx_comments_article`, `uk_article_views_article_user` | `0.113` ms |
 
-## EXPLAIN 실행계획 원문
+## 실행계획 원문
 
 <details>
 <summary>100k - 최근 조회 기사</summary>

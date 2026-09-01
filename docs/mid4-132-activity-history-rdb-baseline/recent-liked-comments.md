@@ -1,12 +1,21 @@
 # 최근 좋아요한 댓글
 
-## 해석
+> [MID4-132 요약](README.md) · [활동내역 성능 문서 통합 안내서](../activity-history-performance-guide.md)
+
+## 한눈에 보기
+
+- 이 조회는 사용자가 최근에 좋아요를 누른 댓글 10건과 각 댓글의 좋아요 수를 가져온다.
+- 가장 큰 테스트 데이터에서 실행 시간의 가운데 값은 `45.905 ms`였다.
+- 기존 인덱스는 댓글별 좋아요를 찾는 순서여서 특정 사용자가 누른 좋아요를 바로 찾는 데 맞지 않았다.
+- 좋아요를 누른 사용자와 최신순을 함께 처리하는 인덱스를 다음 개선 후보로 정했다.
+
+아래부터는 이 판단을 뒷받침하는 SQL과 실행계획을 기록한다.
 
 이 문서의 `100k`, `1m`, `10m`은 각 테이블 row 수가 아니라 `seed_activity_history(scale_count)`에 전달한 seed scale이다. 실제 테이블별 row count는 README의 Seed 결과 표를 기준으로 본다.
 
 최근 좋아요한 댓글은 `comment_likes.liked_by` 조건으로 대상 사용자의 좋아요를 찾은 뒤 `created_at DESC, id DESC`로 정렬한다. 현재 `uk_comment_likes_comment_liked_by(comment_id, liked_by)`는 좋아요 수 subquery의 `comment_id = ...` 조건에는 사용되지만, main query의 `liked_by = ...` 조건에는 복합 인덱스의 선두 컬럼인 `comment_id`가 고정되지 않아 효과적으로 사용되기 어렵다. `deleted_at IS NULL`은 `comment_likes` 자체가 아니라 조인 대상인 `users`, `comments`, `articles` filter에서 발생하며, 현재 실행계획에서는 main table 접근 경로와 정렬 비용이 더 큰 병목으로 보인다.
 
-## 인덱스 후보
+## 다음에 확인할 인덱스
 
 - 후보: `comment_likes(liked_by, created_at DESC, id DESC)` 복합 인덱스를 적용해 `Seq Scan` 또는 `Parallel Seq Scan`과 sort 비용 제거 여부를 확인한다.
 - 기대 효과: 대상 사용자가 좋아요한 row를 먼저 좁힌 뒤 최신순 정렬을 인덱스 순서로 처리한다.
@@ -14,7 +23,7 @@
 - `100k` seed scale에서는 전체 row 수가 작고 main query에 적합한 인덱스가 없어 planner가 `Seq Scan`을 선택한 것으로 보며, 후보 인덱스 적용 후 seed scale별 실행계획 변화를 비교한다.
 - `deleted_at IS NULL` 최적화는 복합 인덱스 적용 후에도 조인 대상 filter 비용이 남는 경우 추가 측정한다.
 
-## 측정 SQL
+## 실제로 실행한 SQL
 
 ### 최근 좋아요한 댓글
 
@@ -53,7 +62,7 @@ ORDER BY cl1_0.created_at DESC, cl1_0.id DESC
 FETCH FIRST 10 ROWS ONLY;
 ```
 
-## 실행 시간
+## 데이터 크기별 실행 시간
 
 | Seed scale | 조회 | EXPLAIN Execution Time | 반복 실행 시간 5회 | Median |
 | --- | --- | ---: | --- | ---: |
@@ -61,7 +70,7 @@ FETCH FIRST 10 ROWS ONLY;
 | `1m` | 최근 좋아요한 댓글 | `10.515 ms` | `12.238`, `11.750`, `12.216`, `11.807`, `11.632 ms` | `11.807 ms` |
 | `10m` | 최근 좋아요한 댓글 | `44.102 ms` | `48.387`, `52.918`, `45.801`, `44.662`, `45.905 ms` | `45.905 ms` |
 
-## EXPLAIN 실행계획 요약
+## DB가 데이터를 찾은 방법
 
 ### 100k
 
@@ -88,7 +97,7 @@ FETCH FIRST 10 ROWS ONLY;
 - worker당 `Rows Removed by Filter`: `996667`, `loops=3`
 - 좋아요 수 subquery는 `uk_comment_likes_comment_liked_by` 인덱스를 사용했다.
 
-## EXPLAIN 실행계획 원문
+## 실행계획 원문
 
 <details>
 <summary>100k - 최근 좋아요한 댓글</summary>

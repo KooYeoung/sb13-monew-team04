@@ -1,5 +1,7 @@
 # MID4-227 RDB 활동 내역 성능 재측정
 
+> 이전 작업: [MID4-206 확장 성능 측정](../mid4-206-mongodb-k6-compare.md) · [활동내역 성능 문서 통합 안내서](../activity-history-performance-guide.md)
+
 이 문서는 활동 내역 조회 방식을 바꾸기 전과 후의 속도를 비교한 결과다. 변경 전에는 관련 사용자의 `deleted_at`을 매번 확인했고, 변경 후에는 활동 데이터에 저장된 `visibility_status`를 바로 확인한다.
 
 데이터 양, 요청량, 준비 실행은 모두 같게 맞췄다.

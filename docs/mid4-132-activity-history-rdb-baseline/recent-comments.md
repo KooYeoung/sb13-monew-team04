@@ -1,18 +1,27 @@
 # 최근 작성 댓글
 
-## 해석
+> [MID4-132 요약](README.md) · [활동내역 성능 문서 통합 안내서](../activity-history-performance-guide.md)
+
+## 한눈에 보기
+
+- 이 조회는 사용자가 최근에 작성한 댓글 10건과 각 댓글의 좋아요 수를 가져온다.
+- 데이터가 커지자 실행 시간의 가운데 값이 `8.983 ms`에서 `82.747 ms`로 늘었다.
+- DB가 대상 사용자의 댓글만 바로 찾지 못하고 댓글 테이블을 넓게 읽은 뒤 최신순으로 정렬한 것이 주된 원인이다.
+- 사용자와 최신순을 함께 처리하는 인덱스를 다음 개선 후보로 정했다.
+
+아래부터는 이 판단을 뒷받침하는 SQL과 실행계획을 기록한다.
 
 이 문서의 `100k`, `1m`, `10m`은 각 테이블 row 수가 아니라 `seed_activity_history(scale_count)`에 전달한 seed scale이다. 실제 테이블별 row count는 README의 Seed 결과 표를 기준으로 본다.
 
 최근 작성 댓글은 `comments.user_id` FK 제약은 있지만 PostgreSQL에서 해당 FK 컬럼 기준 인덱스가 자동 생성되지 않아 사용자 조건으로 먼저 좁히지 못하고, 이후 `created_at DESC, id DESC` 정렬 비용이 발생한다. `deleted_at IS NULL` filter는 남지만 현재 실행계획에서는 조회 경로와 정렬 비용이 더 큰 병목으로 보이므로 1차 인덱스 후보에서는 제외한다.
 
-## 인덱스 후보
+## 다음에 확인할 인덱스
 
 - 후보: `comments(user_id, created_at DESC, id DESC)` 복합 인덱스를 적용해 `Seq Scan` 또는 `Parallel Seq Scan`과 `top-N heapsort` 제거 여부를 확인한다.
 - 기대 효과: 대상 사용자 댓글을 먼저 좁힌 뒤 최신순 정렬을 인덱스 순서로 처리한다.
 - `deleted_at IS NULL` 단독 인덱스 또는 partial index는 복합 인덱스 적용 후 filter 비용이 남는 경우 추가 측정한다.
 
-## 측정 SQL
+## 실제로 실행한 SQL
 
 ### 최근 작성 댓글
 
@@ -45,7 +54,7 @@ ORDER BY c1_0.created_at DESC, c1_0.id DESC
 FETCH FIRST 10 ROWS ONLY;
 ```
 
-## 실행 시간
+## 데이터 크기별 실행 시간
 
 | Seed scale | 조회 | EXPLAIN Execution Time | 반복 실행 시간 5회 | Median |
 | --- | --- | ---: | --- | ---: |
@@ -53,7 +62,7 @@ FETCH FIRST 10 ROWS ONLY;
 | `1m` | 최근 작성 댓글 | `12.836 ms` | `14.151`, `13.587`, `13.720`, `17.696`, `14.005 ms` | `14.005 ms` |
 | `10m` | 최근 작성 댓글 | `88.314 ms` | `80.545`, `82.747`, `95.963`, `93.401`, `78.940 ms` | `82.747 ms` |
 
-## EXPLAIN 실행계획 요약
+## DB가 데이터를 찾은 방법
 
 ### 100k
 
@@ -81,7 +90,7 @@ FETCH FIRST 10 ROWS ONLY;
 - worker당 `Rows Removed by Filter`: `1330000`, `loops=3`
 - 좋아요 수 subquery는 `uk_comment_likes_comment_liked_by` 인덱스를 사용했다.
 
-## EXPLAIN 실행계획 원문
+## 실행계획 원문
 
 <details>
 <summary>100k - 최근 작성 댓글</summary>

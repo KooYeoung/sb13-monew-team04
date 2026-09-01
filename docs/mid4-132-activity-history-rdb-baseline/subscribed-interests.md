@@ -1,6 +1,15 @@
 # 구독 중인 관심사
 
-## 해석
+> [MID4-132 요약](README.md) · [활동내역 성능 문서 통합 안내서](../activity-history-performance-guide.md)
+
+## 한눈에 보기
+
+- 이 조회는 사용자가 구독한 관심사와 관심사별 구독자 수·키워드를 가져온다.
+- 가장 큰 테스트 데이터에서 두 SQL을 합친 실행 시간의 가운데 값은 `11.635 ms`였다.
+- 대상 사용자의 구독은 50건뿐이지만, 사용자별 구독을 바로 찾는 인덱스가 없어 구독 테이블을 넓게 읽었다.
+- 사용자와 최신순을 함께 처리하는 인덱스를 다음 개선 후보로 정했다.
+
+아래부터는 이 판단을 뒷받침하는 SQL과 실행계획을 기록한다.
 
 이 문서의 `100k`, `1m`, `10m`은 각 테이블 row 수가 아니라 `seed_activity_history(scale_count)`에 전달한 seed scale이다. 실제 테이블별 row count는 README의 Seed 결과 표를 기준으로 본다.
 
@@ -10,7 +19,7 @@
 
 keywords batch 조회는 Hibernate가 PostgreSQL에서 `interest_id = any (?)` 형태로 실행한다. `uk_keywords_interest_keyword(interest_id, keyword)`는 조회 조건의 선두 컬럼과 맞으므로 `1m`, `10m` seed scale에서는 사용됐다. `100k` seed scale에서는 keywords row 수가 작아 planner가 `Seq Scan`을 선택했다.
 
-## 인덱스 후보
+## 다음에 확인할 인덱스
 
 - 1차 병목은 `subscriptions.user_id` 접근 경로 부재로 본다.
 - 현재 SQL 기준 1차 후보는 `subscriptions(user_id, created_at DESC, id DESC)`로 둔다. 이 후보는 `user_id` 접근 경로를 만들면서 정렬도 함께 처리할 수 있는지 확인하기 위한 후보이지, 정렬 자체가 주요 병목이라는 의미는 아니다.
@@ -21,7 +30,7 @@ keywords batch 조회는 Hibernate가 PostgreSQL에서 `interest_id = any (?)` �
 - keywords query는 현재 unique index의 선두 컬럼을 정상적으로 사용할 수 있으므로 신규 인덱스 후보로 두지 않는다.
 - `users.deleted_at` 인덱스는 1차 후보로 두지 않고, `subscriptions.user_id` 접근 경로 개선 후 subquery 비용이 남는 경우 추가 측정한다.
 
-## 측정 SQL
+## 실제로 실행한 SQL
 
 ### 구독 중인 관심사
 
@@ -113,7 +122,7 @@ WHERE k1_0.interest_id = ANY (ARRAY[
 ]);
 ```
 
-## 실행 시간
+## 데이터 크기별 실행 시간
 
 | Seed scale | 조회 | EXPLAIN Execution Time | 반복 실행 시간 5회 | Median |
 | --- | --- | ---: | --- | ---: |
@@ -127,7 +136,7 @@ WHERE k1_0.interest_id = ANY (ARRAY[
 | `10m` | 구독 관심사 keywords | `0.050 ms` | `0.517`, `0.391`, `0.496`, `0.596`, `0.486 ms` | `0.496 ms` |
 | `10m` | 구독 중인 관심사 total | `-` | `11.635`, `11.394`, `12.454`, `14.413`, `11.481 ms` | `11.635 ms` |
 
-## EXPLAIN 실행계획 요약
+## DB가 데이터를 찾은 방법
 
 ### 100k
 
@@ -162,7 +171,7 @@ WHERE k1_0.interest_id = ANY (ARRAY[
 - keywords query는 `uk_keywords_interest_keyword`를 `interest_id = any (...)` 조건으로 사용했다.
 - 요청 1건 기준 total median은 `11.635 ms`다. 현재 seed scale에서는 다른 최근 활동 조회보다 낮지만, main query가 전체 subscriptions를 훑는 구조라 데이터 증가 시 병목 후보로 남는다.
 
-## EXPLAIN 실행계획 주요 원문
+## 실행계획 주요 원문
 
 아래 원문에서 keywords의 `ANY` 배열은 실제 측정에 사용한 50개 관심사 id 전체를 그대로 기록했다.
 

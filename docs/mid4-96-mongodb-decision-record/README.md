@@ -1,5 +1,7 @@
 # MID4-96 MongoDB/Redis 적용 여부 판단 기록
 
+> 활동내역 성능 측정의 전체 흐름은 [활동내역 조회 성능 개선 기록 안내서](../activity-history-performance-guide.md)에서 먼저 확인할 수 있다.
+
 ## 결론
 
 이번 배포 전에는 활동내역 조회에 MongoDB Read Model과 Redis를 적용하지 않는다.
@@ -53,6 +55,7 @@ MID4-179의 k6 결과는 이번 의사결정의 참고 근거로 사용하되, �
 
 ## 관련 문서
 
+- [활동내역 조회 성능 개선 기록 안내서](../activity-history-performance-guide.md)
 - [MID4-125 MongoDB Read Model 적용 대상 선정](../mid4-125-mongodb-read-model-target-selection/README.md)
 - [MID4-132 RDB baseline 성능 측정](../mid4-132-activity-history-rdb-baseline/README.md)
 - [MID4-134 RDB 최적화 후 성능 재측정](../mid4-134-rdb-optimized-remeasure/README.md)

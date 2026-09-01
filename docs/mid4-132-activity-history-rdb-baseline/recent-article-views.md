@@ -1,6 +1,15 @@
 # 최근 조회 기사
 
-## 해석
+> [MID4-132 요약](README.md) · [활동내역 성능 문서 통합 안내서](../activity-history-performance-guide.md)
+
+## 한눈에 보기
+
+- 이 조회는 사용자가 최근에 본 기사 10건과 기사별 댓글 수·조회 수를 가져온다.
+- 가장 큰 테스트 데이터에서 실행 시간의 가운데 값이 `1,825.932 ms`로 네 조회 중 가장 느렸다.
+- 사용자 조회 기록을 찾을 때 넓은 범위를 읽었고, 기사 10건의 댓글 수를 세기 위해 댓글 테이블도 반복해서 읽었다.
+- 사용자별 최근 조회 인덱스와 기사별 댓글 인덱스를 함께 추가해야 하는 가장 우선적인 개선 대상으로 판단했다.
+
+아래부터는 이 판단을 뒷받침하는 SQL과 실행계획을 기록한다.
 
 이 문서의 `100k`, `1m`, `10m`은 각 테이블 row 수가 아니라 `seed_activity_history(scale_count)`에 전달한 seed scale이다. 실제 테이블별 row count는 README의 Seed 결과 표를 기준으로 본다.
 
@@ -8,7 +17,7 @@
 
 최근 조회 기사 댓글 수 subquery는 `comments.article_id` FK 무결성은 보장되지만 PostgreSQL에서 FK 컬럼 인덱스가 자동 생성되지 않아 `comments`를 반복 스캔한다. 반면 조회수 subquery는 `article_id = ...` 조건으로 기존 article_id 선두 인덱스를 사용하고 있어 1차 신규 후보로 보지 않는다. 100k seed scale에서는 `idx_article_views_article_viewed(article_id, viewed_at DESC)`를 사용한 뒤 `av2_0.user_id` sort가 추가됐고, 1m/10m seed scale에서는 `uk_article_views_article_user(article_id, user_id)`를 사용했다. `deleted_at IS NULL` filter는 PK index scan 이후 짧은 시간으로 처리되는 구간이 대부분이라 현재 실행계획에서는 1차 병목으로 보지 않는다.
 
-## 인덱스 후보
+## 다음에 확인할 인덱스
 
 - 후보 A: `article_views(user_id, viewed_at DESC, id DESC)` 복합 인덱스를 적용해 `Seq Scan` 또는 `Parallel Seq Scan`과 sort 비용 제거 여부를 확인한다.
 - 기대 효과: 대상 사용자 조회 기록을 먼저 좁힌 뒤 최신순 정렬을 인덱스 순서로 처리한다.
@@ -17,7 +26,7 @@
 - `idx_article_views_article_viewed`는 main query 정렬 개선에는 기여하지 못하므로, 후속 인덱스 적용 및 재측정 이후 실제 사용처가 없다면 제거 후보로 본다.
 - `deleted_at IS NULL` 최적화는 후보 A, B 적용 후에도 조인 대상 filter 비용이 남는 경우 추가 측정한다.
 
-## 측정 SQL
+## 실제로 실행한 SQL
 
 ### 최근 조회 기사
 
@@ -59,7 +68,7 @@ ORDER BY av1_0.viewed_at DESC, av1_0.id DESC
 FETCH FIRST 10 ROWS ONLY;
 ```
 
-## 실행 시간
+## 데이터 크기별 실행 시간
 
 | Seed scale | 조회 | EXPLAIN Execution Time | 반복 실행 시간 5회 | Median |
 | --- | --- | ---: | --- | ---: |
@@ -67,7 +76,7 @@ FETCH FIRST 10 ROWS ONLY;
 | `1m` | 최근 조회 기사 | `235.410 ms` | `236.583`, `226.549`, `231.003`, `234.893`, `226.372 ms` | `231.003 ms` |
 | `10m` | 최근 조회 기사 | `1820.813 ms` | `1825.932`, `1805.697`, `1861.183`, `1813.368`, `1832.137 ms` | `1825.932 ms` |
 
-## EXPLAIN 실행계획 요약
+## DB가 데이터를 찾은 방법
 
 ### 100k
 
@@ -100,7 +109,7 @@ FETCH FIRST 10 ROWS ONLY;
 - 조회수 subquery는 `uk_article_views_article_user`를 사용했다.
 - JIT total: `250.184 ms`
 
-## EXPLAIN 실행계획 원문
+## 실행계획 원문
 
 <details>
 <summary>100k - 최근 조회 기사</summary>

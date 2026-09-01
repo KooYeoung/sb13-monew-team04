@@ -240,7 +240,7 @@ fan-out worst-case, 제외 조건 필터 비용, read/write 혼합 부하는 MID
 | read 성공 기준 | `http_req_failed < 1%`, `checks rate > 99%`, `dropped_iterations = 0`, `p95 < 200ms`, `p99 < 500ms` |
 | 결과 비교 기준 | 로그 조건, 데이터, 사용자 수, VU/RPS, duration, 실행 순서가 모두 같을 때만 직접 비교 |
 
-로그 조건을 `dev-sql-warn`으로 고정하는 이유는 MID4-206에서 확인한 SQL DEBUG/TRACE 로그 출력 영향 때문이다. `dev-default-debug`는 SQL/query 확인용으로만 사용하고, 성능 결과에는 `debug-reference`로 기록한다. `dev-sql-warn`은 SQL/배치 로그만 낮춘 dev 기준 측정이며, prod 수준의 무로그 성능 측정은 아니다. 후속 테스트의 최종 판단값은 `dev-sql-warn` 조건에서 수집한 결과만 사용한다. 상세 기준은 [MID4-206 MongoDB 적용 대비 k6 비교 테스트 보강](../mid4-206-mongodb-k6-compare.md#로그-조건-분기-이유)을 따른다.
+로그 조건을 `dev-sql-warn`으로 고정하는 이유는 MID4-206에서 확인한 SQL DEBUG/TRACE 로그 출력 영향 때문이다. `dev-default-debug`는 SQL/query 확인용으로만 사용하고, 성능 결과에는 `debug-reference`로 기록한다. `dev-sql-warn`은 SQL/배치 로그만 낮춘 dev 기준 측정이며, prod 수준의 무로그 성능 측정은 아니다. 후속 테스트의 최종 판단값은 `dev-sql-warn` 조건에서 수집한 결과만 사용한다. 상세 기준은 [MID4-206 MongoDB 적용 대비 k6 비교 테스트 보강](../mid4-206-mongodb-k6-compare.md#로그-조건을-나눈-이유)을 따른다.
 
 각 테스트 실행 전에는 10m seed를 새로 적재한다. fan-out worst-case는 10m seed 적재 후 fan-out overlay를 적용하고 `ANALYZE`를 실행한 상태에서 측정한다. 제외 조건 필터 비용은 10m seed 적재 후 `exclusion-overlay.sql`을 적용하고, fan-out overlay와 동시에 적용하지 않는다. read/write 혼합 부하는 실행 중 DB 상태가 변하므로 시나리오 또는 반복 실행 단위마다 10m seed를 다시 적재한 결과만 직접 비교한다.
 

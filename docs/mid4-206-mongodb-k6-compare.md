@@ -1,5 +1,7 @@
 # MID4-206 활동내역 조회 성능 테스트 결과
 
+> 이전 작업: [MID4-125 MongoDB 적용 대상 선정](mid4-125-mongodb-read-model-target-selection/README.md) · [활동내역 성능 문서 통합 안내서](activity-history-performance-guide.md) · 다음 작업: [MID4-227 노출 상태 적용 전후 재측정](mid4-227-rdb-bottleneck-remeasure/README.md)
+
 ## 이 문서가 답하는 질문
 
 이 문서는 `GET /api/user-activities/{userId}` 활동내역 조회 API가 현재 RDB(PostgreSQL) 구조에서 어느 정도까지 버티는지 정리한다.
@@ -32,6 +34,8 @@
 | fan-out | 특정 글, 댓글, 관심사 하나에 조회, 좋아요, 구독 같은 관계 데이터가 많이 몰린 상태 |
 | soak | 짧게 한 번 보는 것이 아니라 같은 부하를 오래 유지해 보는 테스트 |
 | mixed | 조회 요청과 쓰기 요청을 섞어 실제 사용 상황에 가깝게 보는 테스트 |
+| 조회용 데이터(Read Model) | 화면 조회에 필요한 모양으로 MongoDB 등에 미리 저장한 데이터 |
+| 변경 이벤트 대기열(Outbox) | RDB 변경을 다른 저장소에 안전하게 전달하기 위해 먼저 기록하는 테이블 |
 
 ## 테스트 종류
 

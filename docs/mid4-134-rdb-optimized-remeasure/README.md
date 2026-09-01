@@ -1,8 +1,28 @@
-# MID4-134 RDB optimized 재측정
+# MID4-134 RDB 인덱스 적용 후 재측정
 
-## 요약
+> 이전 작업: [MID4-132 개선 전 기준선](../mid4-132-activity-history-rdb-baseline/README.md) · [활동내역 성능 문서 통합 안내서](../activity-history-performance-guide.md) · 다음 작업: [MID4-179 처리량 한계 측정](../mid4-179-rdb-throughput-limit/README.md)
 
-MID4-132 RDB baseline 이후 MID4-133 인덱스를 적용한 상태에서 단일 사용자 활동내역 API와 주요 SQL을 재측정했다. 이번 재측정은 132번과 동일하게 SQL 3회 warm-up, EXPLAIN (ANALYZE, BUFFERS), 5회 반복 실행 median 기록 방식을 적용했고, k6도 smoke와 baseline 결과 및 DB/Docker stats를 함께 남겼다.
+## 이 문서가 답하는 질문
+
+MID4-132에서 찾은 병목에 인덱스를 추가한 뒤 API와 SQL이 실제로 빨라졌는지 같은 방법으로 다시 측정한다.
+
+## 한눈에 보는 결론
+
+- 가장 큰 테스트 데이터에서도 API가 초당 20건의 요청을 누락 없이 처리했다.
+- API p95는 `32,353.24 ms`에서 `19.25 ms`로 줄었다.
+- 네 가지 활동내역 SQL의 실행 시간 가운데 값은 모두 `1.283 ms` 이하로 줄었다.
+- 특히 가장 느렸던 최근 조회 기사 SQL은 `1,825.932 ms`에서 `0.525 ms`로 줄었다.
+- 현재 조건에서는 MongoDB 조회용 데이터를 바로 도입할 정도의 병목이 남았다고 보기 어렵다.
+
+## 읽기 전에 알아둘 말
+
+| 용어 | 쉬운 의미 |
+| --- | --- |
+| 인덱스 적용 후(optimized) | MID4-133에서 사용자 조건과 최신순 조회에 맞는 인덱스를 추가한 상태 |
+| 워밍업(warm-up) | 초기 준비 비용을 제외하기 위해 측정 전에 같은 SQL을 미리 실행하는 과정 |
+| 실행 시간 가운데 값(median) | 다섯 번 측정한 값 중 가운데 값 |
+| 실행계획(EXPLAIN) | DB가 데이터와 인덱스를 어떤 순서로 사용했는지 보여주는 기록 |
+| 하위 조회(subquery) | 결과 한 건에 필요한 개수 등을 계산하기 위해 SQL 안에서 다시 실행하는 조회 |
 
 ## 상세 문서
 
@@ -49,7 +69,7 @@ MID4-132 RDB baseline 이후 MID4-133 인덱스를 적용한 상태에서 단일
 - [raw/rerun-132-method/run-rerun-132-method.ps1](raw/rerun-132-method/run-rerun-132-method.ps1)
 - [raw/rerun-132-method/sql-template.sql](raw/rerun-132-method/sql-template.sql)
 
-## Seed Scale 정의
+## 테스트 데이터 크기
 
 100k, 1m, 10m는 각 테이블 row 수가 아니라 seed_activity_history(scale_count)에 전달한 seed scale이다. 실제 row 수는 seed 함수의 도메인 분포에 따라 생성된다.
 
@@ -77,7 +97,7 @@ MID4-132 RDB baseline 이후 MID4-133 인덱스를 적용한 상태에서 단일
 | article_views | idx_article_views_user_viewed_id | 사용자가 조회한 기사 최신순 조회 |
 | subscriptions | idx_subscriptions_user_created_id | 사용자가 구독 중인 관심사 최신순 조회 |
 
-## API Optimized 요약
+## API 인덱스 적용 후 결과
 
 | seed scale | baseline p95 | optimized p95 | baseline p99 | optimized p99 | baseline RPS | optimized RPS | baseline dropped | optimized dropped |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -85,7 +105,7 @@ MID4-132 RDB baseline 이후 MID4-133 인덱스를 적용한 상태에서 단일
 | 1m | 474.02 ms | 21.82 ms | 657.60 ms | 25.69 ms | 19.97 | 21.01 | 0 | 0 |
 | 10m | 32353.24 ms | 19.25 ms | 43167.63 ms | 22.63 ms | 3.11 | 21.02 | 979 | 0 |
 
-## SQL Median 요약
+## SQL 실행 시간 가운데 값 요약
 
 | 조회 | seed scale | baseline median | optimized median | delta | change |
 | --- | --- | ---: | ---: | ---: | ---: |

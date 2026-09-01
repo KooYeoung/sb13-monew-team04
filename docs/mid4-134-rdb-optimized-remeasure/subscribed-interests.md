@@ -1,6 +1,14 @@
 # 구독 중인 관심사 재측정
 
-## 해석
+> [MID4-134 요약](README.md) · [활동내역 성능 문서 통합 안내서](../activity-history-performance-guide.md)
+
+## 한눈에 보기
+
+- 사용자별 최근 구독 인덱스를 적용하자 가장 큰 테스트 데이터에서 두 SQL의 실행 시간 가운데 값 합계가 `11.635 ms`에서 `1.283 ms`로 88.97% 줄었다.
+- DB가 전체 구독을 넓게 읽는 대신 대상 사용자의 구독 50건부터 찾게 됐다.
+- 이 측정에서는 사용자 구독 수와 관심사별 구독자 수가 고정돼 있어 한 관심사에 구독이 몰리는 상황까지 확인한 것은 아니다.
+
+아래부터는 이 결론의 측정값과 실행계획을 기록한다.
 
 100k scale에서는 interests가 500건이고 target user 기준 keywords 결과가 150건이라 PostgreSQL optimizer가 일부 작은 테이블에 대해 Seq Scan을 선택했다. 이는 인덱스가 적용되지 않은 장애라기보다 작은 데이터셋에서 전체 scan 비용이 더 낮다고 판단한 실행계획에 가깝다.
 
@@ -8,7 +16,7 @@
 
 다만 이번 재측정은 seed scale 증가에 따른 전체 테이블 크기 변화와 인덱스 접근 경로를 확인한 것이며, target user의 구독 수 50건과 keywords 결과 150건은 scale별로 동일하다. 따라서 사용자별 구독 수나 관심사별 구독자 수 fan-out이 크게 증가하는 worst-case까지 검증한 결과는 아니다. 현재 측정값에서는 병목으로 보기 어려우므로 MID4-134에서는 쿼리 구조 변경 없이 인덱스 적용 효과와 측정 한계를 기록하고, fan-out 증가 시에는 `interestSubscriberCount` 계산 방식 개선을 후속 후보로 둔다.
 
-## 적용 인덱스
+## 어떤 인덱스를 적용했나
 
 | index | columns | 목적 |
 | --- | --- | --- |
@@ -25,7 +33,7 @@ keywords 조회는 100k scale에서는 Seq Scan을 선택했고, 1m/10m scale에
 
 ## 실행 시간
 
-### Main Query
+### 구독 목록 조회(main query)
 
 | seed scale | baseline EXPLAIN | optimized EXPLAIN | baseline repeats | optimized repeats | baseline median | optimized median |
 | --- | ---: | ---: | --- | --- | ---: | ---: |
@@ -33,7 +41,7 @@ keywords 조회는 100k scale에서는 Seq Scan을 선택했고, 1m/10m scale에
 | `1m` | `2.666` ms | `1.187` ms | `2.961`, `2.884`, `2.772`, `2.762`, `2.634` ms | `1.250`, `1.483`, `1.144`, `1.199`, `1.163` ms | `2.772` ms | `1.199` ms |
 | `10m` | `10.052` ms | `0.650` ms | `11.051`, `10.541`, `10.535`, `10.878`, `10.810` ms | `0.981`, `0.923`, `1.016`, `0.922`, `0.895` ms | `10.810` ms | `0.923` ms |
 
-### Keywords Query
+### 키워드 조회(keywords query)
 
 | seed scale | baseline EXPLAIN | optimized EXPLAIN | baseline repeats | optimized repeats | baseline median | optimized median |
 | --- | ---: | ---: | --- | --- | ---: | ---: |
@@ -41,7 +49,7 @@ keywords 조회는 100k scale에서는 Seq Scan을 선택했고, 1m/10m scale에
 | `1m` | `0.047` ms | `0.059` ms | `0.451`, `0.464`, `0.572`, `0.585`, `0.292` ms | `0.331`, `0.389`, `0.361`, `0.301`, `0.297` ms | `0.464` ms | `0.331` ms |
 | `10m` | `0.050` ms | `0.065` ms | `0.517`, `0.391`, `0.496`, `0.596`, `0.486` ms | `0.373`, `0.305`, `0.267`, `0.294`, `0.499` ms | `0.496` ms | `0.305` ms |
 
-### Total Median 비교
+### 두 SQL 실행 시간 가운데 값 합계
 
 | seed scale | baseline total repeats | optimized total repeats | baseline median | optimized median | delta | change |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
@@ -49,7 +57,7 @@ keywords 조회는 100k scale에서는 Seq Scan을 선택했고, 1m/10m scale에
 | `1m` | `4.708`, `4.280`, `3.549`, `3.453`, `3.331` ms | `1.581`, `1.872`, `1.505`, `1.500`, `1.460` ms | `3.549` ms | `1.505` ms | `-2.044` ms | `-57.59`% |
 | `10m` | `11.635`, `11.394`, `12.454`, `14.413`, `11.481` ms | `1.354`, `1.228`, `1.283`, `1.216`, `1.394` ms | `11.635` ms | `1.283` ms | `-10.352` ms | `-88.97`% |
 
-## EXPLAIN 실행계획 요약
+## DB가 데이터를 찾은 방법
 
 | seed scale | main query 주요 접근 경로 | keywords query 주요 접근 경로 |
 | --- | --- | --- |
@@ -65,7 +73,7 @@ Execution Time:
 | 1m | 1.187 ms | 0.059 ms |
 | 10m | 0.650 ms | 0.065 ms |
 
-## EXPLAIN 실행계획 원문
+## 실행계획 원문
 
 <details>
 <summary>100k - 구독 중인 관심사</summary>

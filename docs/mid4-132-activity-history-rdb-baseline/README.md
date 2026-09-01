@@ -1,10 +1,32 @@
-# MID4-132 활동내역 RDB baseline 측정
+# MID4-132 활동내역 RDB 개선 전 기준선 측정
 
-## 요약
+> [활동내역 성능 문서 통합 안내서](../activity-history-performance-guide.md) · 다음 작업: [MID4-134 인덱스 적용 후 재측정](../mid4-134-rdb-optimized-remeasure/README.md)
 
-활동내역 RDB 조회의 SQL baseline, 단일 사용자 활동내역 API baseline, 병목 후보를 정리한다. SQL 원문과 EXPLAIN은 조회별 상세 문서에 남기고, API p95/p99, error rate, DB 부하는 [api-baseline.md](api-baseline.md)에 기록한다.
+## 이 문서가 답하는 질문
 
-## Seed Scale 정의
+활동내역 조회를 개선하기 전에 데이터가 늘어날수록 어디에서 느려지는지 확인한다. API 전체 응답 시간과 네 가지 활동내역 SQL을 각각 측정해 가장 먼저 고칠 부분을 찾는 것이 목적이다.
+
+## 한눈에 보는 결론
+
+- 작은 데이터에서는 초당 20건의 요청을 처리했지만, 가장 큰 테스트 데이터에서는 목표 요청을 따라가지 못했다.
+- 가장 느린 조회는 최근 조회 기사였다. 실행 시간의 가운데 값이 `1,825.932 ms`까지 늘었다.
+- 원인은 사용자별 활동을 바로 찾는 인덱스와 기사별 댓글 수를 빠르게 세는 인덱스가 없었던 것이다.
+- 이 결과를 기준으로 MID4-133에서 인덱스를 추가하고 MID4-134에서 같은 방법으로 다시 측정했다.
+
+SQL 원문과 DB 실행계획은 조회별 상세 문서에, API 응답 시간과 DB 사용량은 [API 상세 결과](api-baseline.md)에 보존한다.
+
+## 읽기 전에 알아둘 말
+
+| 용어 | 쉬운 의미 |
+| --- | --- |
+| 개선 전 기준선(baseline) | 개선 효과를 비교하기 위해 먼저 측정한 값 |
+| 테스트 데이터 크기(seed scale) | 테스트 데이터를 만드는 함수에 전달한 크기이며 각 테이블의 실제 행 수와는 다름 |
+| p95 / p99 | 대부분의 요청뿐 아니라 느린 요청까지 포함해 보는 응답 시간 |
+| 요청 누락(dropped iterations) | 서버가 느려 부하 도구가 정해진 시간에 시작하지 못한 요청 수 |
+| 실행 시간 가운데 값(median) | 다섯 번 측정한 값 중 가운데 값 |
+| 실행계획(EXPLAIN) | DB가 데이터를 어떤 순서와 방법으로 찾았는지 보여주는 기록 |
+
+## 테스트 데이터 크기
 
 이 문서의 `100k`, `1m`, `10m`은 각 테이블 row 수가 아니라 `seed_activity_history(scale_count)`에 전달한 seed scale이다. 실제 row 수는 seed 함수에서 도메인 분포에 맞춰 파생된다.
 
@@ -26,7 +48,7 @@
 | 최근 조회 기사 | [recent-article-views.md](recent-article-views.md) | `10m median 1825.932 ms` | `article_views(user_id, viewed_at DESC, id DESC)`, `comments(article_id)` |
 | 구독 중인 관심사 | [subscribed-interests.md](subscribed-interests.md) | `10m median 11.635 ms` | `subscriptions(user_id, created_at DESC, id DESC)` |
 
-## API Baseline 요약
+## API 개선 전 결과 요약
 
 측정 대상은 `GET /api/user-activities/{userId}`이다. 측정 당시에는 PR #69의 k6 스크립트를 stdin으로 주입해 실행했고, 현재 해당 스크립트는 develop에 병합되어 `scripts/performance/activity-history/k6/activity-history-baseline.js`에 포함되어 있다.
 

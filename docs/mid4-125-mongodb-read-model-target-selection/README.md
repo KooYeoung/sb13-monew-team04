@@ -1,12 +1,34 @@
-# MID4-125 MongoDB Read Model 적용 대상 선정
+# MID4-125 MongoDB 조회용 데이터 적용 대상 선정
 
-## 요약
+> 이전 작업: [MID4-179 RDB 처리량 한계 측정](../mid4-179-rdb-throughput-limit/README.md) · [활동내역 성능 문서 통합 안내서](../activity-history-performance-guide.md) · 다음 작업: [MID4-206 확장 성능 측정](../mid4-206-mongodb-k6-compare.md)
 
-MID4-132 RDB baseline, MID4-133 인덱스 최적화, MID4-134 최적화 후 재측정 결과를 기준으로 활동내역 조회의 MongoDB Read Model 적용 대상을 판단한다.
+## 이 문서가 답하는 질문
 
-결론은 `후순위`다. 현재 측정 조건에서는 RDB 인덱스 최적화 후 composite 활동내역 API와 요청 내부 SQL/query가 병목이라고 보기 어렵고, MongoDB 환경구성 또는 Read Model 구현을 바로 진행할 근거가 부족하다. 이번 단계에서는 RDB를 유지하고, 목표 처리량 또는 p95/p99 SLO가 정해진 뒤 composite API 기준을 넘고 특정 SQL/query 병목이 확인될 때 MongoDB 적용을 다시 판단한다.
+RDB 인덱스를 적용한 뒤에도 MongoDB에 조회용 데이터를 따로 만들어야 할 만큼 느린 활동내역 조회가 남았는지 판단한다.
 
-## 근거 문서
+## 한눈에 보는 결론
+
+- 현재 측정 조건에서는 네 가지 활동내역 모두 RDB를 유지한다.
+- 인덱스 적용 후 가장 큰 테스트 데이터에서도 각 SQL의 실행 시간 가운데 값은 `1.283 ms` 이하였다.
+- API도 초당 20건을 요청 누락 없이 처리했으므로 MongoDB를 바로 도입할 근거가 부족했다.
+- 다만 한 관심사나 댓글에 연결 데이터가 많이 몰리는 상황은 충분히 확인하지 않았으므로 후속 측정 대상으로 남겼다.
+- 목표 처리량과 응답 시간 기준이 정해지고 RDB가 그 기준을 넘을 때 MongoDB 적용을 다시 검토한다.
+
+결론은 MongoDB 적용 취소가 아니라 `후순위`다. 지금은 RDB를 기준 데이터 저장소로 유지하고, 실제 병목이 확인될 때 조회용 데이터 복사본을 추가한다.
+
+## 읽기 전에 알아둘 말
+
+| 용어 | 쉬운 의미 |
+| --- | --- |
+| 조회용 데이터(Read Model) | 화면 조회에 필요한 모양으로 미리 저장한 데이터 |
+| 기준 데이터(Source of Truth) | 가장 신뢰할 수 있는 원본 데이터이며 이 문서에서는 RDB를 뜻함 |
+| 조회용 복사본(projection) | 원본 변경을 반영해 MongoDB 등에 저장하는 사용자별 활동 데이터 |
+| 공용 정보 사본(snapshot) | 기사·댓글·관심사처럼 여러 사용자가 함께 보는 정보를 따로 저장한 값 |
+| 목표 기준(SLO) | 서비스가 만족해야 하는 처리량과 응답 시간 기준 |
+| 변경 이벤트 대기열(Outbox) | RDB 변경 내용을 다른 저장소에 안전하게 전달하기 위해 먼저 기록하는 테이블 |
+| 이벤트 내용(payload) | 변경 이벤트 한 건에 담는 실제 데이터 |
+
+## 어떤 결과를 바탕으로 판단했나
 
 | Jira | 문서 | 판단에 사용한 내용 |
 | --- | --- | --- |
@@ -16,7 +38,7 @@ MID4-132 RDB baseline, MID4-133 인덱스 최적화, MID4-134 최적화 후 재�
 | MID4-179 | [RDB throughput limit](../mid4-179-rdb-throughput-limit/README.md) | RDB 최적화 후 최대 요청량과 실패 구간 측정 |
 | MID4-96 | [MongoDB/Redis 적용 판단 기록](../mid4-96-mongodb-decision-record/README.md) | MongoDB 사전 설계와 후순위 결정 근거 |
 
-## 측정 기준
+## 비교 조건
 
 - API: `GET /api/user-activities/{userId}`
 - 대상 사용자: `00000001-0000-4000-8000-000000000001`
@@ -25,11 +47,11 @@ MID4-132 RDB baseline, MID4-133 인덱스 최적화, MID4-134 최적화 후 재�
 - seed scale: `100k`, `1m`, `10m`은 테이블별 row 수가 아니라 `seed_activity_history(scale_count)` 입력값
 - API p95/p99/RPS는 `GET /api/user-activities/{userId}` composite API 기준이다. 활동 유형별 MongoDB 후보 판단에는 SQL/query별 측정값을 사용한다.
 
-## API 비교
+## API 전체 결과 비교
 
 아래 API 비교는 한 요청에서 네 가지 활동내역을 조합하는 `GET /api/user-activities/{userId}` 기준이다. 현재 API 요청만으로는 구독 관심사, 최근 댓글, 좋아요 댓글, 조회 기사별 RPS와 p95/p99를 분리 산출하지 않는다.
 
-| seed scale | baseline p95 | optimized p95 | baseline p99 | optimized p99 | baseline RPS | optimized RPS | baseline dropped | optimized dropped | error rate |
+| 테스트 데이터 | 개선 전 p95 | 인덱스 적용 후 p95 | 개선 전 p99 | 인덱스 적용 후 p99 | 개선 전 RPS | 인덱스 적용 후 RPS | 개선 전 요청 누락 | 인덱스 적용 후 요청 누락 | 오류율 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 100k | 53.58 ms | 24.29 ms | 63.40 ms | 28.53 ms | 20.01 | 21.01 | 0 | 0 | 0.00% |
 | 1m | 474.02 ms | 21.82 ms | 657.60 ms | 25.69 ms | 19.97 | 21.01 | 0 | 0 | 0.00% |
@@ -37,7 +59,7 @@ MID4-132 RDB baseline, MID4-133 인덱스 최적화, MID4-134 최적화 후 재�
 
 MID4-132 baseline에서는 10m scale에서 20 rps를 따라가지 못했지만, MID4-133 인덱스 반영 후 MID4-134에서는 100k, 1m, 10m 모두 dropped iteration 없이 통과했다. 현재 조건만으로는 MongoDB Read Model을 적용해야 할 API 병목이 남았다고 보기 어렵다.
 
-## SQL 및 Join 비용 비교
+## 조회별 SQL 비용 비교
 
 요청 1건은 현재 구현 기준으로 6개 SQL로 구성된다. 활동 유형별 후보 판단은 이 SQL/query 측정값과 join/subquery 비용을 기준으로 한다.
 
@@ -50,7 +72,7 @@ MID4-132 baseline에서는 10m scale에서 20 rps를 따라가지 못했지만, 
 | 5 | 구독 관심사 main | subscriptions, interests, users join, 관심사별 구독자 수 subquery |
 | 6 | 구독 관심사 keywords | `keywords.interest_id = any (?)` batch 조회 |
 
-| 조회 | 10m baseline median | 10m optimized median | 변화 | MongoDB 후보 판단 |
+| 조회 | 10m 개선 전 가운데 값 | 10m 인덱스 적용 후 가운데 값 | 변화 | MongoDB 후보 판단 |
 | --- | ---: | ---: | ---: | --- |
 | 최근 작성 댓글 | 82.747 ms | 0.476 ms | -99.42% | 제외 |
 | 최근 좋아요한 댓글 | 45.905 ms | 0.684 ms | -98.51% | 제외 |
@@ -61,13 +83,13 @@ MID4-132 baseline에서는 10m scale에서 20 rps를 따라가지 못했지만, 
 
 구독 중인 관심사는 10m scale에서도 total median이 1.283ms로 낮다. 다만 이번 seed에서는 target user 구독 수가 50건, keywords 결과가 150건으로 고정되어 있어 사용자별 구독 수 또는 관심사별 구독자 수 fan-out이 크게 늘어나는 worst-case까지 검증한 결과는 아니다. 따라서 MongoDB 적용 대상이 아니라 후속 관찰 대상으로 둔다.
 
-## DB 부하 판단
+## DB 사용량으로 본 판단
 
 MID4-134 optimized 10m baseline 중간 Docker stats는 PostgreSQL CPU `9.63%`, memory `2.329GiB / 30.91GiB`였다. baseline 직후 `pg_stat_database` 기준 cache hit은 `100.00%`, temp file은 `0`, deadlock은 `0`이었다.
 
 RDB baseline의 10m 실패 원인은 최근 조회 기사 read-path 인덱스 부재였고, MID4-133 인덱스 반영 후 같은 API 조건에서 DB 부하와 dropped iteration이 안정화됐다. 현재는 DB 부하를 이유로 MongoDB Read Model을 도입할 근거가 부족하다.
 
-## 적용 대상 선정 결과
+## 최종 선택
 
 | 조회 | 선정 결과 | 사유 |
 | --- | --- | --- |
@@ -78,7 +100,7 @@ RDB baseline의 10m 실패 원인은 최근 조회 기사 read-path 인덱스 �
 
 MongoDB Read Model 적용 대상은 현재 선정하지 않는다. 결론은 `후순위`이며, MongoDB dev 환경구성도 이번 작업 범위에서는 진행하지 않는다.
 
-## MongoDB 적용 시 범위 기준
+## 나중에 MongoDB를 적용한다면
 
 현재는 적용하지 않지만, 후속 측정에서 MongoDB 적용이 필요해질 경우 범위는 다음 기준으로 제한한다.
 아래 항목은 확정 schema가 아니라 Read Model 적용이 필요해졌을 때의 검토 기준이다.
@@ -93,7 +115,7 @@ MongoDB Read Model 적용 대상은 현재 선정하지 않는다. 결론은 `�
 - 최근 작성 댓글, 최근 좋아요한 댓글, 최근 조회 기사처럼 최대 10건만 필요한 영역은 MongoDB 적용 전 RDB 인덱스와 SQL 구조를 먼저 재검증한다.
 - 구독 관심사는 사용자별 구독 수 또는 관심사별 구독자 수 fan-out이 SLO를 넘는 경우에만 snapshot 후보로 올린다.
 
-## 삭제 및 Cleanup 기준
+## 삭제 데이터 처리 기준
 
 MongoDB Read Model을 후속 적용하는 경우 삭제 상태 반영 기준은 MID4-96 사전 설계 계약을 따른다.
 현재 티켓에서는 구현하지 않지만, cleanup 이후 지연 이벤트나 재처리 이벤트가 삭제된 projection 또는 snapshot을 재생성하지 않는 기준까지 설계 계약으로 남긴다.
@@ -106,7 +128,7 @@ MongoDB Read Model을 후속 적용하는 경우 삭제 상태 반영 기준은 
 - MID4-96 설계에서는 activity 상태 전이 순서 보호 기준을 직렬화된 outbox `event_sequence`와 activity `lastAppliedEventSequence` 비교로 구체화했다.
 - 후속 검토 항목은 `eventId` 중복 처리 방식, aggregate별 `version` 도입 여부, 삭제 이벤트 우선순위, tombstone 또는 삭제 처리 기록 보존 기간, 운영자 재처리 절차다.
 
-## Outbox Payload 기준
+## 변경 이벤트에 담을 정보 기준
 
 - PostgreSQL: `JSONB`
 - MySQL: `JSON`
@@ -119,11 +141,11 @@ MongoDB Read Model을 후속 적용하는 경우 삭제 상태 반영 기준은 
 - 화면 응답용 대상 데이터를 payload에 직렬화할지, worker가 RDB에서 재조회할지는 이번 티켓에서 결정하지 않는다.
 - 기사/댓글 삭제처럼 여러 사용자 활동에 영향을 줄 수 있는 이벤트는 reverse index 조회 또는 사용자별 이벤트 fan-out 중 어떤 방식을 사용할지 후속 설계에서 결정한다.
 
-## Redis 적용 여부
+## Redis를 사용하지 않은 이유
 
 Redis는 영구 저장소가 아니므로 활동내역 Read Model 저장소로 사용하지 않는다. 현재 측정 결과에서는 캐시가 필요한 병목도 확인되지 않았으므로 `미적용`으로 둔다. 후속으로 Redis를 검토한다면 짧은 TTL의 응답 캐시나 반복 조회 보조 용도에 한정한다.
 
-## MID4-96 연결
+## 최종 의사결정과의 관계
 
 MID4-96의 MongoDB/Redis 적용 여부 판단에는 이 문서, [MID4-179 RDB 최대 요청량 측정](../mid4-179-rdb-throughput-limit/README.md), [MongoDB/Redis 적용 판단 기록](../mid4-96-mongodb-decision-record/README.md)을 근거로 연결한다. 현재 MID4-125 결론은 MongoDB `후순위`, Redis `미적용`이며, Outbox payload 타입은 DB별 JSON 계열 타입과 테스트 DB fallback 기준만 남긴다. MongoDB 환경구성은 MID4-96 또는 별도 후속 티켓에서 `적용` 결론이 확정된 뒤 진행한다.
 
@@ -140,7 +162,7 @@ MID4-96의 MongoDB/Redis 적용 여부 판단에는 이 문서, [MID4-179 RDB �
 | JSON path/index 생성 기준 | payload 내부 필드 조회 요구가 없으면 미생성 |
 | Redis 적용 여부와 사용 목적 | Redis 적용 여부 |
 
-## 후속 조건
+## 다시 검토할 조건
 
 MongoDB 환경구성 또는 Read Model 구현은 다음 조건 중 하나가 충족될 때 별도 티켓으로 진행한다.
 

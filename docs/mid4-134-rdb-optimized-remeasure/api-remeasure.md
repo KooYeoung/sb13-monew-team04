@@ -1,6 +1,15 @@
-# 단일 사용자 활동내역 API optimized 재측정
+# 단일 사용자 활동내역 API 인덱스 적용 후 결과
 
-## 측정 대상
+> [MID4-134 요약](README.md) · [활동내역 성능 문서 통합 안내서](../activity-history-performance-guide.md)
+
+## 한눈에 보기
+
+- 개선 전에는 가장 큰 테스트 데이터에서 초당 20건을 따라가지 못했지만, 인덱스 적용 후에는 요청 누락 없이 처리했다.
+- 같은 조건의 p95는 `32,353.24 ms`에서 `19.25 ms`로 줄었다.
+- DB CPU도 측정 중 `9.63%`로 관찰되어 개선 전보다 훨씬 안정적이었다.
+- 이 문서의 수치는 인덱스 효과를 확인한 값이며 운영 환경의 보장값은 아니다.
+
+## 무엇을 측정했나
 
 - API: GET /api/user-activities/{userId}
 - userId: 00000001-0000-4000-8000-000000000001
@@ -12,7 +21,7 @@
 - k6 source: scripts/performance/activity-history/k6/activity-history-baseline.js
 - raw: [raw/rerun-132-method](raw/rerun-132-method)
 
-## Seed Scale 정의
+## 테스트 데이터 크기
 
 100k, 1m, 10m는 각 테이블 row 수가 아니라 seed_activity_history(scale_count)에 전달한 seed scale이다. 실제 row count는 seed 함수의 분포를 따른다.
 
@@ -28,7 +37,7 @@ snapshot 원문:
 - [snapshot-1m.txt](raw/rerun-132-method/snapshot-1m.txt)
 - [snapshot-10m.txt](raw/rerun-132-method/snapshot-10m.txt)
 
-## Smoke 결과
+## 준비 확인 결과(smoke)
 
 smoke는 서버 기동 및 API 응답 검증용 단일 요청이며 baseline 판단값으로 사용하지 않는다.
 
@@ -38,7 +47,7 @@ smoke는 서버 기동 및 API 응답 검증용 단일 요청이며 baseline 판
 | `1m` | `1` | `0.97` | `0` | `0.00`% | `23.02` ms | `23.02` ms | `23.02` ms | `100.00`% | pass |
 | `10m` | `1` | `0.98` | `0` | `0.00`% | `21.09` ms | `21.09` ms | `21.09` ms | `100.00`% | pass |
 
-## Optimized 결과
+## 인덱스 적용 후 결과
 
 실행 조건:
 
@@ -68,7 +77,7 @@ summary JSON:
 - [activity-history-1m-optimized-summary.json](raw/rerun-132-method/activity-history-1m-optimized-summary.json)
 - [activity-history-10m-optimized-summary.json](raw/rerun-132-method/activity-history-10m-optimized-summary.json)
 
-## Baseline 비교
+## 개선 전과 비교
 
 | seed scale | baseline p95 | optimized p95 | p95 delta | p95 change | baseline p99 | optimized p99 | p99 delta | p99 change | baseline RPS | optimized RPS | baseline dropped | optimized dropped |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
