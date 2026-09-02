@@ -119,8 +119,8 @@ class OutboxEventTest {
 
     private OutboxEvent createPendingEvent() {
         return OutboxEvent.createPending(
-                "ARTICLE_VIEWED",
-                "ARTICLE",
+                OutboxEventType.ARTICLE_VIEWED,
+                OutboxAggregateType.ARTICLE,
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 JsonNodeFactory.instance.objectNode().put("viewed", true),

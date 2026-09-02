@@ -23,10 +23,12 @@ import org.hibernate.type.SqlTypes;
 public class OutboxEvent extends UpdatedAtEntity {
 
     @Column(name = "event_type", nullable = false, length = 80)
-    private String eventType;
+    @Enumerated(EnumType.STRING)
+    private OutboxEventType eventType;
 
     @Column(name = "aggregate_type", nullable = false, length = 50)
-    private String aggregateType;
+    @Enumerated(EnumType.STRING)
+    private OutboxAggregateType aggregateType;
 
     @Column(name = "aggregate_id", nullable = false)
     private UUID aggregateId;
@@ -58,8 +60,8 @@ public class OutboxEvent extends UpdatedAtEntity {
     private String lastError;
 
     private OutboxEvent(
-            String eventType,
-            String aggregateType,
+            OutboxEventType eventType,
+            OutboxAggregateType aggregateType,
             UUID aggregateId,
             UUID actorUserId,
             JsonNode payloadJson,
@@ -76,8 +78,8 @@ public class OutboxEvent extends UpdatedAtEntity {
     }
 
     public static OutboxEvent createPending(
-            String eventType,
-            String aggregateType,
+            OutboxEventType eventType,
+            OutboxAggregateType aggregateType,
             UUID aggregateId,
             UUID actorUserId,
             JsonNode payloadJson,
