@@ -16,7 +16,7 @@ spring:
   flyway:
     enabled: ${MONEW_FLYWAY_ENABLED:true}
   mongodb:
-    uri: ${MONEW_MONGODB_URI:mongodb://monew:change-me@localhost:27017/monew?authSource=admin}
+    uri: ${MONEW_MONGODB_URI:mongodb://localhost:27017/monew}
   docker:
     compose:
       enabled: ${MONEW_DOCKER_COMPOSE_ENABLED:true}
