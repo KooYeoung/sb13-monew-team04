@@ -70,6 +70,8 @@ docker compose down
 
 MongoDB Read Model은 기본적으로 비활성화되어 있습니다. 후속 MongoDB 작업을 실행할 때만 `.env.dev`에서 활성화합니다.
 
+이 환경 준비는 MongoDB Read Model의 운영 적용 결정을 의미하지 않습니다. 현재 활동내역 API는 계속 RDB를 사용하며, 적용 판단과 미구현 범위는 [MID4-96 MongoDB/Redis 적용 여부 판단 기록](mid4-96-mongodb-decision-record/README.md)에서 관리합니다.
+
 MongoDB 컨테이너는 관리 전용 root 계정과 애플리케이션 전용 계정을 분리합니다. 애플리케이션 계정에는 `MONEW_MONGODB_DATABASE`에 대한 `readWrite` 권한만 부여됩니다. 아래의 계정명과 비밀번호는 개인 로컬 값으로 교체하고, URI의 비밀번호에 특수 문자가 있으면 URL encoding합니다.
 
 ```properties

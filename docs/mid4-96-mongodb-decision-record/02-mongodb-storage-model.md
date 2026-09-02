@@ -122,15 +122,17 @@ hiddenByTargetId
 
 한 activity가 이미 `visible=false`이면 다른 논리삭제 또는 비노출 이벤트가 `hiddenByTargetType`, `hiddenByTargetId`를 덮어쓰지 않을 수 있다. 따라서 이 한 쌍만으로 복구 가능 여부를 판단하지 않고, 복구 시 `targetType`, `targetId`, `parentTargetType`, `parentTargetId`로 후보를 찾은 뒤 RDB 현재 상태를 다시 계산한다.
 
-필수 및 권장 인덱스는 다음과 같다.
+MID4-135에서는 document와 repository를 구현하지 않고, 아래 컬렉션 이름과 인덱스 정의만 후속 구현 계약으로 코드에 반영했다. `monew.mongodb.enabled=true`이고 인덱스 초기화가 활성화된 경우에만 애플리케이션 시작 시 멱등하게 생성한다.
+
+`activity_histories`의 필수 및 권장 인덱스는 다음과 같다.
 
 ```js
-{ userId: 1, type: 1, targetType: 1, targetId: 1 } // unique
-{ userId: 1, type: 1, visible: 1, occurredAt: -1, _id: -1 }
-{ userId: 1, visible: 1 }
-{ targetType: 1, targetId: 1 }
-{ targetType: 1, parentTargetType: 1, parentTargetId: 1 }
-{ hiddenByTargetType: 1, hiddenByTargetId: 1, status: 1 }
+{ userId: 1, type: 1, targetType: 1, targetId: 1 } // unique, ux_activity_histories_natural_key
+{ userId: 1, type: 1, visible: 1, occurredAt: -1, _id: -1 } // idx_activity_histories_user_type_visible_cursor
+{ userId: 1, visible: 1 } // idx_activity_histories_user_visible
+{ targetType: 1, targetId: 1 } // idx_activity_histories_target
+{ targetType: 1, parentTargetType: 1, parentTargetId: 1 } // idx_activity_histories_parent_target
+{ hiddenByTargetType: 1, hiddenByTargetId: 1, status: 1 } // idx_activity_histories_hidden_by
 ```
 
 MongoDB 인덱스에서 숫자는 저장값이 아니라 인덱스 정렬 방향을 의미한다.
@@ -152,7 +154,7 @@ MongoDB 인덱스에서 숫자는 저장값이 아니라 인덱스 정렬 방향
 예: U1 + COMMENT_LIKED + COMMENT + C1
 ```
 
-후속 구현 시 필수 unique index로 만든다. worker가 같은 outbox 이벤트를 재처리하거나 동일 활동 이벤트가 중복 발행되어도 이 natural key를 기준으로 하나의 activity만 유지한다.
+MID4-135의 인덱스 초기화가 이 조합을 unique index로 생성한다. 후속 worker는 같은 outbox 이벤트를 재처리하거나 동일 활동 이벤트가 중복 발행되어도 이 natural key를 기준으로 하나의 activity만 유지해야 한다.
 
 이 인덱스와 atomic upsert는 중복 문서 생성을 막기 위한 장치다. 이벤트 처리 순서 역전까지 보장하지는 않으므로, activity 상태 전이는 `lastAppliedEventSequence` 조건으로 별도 보호한다.
 
@@ -445,6 +447,15 @@ article_activity_snapshots
 
 interest_activity_snapshots
 -> interestId 기준 1개
+```
+
+MID4-135에서 준비한 snapshot 인덱스는 다음과 같다. snapshot document 저장과 갱신은 아직 구현하지 않았다.
+
+```js
+{ commentId: 1 } // unique, ux_comment_activity_snapshots_comment_id
+{ articleId: 1, visible: 1 } // idx_comment_activity_snapshots_article_visible
+{ articleId: 1 } // unique, ux_article_activity_snapshots_article_id
+{ interestId: 1 } // unique, ux_interest_activity_snapshots_interest_id
 ```
 
 ### 조회 흐름

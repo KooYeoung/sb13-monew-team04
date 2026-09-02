@@ -98,20 +98,20 @@ RDB baseline의 10m 실패 원인은 최근 조회 기사 read-path 인덱스 �
 | 최근 조회 기사 | RDB 유지 | baseline 병목이었지만 인덱스 후 10m median 0.525ms |
 | 구독 중인 관심사 | RDB 유지, fan-out 후속 관찰 | 현재 total median 1.283ms, 단 worst-case fan-out은 미측정 |
 
-MongoDB Read Model 적용 대상은 현재 선정하지 않는다. 결론은 `후순위`이며, MongoDB dev 환경구성도 이번 작업 범위에서는 진행하지 않는다.
+MongoDB Read Model 적용 대상은 현재 선정하지 않는다. 결론은 `후순위`다. MID4-125 수행 당시에는 MongoDB dev 환경구성도 작업 범위에 포함하지 않았으며, 이후 MID4-135에서 적용 결론과 별개로 비활성 기본값의 환경·인덱스 기반만 준비했다.
 
 ## 나중에 MongoDB를 적용한다면
 
 현재는 적용하지 않지만, 후속 측정에서 MongoDB 적용이 필요해질 경우 범위는 다음 기준으로 제한한다.
-아래 항목은 확정 schema가 아니라 Read Model 적용이 필요해졌을 때의 검토 기준이다.
+아래 document 필드와 projection 처리 흐름은 확정 schema가 아니라 Read Model 적용이 필요해졌을 때의 검토 기준이다. 다만 컬렉션 이름과 인덱스 정의는 MID4-96 설계를 기준으로 MID4-135에서 초기화 계약을 준비했다.
 
 - RDB는 Source of Truth로 유지한다.
 - MongoDB는 활동내역 조회 전용 Read Model로만 사용한다.
 - `activity_histories`는 사용자별 활동내역 조회 응답을 빠르게 구성하기 위한 projection 후보로 둔다.
-- 사용자별 활동 projection이 필요하면 `userId`, `activityType`, `sourceEntityId` 조합을 식별 키 후보로 검토한다.
+- 사용자별 활동 projection의 natural key는 `userId`, `type`, `targetType`, `targetId` 조합으로 유지한다.
 - 대상 표시 정보를 별도 snapshot으로 둘 경우 공용 대상 snapshot과 사용자별 활동 projection을 분리하는 방향을 우선 검토한다.
 - 공용 대상 snapshot에는 화면 응답에 필요한 최소 대상 필드만 저장하고, 사용자별 활동 시각, 정렬 기준, 노출 상태, 취소 상태는 넣지 않는 방향을 우선 검토한다.
-- 공용 대상 snapshot 식별 키는 `sourceEntityType`, `sourceEntityId` 조합을 후보로 둔다.
+- 공용 대상 snapshot은 댓글, 기사, 관심사 컬렉션을 분리하고 각각 `commentId`, `articleId`, `interestId`를 unique 식별 키로 유지한다.
 - 최근 작성 댓글, 최근 좋아요한 댓글, 최근 조회 기사처럼 최대 10건만 필요한 영역은 MongoDB 적용 전 RDB 인덱스와 SQL 구조를 먼저 재검증한다.
 - 구독 관심사는 사용자별 구독 수 또는 관심사별 구독자 수 fan-out이 SLO를 넘는 경우에만 snapshot 후보로 올린다.
 
@@ -147,7 +147,7 @@ Redis는 영구 저장소가 아니므로 활동내역 Read Model 저장소로 �
 
 ## 최종 의사결정과의 관계
 
-MID4-96의 MongoDB/Redis 적용 여부 판단에는 이 문서, [MID4-179 RDB 최대 요청량 측정](../mid4-179-rdb-throughput-limit/README.md), [MongoDB/Redis 적용 판단 기록](../mid4-96-mongodb-decision-record/README.md)을 근거로 연결한다. 현재 MID4-125 결론은 MongoDB `후순위`, Redis `미적용`이며, Outbox payload 타입은 DB별 JSON 계열 타입과 테스트 DB fallback 기준만 남긴다. MongoDB 환경구성은 MID4-96 또는 별도 후속 티켓에서 `적용` 결론이 확정된 뒤 진행한다.
+MID4-96의 MongoDB/Redis 적용 여부 판단에는 이 문서, [MID4-179 RDB 최대 요청량 측정](../mid4-179-rdb-throughput-limit/README.md), [MongoDB/Redis 적용 판단 기록](../mid4-96-mongodb-decision-record/README.md)을 근거로 연결한다. 현재 MID4-125 결론은 MongoDB `후순위`, Redis `미적용`이며, Outbox payload 타입은 DB별 JSON 계열 타입과 테스트 DB fallback 기준만 남긴다. 이후 MID4-135에서 MongoDB 환경과 인덱스 초기화 기반을 준비했지만 projection, Outbox, 조회 전환은 구현하지 않았으므로 적용 결론은 그대로다.
 
 ## 완료 조건 대응
 
@@ -156,7 +156,7 @@ MID4-96의 MongoDB/Redis 적용 여부 판단에는 이 문서, [MID4-179 RDB �
 | 단일 활동내역 API와 요청 내부 SQL/query의 RDB 성능 측정 결과 비교 | composite API 비교, SQL 및 Join 비용 비교 |
 | p95/p99, SQL 개수, DB 부하, join 비용 기준 병목 선정 | composite API 비교, SQL 및 Join 비용 비교, DB 부하 판단 |
 | MongoDB 적용 여부 결론 | `후순위` |
-| activity_histories와 snapshot 저장 범위 | MongoDB 적용 시 범위 기준 |
+| activity_histories와 snapshot 저장 범위 | 적용 시 범위 기준, MID4-135에서 컬렉션·인덱스 초기화만 준비 |
 | 사용자/기사/댓글 논리삭제와 물리삭제 cleanup | 삭제 및 Cleanup 기준 |
 | Outbox payload 타입 | Outbox Payload 기준 |
 | JSON path/index 생성 기준 | payload 내부 필드 조회 요구가 없으면 미생성 |
@@ -164,7 +164,7 @@ MID4-96의 MongoDB/Redis 적용 여부 판단에는 이 문서, [MID4-179 RDB �
 
 ## 다시 검토할 조건
 
-MongoDB 환경구성 또는 Read Model 구현은 다음 조건 중 하나가 충족될 때 별도 티켓으로 진행한다.
+MongoDB 환경 구성은 MID4-135에서 완료했다. 실제 Read Model document, projection 동기화, 조회 전환과 성능 비교는 다음 조건 중 하나가 충족될 때 별도 티켓으로 진행한다.
 
 - 목표 RPS, p95/p99 SLO, 허용 error rate, dropped iteration 기준이 확정된다.
 - 확정된 기준으로 재측정했을 때 RDB 최적화 후에도 composite API가 목표 기준을 넘고 특정 SQL/query 병목이 확인된다.
