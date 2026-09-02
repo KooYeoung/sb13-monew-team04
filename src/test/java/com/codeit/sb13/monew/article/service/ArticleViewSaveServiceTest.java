@@ -1,6 +1,12 @@
 package com.codeit.sb13.monew.article.service;
 
 import com.codeit.sb13.monew.article.domain.Article;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
+import com.codeit.sb13.monew.activity.outbox.payload.ArticleOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.CountOutboxPayload;
 import com.codeit.sb13.monew.article.domain.ArticleView;
 import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
 import com.codeit.sb13.monew.article.service.impl.ArticleViewSaveService;
@@ -32,6 +38,9 @@ class ArticleViewSaveServiceTest {
     @Mock
     private ArticleViewRepository articleViewRepository;
 
+    @Mock
+    private OutboxEventWriter outboxEventWriter;
+
     @InjectMocks
     private ArticleViewSaveService articleViewSaveService;
 
@@ -57,5 +66,19 @@ class ArticleViewSaveServiceTest {
         assertThat(captor.getValue().getArticle()).isEqualTo(article);
         assertThat(captor.getValue().getUser()).isEqualTo(user);
         assertThat(captor.getValue().getViewedAt()).isEqualTo(viewedAt);
+        then(outboxEventWriter).should().write(
+                OutboxEventType.ARTICLE_VIEWED,
+                OutboxAggregateType.ARTICLE,
+                articleId,
+                userId,
+                new ArticleOutboxPayload(OutboxEventAction.VIEWED)
+        );
+        then(outboxEventWriter).should().write(
+                OutboxEventType.ARTICLE_VIEW_COUNT_CHANGED,
+                OutboxAggregateType.ARTICLE,
+                articleId,
+                userId,
+                new CountOutboxPayload(OutboxEventAction.COUNT_CHANGED)
+        );
     }
 }

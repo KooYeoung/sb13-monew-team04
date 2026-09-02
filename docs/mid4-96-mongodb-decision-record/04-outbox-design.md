@@ -83,9 +83,14 @@ MID4-246
 -> 이벤트별 payload 사용 필드와 RDB 재조회 필드 분류
 -> 대상 ID별 RDB 현재 상태 batch 재조회와 수렴 정책
 -> 중복, 재시도, commit 순서 역전, 물리삭제 후 지연 이벤트 시나리오 검증 기준
+
+MID4-137
+-> Outbox event/aggregate/action enum과 타입별 payload record
+-> 기존 RDB 트랜잭션에 참여하는 OutboxEventWriter와 JSON 직렬화 실패 예외
+-> 사용자·관심사·기사·댓글 변경 흐름의 Outbox producer 연동
 ```
 
-MID4-246은 Outbox 테이블 컬럼이나 애플리케이션 코드를 추가하지 않는 정책 확정 작업이다. 실제 도메인 쓰기 흐름이 Outbox row를 생성하는 MID4-137보다 먼저 payload 책임과 worker 재조회 책임을 구분한다.
+MID4-246은 Outbox 테이블 컬럼이나 애플리케이션 코드를 추가하지 않고 payload 책임과 worker 재조회 책임을 먼저 확정했다. MID4-137은 이 정책에 맞춰 실제 도메인 쓰기 흐름이 Outbox row를 생성하도록 producer를 연동했다.
 
 초기 구현에는 `event_sequence`, projection key, advisory lock, 낙관적 락, 비관적 락을 추가하지 않는다. DB sequence는 값 할당 순서와 transaction commit 순서가 일치하지 않으므로, 정확한 순서 guard로 쓰려면 producer 쓰기 경로를 직렬화해야 한다. 이 추가 락은 request transaction의 대기 시간과 DB connection 점유에 영향을 줄 수 있어 현재 범위에서 선택하지 않는다.
 
@@ -117,7 +122,7 @@ aggregate_type
 -> 원본 도메인 종류
 -> 예: COMMENT, ARTICLE, INTEREST
 
-MID4-136의 기본 저장 모델에서는 아직 실제 도메인 이벤트 연동 범위가 확정되지 않았으므로 `event_type`과 `aggregate_type`을 Java `String`으로 둔다. MID4-137에서 도메인 담당자와 실제 저장할 이벤트 목록을 합의한 뒤 `OutboxEventType`, `OutboxAggregateType` enum을 함께 추가하고 JPA `EnumType.STRING`으로 전환한다. DB 컬럼은 PostgreSQL 전용 enum으로 바꾸지 않고 기존 `VARCHAR(80)`, `VARCHAR(50)`을 유지해 이후 이벤트 추가가 DB migration을 요구하지 않도록 한다.
+MID4-136의 기본 저장 모델에서는 `event_type`과 `aggregate_type`을 Java `String`으로 두었다. MID4-137에서 실제 저장할 이벤트 목록을 확정하고 `OutboxEventType`, `OutboxAggregateType` enum을 추가해 JPA `EnumType.STRING`으로 전환했다. DB 컬럼은 PostgreSQL 전용 enum으로 바꾸지 않고 기존 `VARCHAR(80)`, `VARCHAR(50)`을 유지하므로 컬럼 길이 안의 Java enum 값 추가는 DB enum migration을 요구하지 않는다.
 
 aggregate_id
 -> 원본 엔티티 ID
@@ -160,6 +165,55 @@ last_error
 created_at, updated_at
 -> Outbox row 생성 및 수정 시각
 ```
+
+### MID4-137 producer 저장 계약
+
+producer는 다음 애플리케이션 인터페이스로 Outbox 이벤트를 저장한다.
+
+```text
+OutboxEventWriter.write(
+  OutboxEventType eventType,
+  OutboxAggregateType aggregateType,
+  UUID aggregateId,
+  UUID actorUserId,        // nullable
+  OutboxEventPayload payload
+)
+```
+
+`OutboxEventPayload`는 도메인별 record만 허용하는 sealed interface다. producer는 record를 넘기고, `OutboxPayloadSerializer`가 Jackson `ObjectMapper.valueToTree`로 `JsonNode`를 만든 뒤 `payload_json` JSONB 컬럼에 저장한다. `OutboxEventAction` enum은 JSON 안에서 `WRITTEN`, `UPDATED`, `COUNT_CHANGED` 같은 문자열로 직렬화된다.
+
+`OutboxEventWriter.write`는 `Propagation.MANDATORY`를 사용한다. 따라서 호출한 도메인 서비스의 기존 트랜잭션에 참여하고, 기존 트랜잭션이 없으면 `IllegalTransactionStateException`으로 거부한다. `REQUIRES_NEW` helper에서 호출하면 그 helper가 시작한 새 트랜잭션에 참여한다. writer가 별도 트랜잭션을 만들거나 독립 커밋하지 않는다.
+
+payload 직렬화와 Outbox 저장은 요청 트랜잭션 안에서 동기 수행된다. 직렬화가 실패하면 `OutboxPayloadSerializationException`이 발생하고 원본 변경과 Outbox row가 함께 롤백된다. 비동기 범위는 커밋 이후 향후 worker가 수행할 MongoDB 반영이며, MID4-137에는 worker가 포함되지 않는다.
+
+MID4-137에서 저장하는 이벤트 계약은 다음과 같다. `aggregate_id`와 `actor_user_id`는 공통 envelope 컬럼이므로 아래 payload body에 중복하지 않는다.
+
+| event_type | aggregate_type | actor_user_id | payload_json body |
+| --- | --- | --- | --- |
+| `INTEREST_SUBSCRIBED` | `INTEREST` | 구독 사용자 | `{"action":"SUBSCRIBED"}` |
+| `INTEREST_UNSUBSCRIBED` | `INTEREST` | 구독 해제 사용자 | `{"action":"UNSUBSCRIBED"}` |
+| `COMMENT_WRITTEN` | `COMMENT` | 댓글 작성자 | `{"articleId":"...","action":"WRITTEN"}` |
+| `COMMENT_LIKED` | `COMMENT` | 좋아요 사용자 | `{"articleId":"...","action":"LIKED"}` |
+| `COMMENT_LIKE_CANCELED` | `COMMENT` | 좋아요 취소 사용자 | `{"articleId":"...","action":"LIKE_CANCELED"}` |
+| `ARTICLE_VIEWED` | `ARTICLE` | 조회 사용자 | 최초 조회는 `{"action":"VIEWED"}`, 재조회 시각 갱신은 `{"action":"TOUCHED"}` |
+| `INTEREST_UPDATED` | `INTEREST` | `NULL` | `{"action":"UPDATED"}` |
+| `INTEREST_HARD_DELETED` | `INTEREST` | `NULL` | `{"action":"HARD_DELETED"}` |
+| `COMMENT_UPDATED` | `COMMENT` | 수정 요청 사용자 | `{"articleId":"...","action":"UPDATED"}` |
+| `COMMENT_SOFT_DELETED` | `COMMENT` | `NULL` | `{"articleId":"...","action":"SOFT_DELETED"}` |
+| `COMMENT_HARD_DELETED` | `COMMENT` | `NULL` | `{"articleId":"...","action":"HARD_DELETED"}` |
+| `ARTICLE_SOFT_DELETED` | `ARTICLE` | `NULL` | `{"action":"SOFT_DELETED"}` |
+| `ARTICLE_HARD_DELETED` | `ARTICLE` | `NULL` | `{"action":"HARD_DELETED"}` |
+| `USER_NICKNAME_UPDATED` | `USER` | 변경 사용자 | `{"action":"UPDATED"}` |
+| `USER_SOFT_DELETED` | `USER` | 삭제 사용자 | `{"action":"SOFT_DELETED"}` |
+| `USER_HARD_DELETED` | `USER` | `NULL` | `action=HARD_DELETED`와 `authoredCommentIds`, `impactedArticleIds`, `likedCommentIds`, `viewedArticleIds`, `subscribedInterestIds` |
+| `INTEREST_SUBSCRIBER_COUNT_CHANGED` | `INTEREST` | 구독 또는 해제 사용자 | `{"action":"COUNT_CHANGED"}` |
+| `COMMENT_LIKE_CHANGED` | `COMMENT` | 좋아요 또는 취소 사용자 | `{"action":"COUNT_CHANGED"}` |
+| `ARTICLE_VIEW_COUNT_CHANGED` | `ARTICLE` | 조회 사용자 | `{"action":"COUNT_CHANGED"}` |
+| `ARTICLE_COMMENT_COUNT_CHANGED` | `ARTICLE` | 댓글 작성자는 사용자 ID, 삭제는 `NULL` | `{"action":"COUNT_CHANGED"}` |
+
+사용자 물리삭제 payload의 영향 ID 목록은 연관 row를 삭제하기 전에 수집하고 중복을 제거한, 해당 transaction이 수집 시점에 관찰한 불변 snapshot이다. 초기 구현은 producer 락을 사용하지 않으므로 수집 이후 연관 row 삭제 전에 다른 transaction이 commit한 관계까지 포함하는 선형화 가능한 전체 목록은 아니다. 이는 worker의 cleanup 후보 탐색에 사용하기 위한 정보이며, 삭제된 원본이나 MongoDB 문서를 복원하는 근거나 유일한 cleanup 대상 목록으로 사용하지 않는다.
+
+후속 worker는 `USER_HARD_DELETED`의 `aggregate_id`로 해당 사용자의 `activity_histories`를 제거하고, payload 영향 ID를 snapshot 제거와 count 재계산 후보로 사용한다. 사용자 물리삭제 이후 처리되는 활동 이벤트는 actor 사용자와 source row의 RDB 존재 여부를 다시 확인해 새 activity 또는 snapshot을 만들지 않는다. 수집과 삭제 사이의 동시 관계 쓰기로 payload에서 누락될 수 있는 대상은 worker 구현 시 동시성 시나리오로 검증하며, producer 락을 추가하지 않는 현재 정책의 제한으로 관리한다.
 
 상태 전이는 애플리케이션 도메인 모델에서 검증한다. `PENDING`과 `FAILED`에서만 처리 성공, 처리 실패, `DEAD_LETTER` 전환을 허용하고, `PROCESSED`와 `DEAD_LETTER`는 일반 worker 처리에서 변경할 수 없는 종결 상태로 취급한다. 허용되지 않은 전이는 Outbox 전용 커스텀 예외로 거부하며 상태와 재시도 메타데이터를 변경하지 않는다. 이 규칙은 애플리케이션 계층에서 관리하고 DB `CHECK` 제약은 추가하지 않는다.
 

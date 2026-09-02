@@ -1,6 +1,11 @@
 package com.codeit.sb13.monew.article.service.impl;
 
 import com.codeit.sb13.monew.article.domain.Article;
+import com.codeit.sb13.monew.activity.outbox.payload.ArticleOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
 import com.codeit.sb13.monew.article.domain.ArticleView;
 import com.codeit.sb13.monew.article.mapper.ArticleMapper;
 import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
@@ -31,6 +36,7 @@ public class ArticleViewServiceImpl implements ArticleViewService {
     private final ArticleMapper articleMapper;
     private final ArticleViewSaveService articleViewSaveService;
     private final CommentRepository commentRepository;
+    private final OutboxEventWriter outboxEventWriter;
 
     @Override
     @Transactional
@@ -52,7 +58,17 @@ public class ArticleViewServiceImpl implements ArticleViewService {
     // 기존 조회 기록의 조회 시각만 갱신한다.
     private ArticleView touch(ArticleView articleView) {
         articleView.updateViewedAt(LocalDateTime.now());
-        return articleViewRepository.save(articleView);
+        ArticleView saved = articleViewRepository.save(articleView);
+        outboxEventWriter.write(
+                OutboxEventType.ARTICLE_VIEWED,
+                OutboxAggregateType.ARTICLE,
+                saved.getArticle().getId(),
+                saved.getUser().getId(),
+                new ArticleOutboxPayload(
+                        OutboxEventAction.TOUCHED
+                )
+        );
+        return saved;
     }
 
     /**

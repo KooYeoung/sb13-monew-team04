@@ -4,10 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEvent;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventStatus;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
 import com.codeit.sb13.monew.global.config.JpaAuditingConfig;
 import com.codeit.sb13.monew.global.config.QueryDslConfig;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
@@ -18,6 +18,8 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.JsonNodeFactory;
 
 @DataJpaTest
 @Import({QueryDslConfig.class, JpaAuditingConfig.class})
@@ -37,12 +39,12 @@ class OutboxEventRepositoryTest {
         UUID actorUserId = UUID.randomUUID();
         LocalDateTime occurredAt = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS);
         JsonNode payload = JsonNodeFactory.instance.objectNode()
-                .put("commentId", aggregateId.toString())
-                .put("content", "테스트 댓글");
+                .put("articleId", UUID.randomUUID().toString())
+                .put("action", "WRITTEN");
 
         OutboxEvent saved = outboxEventRepository.saveAndFlush(OutboxEvent.createPending(
-                "COMMENT_WRITTEN",
-                "COMMENT",
+                OutboxEventType.COMMENT_WRITTEN,
+                OutboxAggregateType.COMMENT,
                 aggregateId,
                 actorUserId,
                 payload,
@@ -52,8 +54,8 @@ class OutboxEventRepositoryTest {
 
         OutboxEvent found = outboxEventRepository.findById(saved.getId()).orElseThrow();
 
-        assertThat(found.getEventType()).isEqualTo("COMMENT_WRITTEN");
-        assertThat(found.getAggregateType()).isEqualTo("COMMENT");
+        assertThat(found.getEventType()).isEqualTo(OutboxEventType.COMMENT_WRITTEN);
+        assertThat(found.getAggregateType()).isEqualTo(OutboxAggregateType.COMMENT);
         assertThat(found.getAggregateId()).isEqualTo(aggregateId);
         assertThat(found.getActorUserId()).isEqualTo(actorUserId);
         assertThat(found.getPayloadJson()).isEqualTo(payload);
@@ -128,8 +130,8 @@ class OutboxEventRepositoryTest {
 
     private OutboxEvent createPendingEvent(UUID actorUserId) {
         return OutboxEvent.createPending(
-                "ARTICLE_VIEWED",
-                "ARTICLE",
+                OutboxEventType.ARTICLE_VIEWED,
+                OutboxAggregateType.ARTICLE,
                 UUID.randomUUID(),
                 actorUserId,
                 JsonNodeFactory.instance.objectNode().put("viewed", true),

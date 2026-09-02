@@ -44,6 +44,25 @@ MongoDB 후속 적용 시 요청 처리 흐름은 다음과 같이 둔다.
 -> *_activity_snapshots 저장 또는 갱신
 ```
 
+### MID4-137 현재 구현 경계
+
+MID4-137에서는 위 흐름 중 원본 변경과 `outbox_events` 저장까지 구현했다. 별도 도메인 이벤트 버스에 발행한 뒤 수집하는 구조가 아니라, 각 도메인 서비스가 타입이 지정된 payload record를 만들고 `OutboxEventWriter`를 호출한다.
+
+```text
+현재 쓰기 요청
+-> 기존 RDB 트랜잭션 시작
+-> 원본 데이터 변경
+-> OutboxEventPayload record 생성
+-> 같은 트랜잭션에 MANDATORY로 참여하는 writer 호출
+-> payload를 JsonNode로 직렬화하고 outbox_events 저장
+-> RDB 커밋
+-> 사용자 response 반환
+```
+
+writer는 기존 트랜잭션이 없으면 실행을 거부하며 별도 커밋하지 않는다. payload 직렬화 실패 시 `OutboxPayloadSerializationException`이 발생하고 원본 변경도 함께 롤백된다. 따라서 Outbox row 저장은 논블로킹 작업이 아니라 요청 트랜잭션에 포함된 동기 작업이다.
+
+MongoDB document/repository, RDB 현재 상태 batch 재조회, projection writer와 Outbox worker는 아직 구현하지 않았다. 현재 조회 API는 계속 RDB를 사용한다.
+
 Outbox 적용에 따른 쓰기 API response 영향은 추정하지 않고 테스트로 확인한다.
 
 기존 쓰기 흐름과 Outbox 적용 후 쓰기 흐름의 차이는 다음과 같다.
@@ -63,7 +82,7 @@ Outbox 적용 후 쓰기 API
 
 따라서 Outbox 적용 후 쓰기 API가 추가로 부담하는 작업은 MongoDB 반영이 아니라 `outbox_events` 저장이다.
 
-이 추가 작업이 실제 response time에 얼마나 영향을 주는지는 수치로 단정하지 않고, 동일 조건의 성능 테스트로 검증한다.
+MID4-137 이후 쓰기 요청에는 이 저장 비용이 포함되지만 아직 동일 조건 성능 측정을 수행하지 않았다. 기존 MID4-206의 `rdb-mixed-no-outbox` 결과는 측정 당시 상태를 나타내므로 Outbox 적용 후 결과로 재분류하지 않는다. 실제 response time 영향은 수치로 단정하지 않고 후속 동일 조건 성능 테스트로 검증한다.
 
 측정 대상은 다음과 같이 둔다.
 
@@ -147,6 +166,8 @@ natural key와 atomic upsert는 중복 문서 방지 계약이다. activity의 `
 초기 worker는 instance 하나만 운영하며 batch의 대상별 MongoDB 쓰기를 순차 실행하고 완료를 기다린다. 동일 대상의 서로 다른 RDB 조회 결과가 MongoDB 쓰기 단계에서 interleaving되지 않게 한다. 다중 worker나 병렬 writer를 도입할 때는 대상별 직렬화 또는 RDB revision 기반 조건부 쓰기를 선행한다.
 
 초기 구현에는 `event_sequence`, projection key, advisory lock, 낙관적 락, 비관적 락을 추가하지 않는다. 기존 Outbox row 저장은 원본 변경과 같은 request transaction에서 동기 수행하지만, MongoDB 반영과 RDB 현재 상태 batch 재조회는 response 반환 이후 worker가 비동기로 수행한다.
+
+따라서 사용자 물리삭제 payload의 영향 ID는 수집 transaction이 관찰한 snapshot이며, 수집과 연관 row 삭제 사이에 commit된 관계까지 포함하는 전체 목록을 보장하지 않는다. worker는 이 목록을 유일한 cleanup 근거로 사용하지 않고 `aggregate_id`의 사용자 활동 제거, actor와 source row 존재 여부 재확인과 함께 cleanup 후보로 사용한다. 이 경쟁 조건은 producer 락 없이 운영하는 초기 정책의 제한이며 후속 worker 동시성 검증에 포함한다.
 
 댓글 내용, 기사 제목/요약/게시일, 관심사 키워드, count 집계값처럼 나중 이벤트로 바뀔 수 있는 snapshot 필드는 오래된 payload로 덮어쓰지 않고, worker 처리 시점의 RDB 현재값을 조회해 반영한다.
 

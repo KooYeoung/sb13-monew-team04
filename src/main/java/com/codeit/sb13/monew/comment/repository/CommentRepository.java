@@ -85,6 +85,12 @@ public interface CommentRepository extends JpaRepository<Comment, UUID>, Comment
 
   void deleteByUser_Id(UUID userId);
 
+  @Query("SELECT C.id FROM Comment C WHERE C.user.id = :userId")
+  List<UUID> findIdsByUserId(@Param("userId") UUID userId);
+
+  @Query("SELECT DISTINCT C.article.id FROM Comment C WHERE C.user.id = :userId")
+  List<UUID> findArticleIdsByUserId(@Param("userId") UUID userId);
+
   // 기사 물리 삭제 시 댓글 정리 (MID4-146)
   void deleteByArticle_Id(UUID articleId);
 

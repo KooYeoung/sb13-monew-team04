@@ -279,7 +279,7 @@ fan-out worst-case, 제외 조건 필터 비용, read/write 혼합 부하는 MID
 
 ## 읽기/쓰기 혼합 부하 테스트 (RDB read/write mixed)
 
-목적은 RDB 기준에서 쓰기 요청이 섞였을 때 활동내역 read 성능이 얼마나 흔들리는지 확인하는 것이다. 현재 Outbox 구현은 없으므로 결과 용도는 `rdb-mixed-no-outbox`로 기록한다. Outbox 구현 후 같은 조건으로 재측정할 때만 `rdb-mixed-with-outbox`와 비교한다.
+목적은 RDB 기준에서 쓰기 요청이 섞였을 때 활동내역 read 성능이 얼마나 흔들리는지 확인하는 것이다. MID4-206 측정 당시에는 Outbox producer가 없었으므로 기존 결과 용도는 `rdb-mixed-no-outbox`로 유지한다. MID4-137 이후 같은 조건으로 새로 측정한 결과만 `rdb-mixed-with-outbox`로 기록해 비교한다.
 
 | API 태그 | 비율 80/20 | 비율 50/50 | 요청 |
 | --- | ---: | ---: | --- |

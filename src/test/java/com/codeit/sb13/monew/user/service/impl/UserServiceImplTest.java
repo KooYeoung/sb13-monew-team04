@@ -2,6 +2,11 @@ package com.codeit.sb13.monew.user.service.impl;
 
 import com.codeit.sb13.monew.activity.service.ActivityVisibilityUpdater;
 import com.codeit.sb13.monew.activity.service.UserActivityVisibilityUpdateResult;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
+import com.codeit.sb13.monew.activity.outbox.payload.UserOutboxPayload;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.exception.AlreadyDeletedUserException;
@@ -55,6 +60,9 @@ public class UserServiceImplTest {
 
   @Mock
   private ActivityVisibilityUpdater activityVisibilityUpdater;
+
+  @Mock
+  private OutboxEventWriter outboxEventWriter;
 
   @Mock
   PasswordEncoder passwordEncoder;
@@ -291,6 +299,7 @@ public class UserServiceImplTest {
         .nickname("닉네임")
         .password("PassWord123!")
         .build();
+    ReflectionTestUtils.setField(user, "id", command.userId());
 
     UserUpdateNicknameResult expectedResult = new UserUpdateNicknameResult(
         command.userId(), "닉네임2", LocalDateTime.now(),
@@ -310,6 +319,13 @@ public class UserServiceImplTest {
     assertThat(actualResult).isEqualTo(expectedResult);
     assertThat(user.getNickname()).isEqualTo("닉네임2");
     verify(userRepository).saveAndFlush(user);
+    verify(outboxEventWriter).write(
+        OutboxEventType.USER_NICKNAME_UPDATED,
+        OutboxAggregateType.USER,
+        command.userId(),
+        command.userId(),
+        new UserOutboxPayload(OutboxEventAction.UPDATED)
+    );
   }
 
   @Test
@@ -407,6 +423,13 @@ public class UserServiceImplTest {
     verify(userRepository).softDeleteIfNotDeleted(eq(userId),
         any(LocalDateTime.class));
     verify(activityVisibilityUpdater).hideActiveByDeletedUser(eq(userId));
+    verify(outboxEventWriter).write(
+        OutboxEventType.USER_SOFT_DELETED,
+        OutboxAggregateType.USER,
+        userId,
+        userId,
+        new UserOutboxPayload(OutboxEventAction.SOFT_DELETED)
+    );
     verify(userRepository, never()).existsById(any());
   }
 

@@ -55,6 +55,11 @@ public enum ApiErrorCode {
             HttpStatus.CONFLICT,
             "Outbox 이벤트 상태를 변경할 수 없습니다."
     ),
+    OUTBOX_PAYLOAD_SERIALIZATION_FAILED(
+            "OBX_002",
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Outbox 이벤트 payload 직렬화에 실패했습니다."
+    ),
 
     // GLOBAL/COMMON GLB
     INVALID_REQUEST("GLB_001", HttpStatus.BAD_REQUEST, "요청 데이터가 올바르지 않습니다."),

@@ -56,11 +56,12 @@ Outbox의 공통 envelope는 row의 `id`, `event_type`, `aggregate_type`, `aggre
 | 구분 | payload 사용 필드 | worker RDB batch 재조회 | source row 없음 |
 | --- | --- | --- | --- |
 | 공통 envelope 컬럼 | event ID, event type, aggregate type/ID, actor user ID, occurredAt | 원본 및 필요한 부모 대상의 존재·노출 여부 | payload만으로 생성하지 않고 숨김·삭제 또는 no-op |
-| 이벤트별 payload body | 부모 대상 ID, action/reason, 이미 알고 있는 불변 영향 대상 ID | 이벤트별 추가 대상과 현재 상태 | source row가 없으면 복원 근거로 사용하지 않음 |
-| 좋아요·구독 | user ID, comment/interest ID, 발생한 action | 현재 좋아요·구독 row 존재 여부 | activity를 비노출 상태로 수렴 |
-| 댓글·기사·관심사 변경 | 대상 ID와 변경 발생 사실 | 현재 content, title, summary, publishedAt, name, keywords 등 표시값 | snapshot을 복원하지 않음 |
-| count 변경 | 집계 대상 ID와 변경 발생 사실 | 현재 likeCount, viewCount, commentCount, subscriberCount | snapshot을 복원하지 않음 |
-| 물리삭제 | 삭제 대상 ID와 삭제 발생 사실 | 대상과 연관 row의 현재 존재 여부 | 관련 activity/snapshot 삭제 또는 no-op |
+| 관심사·기사·사용자 변경 | `action` | 현재 표시값과 노출 상태 | snapshot을 복원하지 않음 |
+| 댓글·댓글 좋아요 | 부모 `articleId`, `action` | 댓글·기사의 현재 상태와 현재 좋아요 row 존재 여부 | activity를 생성하지 않고 숨김·삭제 또는 no-op |
+| count 변경 | `action=COUNT_CHANGED` | `aggregate_id`가 가리키는 대상의 현재 likeCount, viewCount, commentCount, subscriberCount | snapshot을 복원하지 않음 |
+| 사용자 물리삭제 | `action=HARD_DELETED`, 삭제 전에 확보한 댓글·기사·좋아요·조회·구독 영향 ID 목록 | 남아 있는 연관 데이터와 MongoDB cleanup 대상 확인 | payload의 영향 ID를 삭제 후보로 사용하되 activity나 snapshot 복원에는 사용하지 않음 |
+
+MID4-137 구현에서 `aggregate_id`와 `actor_user_id`는 payload에 중복하지 않는다. Java payload record의 `OutboxEventAction`은 JSON 문자열로 직렬화되며, 예를 들어 댓글 작성 payload는 `{"articleId":"...","action":"WRITTEN"}` 형태로 저장된다.
 
 이미 알고 있는 불변 값은 payload snapshot으로 사용할 수 있다. 다만 producer가 이미 알고 있는 mutable 값도 감사·디버깅 목적으로 payload에 포함할 수 있을 뿐, worker는 이를 MongoDB의 최종 상태로 사용하지 않는다.
 

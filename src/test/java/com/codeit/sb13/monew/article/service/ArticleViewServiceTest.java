@@ -1,6 +1,11 @@
 package com.codeit.sb13.monew.article.service;
 
 import com.codeit.sb13.monew.article.domain.Article;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
+import com.codeit.sb13.monew.activity.outbox.payload.ArticleOutboxPayload;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.domain.ArticleView;
 import com.codeit.sb13.monew.article.mapper.ArticleMapper;
@@ -59,6 +64,9 @@ class ArticleViewServiceTest {
 
     @Mock
     private ArticleViewSaveService articleViewSaveService;
+
+    @Mock
+    private OutboxEventWriter outboxEventWriter;
 
     private UUID testArticleId;
     private UUID testUserId;
@@ -128,6 +136,7 @@ class ArticleViewServiceTest {
                 .create(eq(testArticleId), eq(testUserId), any(LocalDateTime.class));
         verify(articleViewRepository, times(2)).findByArticleAndUser(testArticle, testUser);
         verify(articleViewRepository, never()).save(any(ArticleView.class));
+        verifyNoInteractions(outboxEventWriter);
     }
 
     @Test
@@ -158,6 +167,13 @@ class ArticleViewServiceTest {
         ArgumentCaptor<ArticleView> captor = ArgumentCaptor.forClass(ArticleView.class);
         verify(articleViewRepository, times(1)).save(captor.capture());
         assertThat(captor.getValue().getViewedAt()).isAfter(previousViewedAt);
+        verify(outboxEventWriter).write(
+                OutboxEventType.ARTICLE_VIEWED,
+                OutboxAggregateType.ARTICLE,
+                testArticleId,
+                testUserId,
+                new ArticleOutboxPayload(OutboxEventAction.TOUCHED)
+        );
     }
 
     @Test
@@ -221,6 +237,13 @@ class ArticleViewServiceTest {
         assertThat(result).isEqualTo(testViewDto);
         assertThat(concurrentView.getViewedAt()).isAfter(previousViewedAt);
         verify(articleViewRepository, times(1)).save(concurrentView);
+        verify(outboxEventWriter).write(
+                OutboxEventType.ARTICLE_VIEWED,
+                OutboxAggregateType.ARTICLE,
+                testArticleId,
+                testUserId,
+                new ArticleOutboxPayload(OutboxEventAction.TOUCHED)
+        );
     }
 
     @Test

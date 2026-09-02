@@ -5,12 +5,12 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.codeit.sb13.monew.global.exception.ApiErrorCode;
 import com.codeit.sb13.monew.global.exception.outbox.OutboxEventStateTransitionException;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.node.JsonNodeFactory;
 
 class OutboxEventTest {
 
@@ -119,8 +119,8 @@ class OutboxEventTest {
 
     private OutboxEvent createPendingEvent() {
         return OutboxEvent.createPending(
-                "ARTICLE_VIEWED",
-                "ARTICLE",
+                OutboxEventType.ARTICLE_VIEWED,
+                OutboxAggregateType.ARTICLE,
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 JsonNodeFactory.instance.objectNode().put("viewed", true),
