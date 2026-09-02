@@ -10,13 +10,14 @@ import com.codeit.sb13.monew.activity.outbox.payload.CommentOutboxPayload;
 import com.codeit.sb13.monew.activity.outbox.payload.UserHardDeleteOutboxPayload;
 import com.codeit.sb13.monew.global.exception.ApiErrorCode;
 import com.codeit.sb13.monew.global.exception.outbox.OutboxPayloadSerializationException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 class OutboxPayloadSerializerTest {
 
@@ -68,7 +69,7 @@ class OutboxPayloadSerializerTest {
                 UUID.randomUUID(),
                 OutboxEventAction.UPDATED
         );
-        IllegalArgumentException cause = new IllegalArgumentException("serialization failed");
+        JacksonException cause = mock(JacksonException.class);
         given(objectMapper.valueToTree(payload)).willThrow(cause);
 
         assertThatThrownBy(() -> serializer.serialize(payload))

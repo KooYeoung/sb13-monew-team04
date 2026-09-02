@@ -2,7 +2,6 @@ package com.codeit.sb13.monew.activity.outbox.domain;
 
 import com.codeit.sb13.monew.global.domain.UpdatedAtEntity;
 import com.codeit.sb13.monew.global.exception.outbox.OutboxEventStateTransitionException;
-import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -15,6 +14,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import tools.jackson.databind.JsonNode;
 
 @Entity
 @Getter

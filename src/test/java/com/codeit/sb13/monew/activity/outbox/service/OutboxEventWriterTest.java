@@ -11,8 +11,6 @@ import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventStatus;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
 import com.codeit.sb13.monew.activity.outbox.payload.CommentOutboxPayload;
 import com.codeit.sb13.monew.activity.outbox.repository.OutboxEventRepository;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,6 +19,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.JsonNodeFactory;
 
 @ExtendWith(MockitoExtension.class)
 class OutboxEventWriterTest {

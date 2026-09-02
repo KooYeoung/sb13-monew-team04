@@ -8,8 +8,6 @@ import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
 import com.codeit.sb13.monew.global.config.JpaAuditingConfig;
 import com.codeit.sb13.monew.global.config.QueryDslConfig;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
@@ -20,6 +18,8 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.JsonNodeFactory;
 
 @DataJpaTest
 @Import({QueryDslConfig.class, JpaAuditingConfig.class})
