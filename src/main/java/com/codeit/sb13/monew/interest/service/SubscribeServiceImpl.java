@@ -6,6 +6,12 @@ import com.codeit.sb13.monew.interest.domain.Interest;
 import com.codeit.sb13.monew.interest.domain.Subscribe;
 import com.codeit.sb13.monew.interest.repository.InterestRepository;
 import com.codeit.sb13.monew.interest.repository.SubscribeRepository;
+import com.codeit.sb13.monew.activity.outbox.payload.CountOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.InterestOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -20,6 +26,7 @@ public class SubscribeServiceImpl implements SubscribeService {
     private final InterestRepository interestRepository;
     private final SubscribeRepository subscribeRepository;
     private final SubscribeSaver subscribeSaver;
+    private final OutboxEventWriter outboxEventWriter;
 
     /**
      * {@inheritDoc}
@@ -63,7 +70,28 @@ public class SubscribeServiceImpl implements SubscribeService {
         if (!interestRepository.existsById(interestId)) {
             throw new InterestNotFoundException(interestId);
         }
-        subscribeRepository.deleteByInterest_IdAndUserId(interestId, userId);
+        long deletedCount = subscribeRepository.deleteByInterest_IdAndUserId(interestId, userId);
+        if (deletedCount == 0L) {
+            return;
+        }
+        outboxEventWriter.write(
+                OutboxEventType.INTEREST_UNSUBSCRIBED,
+                OutboxAggregateType.INTEREST,
+                interestId,
+                userId,
+                new InterestOutboxPayload(
+                        OutboxEventAction.UNSUBSCRIBED
+                )
+        );
+        outboxEventWriter.write(
+                OutboxEventType.INTEREST_SUBSCRIBER_COUNT_CHANGED,
+                OutboxAggregateType.INTEREST,
+                interestId,
+                userId,
+                new CountOutboxPayload(
+                        OutboxEventAction.COUNT_CHANGED
+                )
+        );
     }
 
     /**

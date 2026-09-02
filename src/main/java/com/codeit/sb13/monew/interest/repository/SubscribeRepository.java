@@ -40,7 +40,7 @@ public interface SubscribeRepository extends JpaRepository<Subscribe, UUID> {
      * @param interestId 구독을 취소할 관심사의 id
      * @param userId 구독을 취소하는 사용자의 id
      */
-    void deleteByInterest_IdAndUserId(UUID interestId, UUID userId);
+    long deleteByInterest_IdAndUserId(UUID interestId, UUID userId);
 
     @Query("SELECT DISTINCT s.interest.id FROM Subscribe s WHERE s.userId = :userId")
     List<UUID> findInterestIdsByUserId(@Param("userId") UUID userId);

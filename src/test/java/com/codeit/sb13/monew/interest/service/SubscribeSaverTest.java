@@ -5,6 +5,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.codeit.sb13.monew.interest.domain.Interest;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
+import com.codeit.sb13.monew.activity.outbox.payload.CountOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.InterestOutboxPayload;
 import com.codeit.sb13.monew.interest.domain.Subscribe;
 import com.codeit.sb13.monew.interest.repository.SubscribeRepository;
 import java.util.UUID;
@@ -14,6 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * {@code @Transactional(propagation = REQUIRES_NEW)}가 실제로 트랜잭션을
@@ -28,6 +35,9 @@ class SubscribeSaverTest {
     @Mock
     SubscribeRepository subscribeRepository;
 
+    @Mock
+    OutboxEventWriter outboxEventWriter;
+
     @InjectMocks
     SubscribeSaver subscribeSaver;
 
@@ -36,7 +46,10 @@ class SubscribeSaverTest {
     void save_delegatesToSaveAndFlush() {
         // given
         Interest interest = Interest.create("스포츠");
-        Subscribe subscribe = Subscribe.of(interest, UUID.randomUUID());
+        UUID interestId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        ReflectionTestUtils.setField(interest, "id", interestId);
+        Subscribe subscribe = Subscribe.of(interest, userId);
         when(subscribeRepository.saveAndFlush(subscribe)).thenReturn(subscribe);
 
         // when
@@ -45,5 +58,19 @@ class SubscribeSaverTest {
         // then
         assertThat(result).isEqualTo(subscribe);
         verify(subscribeRepository).saveAndFlush(subscribe);
+        verify(outboxEventWriter).write(
+                OutboxEventType.INTEREST_SUBSCRIBED,
+                OutboxAggregateType.INTEREST,
+                interestId,
+                userId,
+                new InterestOutboxPayload(OutboxEventAction.SUBSCRIBED)
+        );
+        verify(outboxEventWriter).write(
+                OutboxEventType.INTEREST_SUBSCRIBER_COUNT_CHANGED,
+                OutboxAggregateType.INTEREST,
+                interestId,
+                userId,
+                new CountOutboxPayload(OutboxEventAction.COUNT_CHANGED)
+        );
     }
 }

@@ -2,6 +2,12 @@ package com.codeit.sb13.monew.interest.service;
 
 import com.codeit.sb13.monew.interest.domain.Subscribe;
 import com.codeit.sb13.monew.interest.repository.SubscribeRepository;
+import com.codeit.sb13.monew.activity.outbox.payload.CountOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.InterestOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -28,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SubscribeSaver {
 
     private final SubscribeRepository subscribeRepository;
+    private final OutboxEventWriter outboxEventWriter;
 
     /**
      * 구독을 별도 트랜잭션에서 저장한다.
@@ -42,6 +49,25 @@ public class SubscribeSaver {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Subscribe save(Subscribe subscribe) {
-        return subscribeRepository.saveAndFlush(subscribe);
+        Subscribe saved = subscribeRepository.saveAndFlush(subscribe);
+        outboxEventWriter.write(
+                OutboxEventType.INTEREST_SUBSCRIBED,
+                OutboxAggregateType.INTEREST,
+                saved.getInterest().getId(),
+                saved.getUserId(),
+                new InterestOutboxPayload(
+                        OutboxEventAction.SUBSCRIBED
+                )
+        );
+        outboxEventWriter.write(
+                OutboxEventType.INTEREST_SUBSCRIBER_COUNT_CHANGED,
+                OutboxAggregateType.INTEREST,
+                saved.getInterest().getId(),
+                saved.getUserId(),
+                new CountOutboxPayload(
+                        OutboxEventAction.COUNT_CHANGED
+                )
+        );
+        return saved;
     }
 }

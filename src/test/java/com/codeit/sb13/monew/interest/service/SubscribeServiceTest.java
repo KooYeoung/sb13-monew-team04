@@ -6,8 +6,15 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.codeit.sb13.monew.global.exception.interest.InterestNotFoundException;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
+import com.codeit.sb13.monew.activity.outbox.payload.CountOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.InterestOutboxPayload;
 import com.codeit.sb13.monew.interest.controller.dto.SubscribeResponse;
 import com.codeit.sb13.monew.interest.domain.Interest;
 import com.codeit.sb13.monew.interest.domain.Subscribe;
@@ -36,6 +43,9 @@ class SubscribeServiceTest {
 
     @Mock
     SubscribeSaver subscribeSaver;
+
+    @Mock
+    OutboxEventWriter outboxEventWriter;
 
     @InjectMocks
     SubscribeServiceImpl subscribeServiceImpl;
@@ -104,6 +114,7 @@ class SubscribeServiceTest {
         assertThat(response.createdAt()).isEqualTo(existing.getCreatedAt());
         assertThat(response.interestSubscriberCount()).isEqualTo(3L);
         verify(subscribeSaver, never()).save(any());
+        verifyNoInteractions(outboxEventWriter);
     }
 
     @Test
@@ -171,12 +182,27 @@ class SubscribeServiceTest {
         UUID interestId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         when(interestRepository.existsById(interestId)).thenReturn(true);
+        when(subscribeRepository.deleteByInterest_IdAndUserId(interestId, userId)).thenReturn(1L);
 
         // when
         subscribeServiceImpl.unsubscribe(interestId, userId);
 
         // then
         verify(subscribeRepository).deleteByInterest_IdAndUserId(interestId, userId);
+        verify(outboxEventWriter).write(
+                OutboxEventType.INTEREST_UNSUBSCRIBED,
+                OutboxAggregateType.INTEREST,
+                interestId,
+                userId,
+                new InterestOutboxPayload(OutboxEventAction.UNSUBSCRIBED)
+        );
+        verify(outboxEventWriter).write(
+                OutboxEventType.INTEREST_SUBSCRIBER_COUNT_CHANGED,
+                OutboxAggregateType.INTEREST,
+                interestId,
+                userId,
+                new CountOutboxPayload(OutboxEventAction.COUNT_CHANGED)
+        );
     }
 
     @Test
@@ -191,6 +217,7 @@ class SubscribeServiceTest {
         subscribeServiceImpl.unsubscribe(interestId, userId);
 
         verify(subscribeRepository).deleteByInterest_IdAndUserId(interestId, userId);
+        verifyNoInteractions(outboxEventWriter);
     }
 
     @Test

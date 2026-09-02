@@ -1,6 +1,11 @@
 package com.codeit.sb13.monew.interest.service;
 
 import com.codeit.sb13.monew.article.domain.Article;
+import com.codeit.sb13.monew.activity.outbox.payload.InterestOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.interest.InterestNameDuplicatedException;
 import com.codeit.sb13.monew.global.exception.interest.InterestNotFoundException;
@@ -53,6 +58,7 @@ public class InterestServiceImpl implements InterestService{
     private final InterestRepository interestRepository;
     private final SubscribeRepository subscribeRepository;
     private final NotificationService notificationService;
+    private final OutboxEventWriter outboxEventWriter;
 
     /**
      * {@inheritDoc}
@@ -127,6 +133,15 @@ public class InterestServiceImpl implements InterestService{
                 .orElseThrow(() -> new InterestNotFoundException(command.interestId()));
 
         interest.changeKeywords(command.keywords());
+        outboxEventWriter.write(
+                OutboxEventType.INTEREST_UPDATED,
+                OutboxAggregateType.INTEREST,
+                interest.getId(),
+                null,
+                new InterestOutboxPayload(
+                        OutboxEventAction.UPDATED
+                )
+        );
 
         long subscriberCount = subscribeRepository.countActiveByInterestId(command.interestId());
         return InterestResponse.of(interest, subscriberCount, false);
@@ -191,6 +206,15 @@ public class InterestServiceImpl implements InterestService{
 
         subscribeRepository.deleteByInterest_Id(interestId);
         interestRepository.delete(interest);
+        outboxEventWriter.write(
+                OutboxEventType.INTEREST_HARD_DELETED,
+                OutboxAggregateType.INTEREST,
+                interestId,
+                null,
+                new InterestOutboxPayload(
+                        OutboxEventAction.HARD_DELETED
+                )
+        );
     }
 
     /**

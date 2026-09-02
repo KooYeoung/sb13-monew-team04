@@ -172,7 +172,10 @@ class InterestRepositoryTest {
 
         // notifyForNewArticles()는 이 테스트와 무관해 실제 빈 대신 목으로 채운다.
         InterestServiceImpl interestService = new InterestServiceImpl(
-                interestRepository, subscribeRepository, Mockito.mock(NotificationService.class));
+                interestRepository,
+                subscribeRepository,
+                Mockito.mock(NotificationService.class),
+                Mockito.mock(com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter.class));
 
         // when
         interestService.delete(interest.getId());

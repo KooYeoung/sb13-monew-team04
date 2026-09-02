@@ -12,6 +12,11 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.codeit.sb13.monew.article.domain.Article;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
+import com.codeit.sb13.monew.activity.outbox.payload.InterestOutboxPayload;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.global.dto.CursorPageResponseDto;
 import com.codeit.sb13.monew.global.exception.interest.InterestKeywordRequiredException;
@@ -70,6 +75,9 @@ class InterestServiceTest {
 
     @Mock
     NotificationService notificationService;
+
+    @Mock
+    OutboxEventWriter outboxEventWriter;
 
     @Captor
     ArgumentCaptor<Interest> interestCaptor;
@@ -347,6 +355,13 @@ class InterestServiceTest {
         assertThat(response.keywords()).containsExactly("농구", "배구");
         assertThat(response.subscriberCount()).isEqualTo(3L);
         assertThat(response.subscribedByMe()).isFalse();
+        verify(outboxEventWriter).write(
+                OutboxEventType.INTEREST_UPDATED,
+                OutboxAggregateType.INTEREST,
+                interest.getId(),
+                null,
+                new InterestOutboxPayload(OutboxEventAction.UPDATED)
+        );
     }
 
     @Test
@@ -506,6 +521,13 @@ class InterestServiceTest {
         InOrder order = inOrder(subscribeRepository, interestRepository);
         order.verify(subscribeRepository).deleteByInterest_Id(interest.getId());
         order.verify(interestRepository).delete(interest);
+        verify(outboxEventWriter).write(
+                OutboxEventType.INTEREST_HARD_DELETED,
+                OutboxAggregateType.INTEREST,
+                interest.getId(),
+                null,
+                new InterestOutboxPayload(OutboxEventAction.HARD_DELETED)
+        );
     }
 
     @Test
