@@ -57,7 +57,6 @@ comment_activity_snapshots = 1개
   "occurredAt": "2026-08-15T10:30:00",
   "visible": true,
   "status": "ACTIVE",
-  "lastAppliedEventSequence": 1024,
   "createdAt": "2026-08-15T10:30:00",
   "updatedAt": "2026-08-15T10:30:00"
 }
@@ -103,11 +102,6 @@ status
 -> 활동 상태 또는 visible=false가 된 이유
 -> 기본값 ACTIVE
 -> 예: ACTIVE, CANCELED, UNSUBSCRIBED, TARGET_DELETED, USER_DELETED
-
-lastAppliedEventSequence
--> 이 activity에 마지막으로 반영된 outbox event_sequence
--> 오래된 이벤트 재처리가 최신 visible, status, occurredAt를 덮어쓰지 않도록 조건부 update에 사용
--> 새 activity 생성 시 현재 이벤트의 event_sequence 저장
 
 hiddenByTargetType
 -> status=TARGET_DELETED일 때 visible=true였던 activity를 숨김 처리한 직접 대상 종류
@@ -156,7 +150,7 @@ MongoDB 인덱스에서 숫자는 저장값이 아니라 인덱스 정렬 방향
 
 MID4-135의 인덱스 초기화가 이 조합을 unique index로 생성한다. 후속 worker는 같은 outbox 이벤트를 재처리하거나 동일 활동 이벤트가 중복 발행되어도 이 natural key를 기준으로 하나의 activity만 유지해야 한다.
 
-이 인덱스와 atomic upsert는 중복 문서 생성을 막기 위한 장치다. 이벤트 처리 순서 역전까지 보장하지는 않으므로, activity 상태 전이는 `lastAppliedEventSequence` 조건으로 별도 보호한다.
+이 인덱스와 atomic upsert는 중복 문서 생성을 막기 위한 장치다. activity 상태의 정확성은 event payload의 과거 상태가 아니라 worker가 조회한 RDB 현재 상태를 반영해 보장한다.
 
 ```js
 { userId: 1, type: 1, visible: 1, occurredAt: -1, _id: -1 }
@@ -223,7 +217,9 @@ userId + type + targetType + targetId
 
 이 조합이 없으면 새로 생성하고, 이미 있으면 기존 activity를 수정한다. MongoDB 쓰기는 find 후 insert/update를 나누지 않고 이 natural key 기준의 atomic upsert로 처리한다.
 
-activity 상태 변경은 natural key만으로 update하지 않는다. worker는 현재 outbox 이벤트의 `event_sequence`가 기존 activity의 `lastAppliedEventSequence`보다 큰 경우에만 `visible`, `status`, `hiddenByTargetType`, `hiddenByTargetId` 같은 상태 필드를 갱신한다. 기존 값이 없거나 더 작은 경우에는 갱신하고, 기존 값이 같거나 더 크면 오래된 재처리 이벤트로 보고 no-op 처리한다.
+activity 상태 변경은 이벤트 종류만 보고 payload의 과거 상태를 그대로 적용하지 않는다. worker는 polling batch에서 같은 대상 ID를 참조하는 이벤트를 묶고, 좋아요·구독의 활성 여부, 원본과 부모 대상의 존재 및 노출 여부를 RDB에서 batch 조회한다. 그 결과로 `visible`, `status`, `hiddenByTargetType`, `hiddenByTargetId`를 계산해 natural key 기준으로 atomic upsert한다.
+
+따라서 중복 이벤트, 실패 후 재시도, RDB transaction commit 순서와 worker 처리 순서의 역전이 발생해도 각 처리는 당시의 RDB 현재 상태를 반영한다. 두 transaction 사이에 worker가 실행되어 일시적인 중간 상태가 반영되더라도 나중에 commit된 transaction의 Outbox 이벤트가 다시 현재 상태를 조회하므로 최종 MongoDB Read Model은 RDB에 수렴한다.
 
 `occurredAt`은 최신 활동 정렬 기준이므로 역행하지 않게 처리한다. 좋아요, 구독, 기사 조회처럼 활동 시각을 갱신하는 이벤트는 `$max` 또는 동등한 단조성 조건으로만 `occurredAt`을 갱신한다. 취소, 삭제, 비노출, 복구 이벤트도 과거 이벤트가 최신 `occurredAt`을 낮추지 못하게 한다.
 
@@ -275,7 +271,7 @@ U1 + INTEREST_SUBSCRIBED + INTEREST + I1
 -> status=ACTIVE
 -> hiddenByTargetType, hiddenByTargetId 제거
 -> occurredAt은 기존 값과 이벤트 occurredAt 중 큰 값으로 갱신
--> lastAppliedEventSequence 갱신
+-> 좋아요 활성 여부는 RDB 현재 상태 기준으로 결정
 
 관심사 I1 구독 취소
 -> 기존 INTEREST_SUBSCRIBED + INTEREST + I1
@@ -290,7 +286,7 @@ U1 + INTEREST_SUBSCRIBED + INTEREST + I1
 -> status=ACTIVE
 -> hiddenByTargetType, hiddenByTargetId 제거
 -> occurredAt은 기존 값과 이벤트 occurredAt 중 큰 값으로 갱신
--> lastAppliedEventSequence 갱신
+-> 구독 활성 여부는 RDB 현재 상태 기준으로 결정
 
 기사 A1 다시 조회
 -> 기존 ARTICLE_VIEWED + ARTICLE + A1
@@ -300,7 +296,7 @@ U1 + INTEREST_SUBSCRIBED + INTEREST + I1
 -> status=ACTIVE
 -> hiddenByTargetType, hiddenByTargetId 제거
 -> occurredAt은 기존 값과 이벤트 occurredAt 중 큰 값으로 갱신
--> lastAppliedEventSequence 갱신
+-> 기사 존재 및 노출 여부는 RDB 현재 상태 기준으로 결정
 ```
 
 댓글 수정처럼 활동 자체가 다시 발생한 것이 아니라 대상 표시 정보만 바뀐 경우에는 activity를 새로 만들지 않는다.
@@ -383,7 +379,7 @@ U1 + INTEREST_SUBSCRIBED + INTEREST + I1
 취소/논리삭제/비노출은 기존 activity 숨김
 TARGET_DELETED는 hiddenByTargetType, hiddenByTargetId로 직접 숨김 원인을 보조 저장
 복구는 RDB 대상/부모 상태 재계산 후 snapshot visible=true 복구와 activity ACTIVE 복구를 함께 처리
-activity 상태 전이는 lastAppliedEventSequence 조건으로 오래된 이벤트 재처리 방지
+activity 상태 전이는 대상 ID별 RDB 현재 상태 batch 재조회 결과로 수렴
 occurredAt은 $max 또는 동등한 단조 조건으로 갱신
 물리삭제는 MongoDB Read Model에서도 제거
 수정은 activity가 아니라 snapshot 갱신
@@ -632,7 +628,7 @@ INTEREST_SUBSCRIBED + 관심사 비노출
 
 물리삭제 이후에는 복구를 고려하지 않는다. 복구 가능성은 논리삭제 상태에서만 유지한다.
 
-물리삭제 cleanup으로 activity 또는 snapshot 문서가 제거되면 `lastAppliedEventSequence`도 함께 사라질 수 있다. 따라서 물리삭제 이후 지연 이벤트나 재처리 이벤트가 도착했을 때의 재생성 차단 기준은 sequence guard가 아니라 RDB source row 존재 여부다. worker는 upsert 전에 원본 사용자, 기사, 댓글, 관심사 등 필요한 source row가 존재하고 노출 가능한지 확인하며, source row가 없으면 MongoDB 문서를 다시 만들지 않고 no-op 처리한다.
+물리삭제 이후 지연 이벤트나 재처리 이벤트가 도착했을 때의 재생성 차단 기준은 RDB source row 존재 여부다. worker는 upsert 전에 원본 사용자, 기사, 댓글, 관심사 등 필요한 source row가 존재하고 노출 가능한지 확인하며, source row가 없으면 payload만으로 MongoDB 문서를 다시 만들지 않고 no-op 처리한다.
 
 추천 인덱스 예시는 다음과 같다.
 

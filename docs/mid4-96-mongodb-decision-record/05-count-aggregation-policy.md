@@ -15,7 +15,7 @@ MongoDB = 활동내역 조회를 위한 역정규화 Read Model
 
 예를 들어 댓글 내용 수정은 댓글 엔티티의 version으로 순서를 판단할 수 있지만, 댓글 좋아요 수는 좋아요 테이블의 집계 결과이므로 댓글 version만으로 순서를 판단하기 어렵다.
 
-activity 상태 전이는 outbox `event_sequence`와 activity의 `lastAppliedEventSequence` 비교로 보호하지만, 이 기준을 count snapshot 전체에 전역 적용하지는 않는다. count snapshot은 이벤트 payload의 과거 count를 신뢰하지 않고 RDB 현재 집계값을 다시 조회해 수렴시키는 정책을 기본으로 둔다.
+count snapshot뿐 아니라 좋아요·구독 활성 여부와 대상 노출 상태 같은 mutable activity 상태도 이벤트 payload의 과거 값을 신뢰하지 않고 RDB 현재값을 다시 조회해 수렴시키는 정책을 기본으로 둔다.
 
 따라서 집계값 변경 이벤트는 다음 기준으로 처리한다.
 
@@ -23,7 +23,7 @@ activity 상태 전이는 outbox `event_sequence`와 activity의 `lastAppliedEve
 
 ```text
 COMMENT_LIKE_CHANGED
--> payload에는 commentId, eventId, occurredAt 같은 최소 식별 정보만 담는다.
+-> commentId는 aggregate_id, eventId와 occurredAt은 공통 envelope 컬럼을 사용하며 payload body는 비워 둘 수 있다.
 -> worker가 이벤트 처리 시점에 RDB에서 현재 likeCount를 다시 집계한다.
 -> MongoDB comment snapshot에 likeCount를 $set으로 반영한다.
 
@@ -32,7 +32,7 @@ ARTICLE_COMMENT_COUNT_CHANGED
 -> MongoDB article snapshot에 commentCount를 $set으로 반영한다.
 
 ARTICLE_VIEW_COUNT_CHANGED
--> payload에는 articleId, eventId, occurredAt 같은 최소 식별 정보만 담는다.
+-> articleId는 aggregate_id, eventId와 occurredAt은 공통 envelope 컬럼을 사용하며 payload body는 비워 둘 수 있다.
 -> worker가 이벤트 처리 시점에 RDB에서 현재 viewCount를 다시 조회한다.
 -> MongoDB article snapshot에 viewCount를 $set으로 반영한다.
 
@@ -144,4 +144,4 @@ worker 중단
 
 `likeCount`처럼 다른 테이블을 기준으로 집계하는 값에는 엔티티 `source_version`을 억지로 붙이지 않는다.
 
-`event_sequence`는 activity 상태 전이를 오래된 이벤트 재처리로부터 보호하기 위한 기준이다. 집계값처럼 RDB 현재값을 재조회해 `$set`하는 snapshot 필드의 순서 판단을 `event_sequence` 하나로 대체하지 않는다.
+초기 구현에는 `event_sequence`나 producer 측 직렬화 락을 추가하지 않는다. 집계값과 mutable activity 상태는 대상 ID별 RDB 현재 상태 batch 재조회와 멱등 upsert로 중복·재시도·순서 역전 뒤에도 최종 상태로 수렴시킨다.

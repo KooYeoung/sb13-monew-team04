@@ -57,7 +57,6 @@ Outbox 저장은 원본 엔티티 변경과 같은 RDB 트랜잭션에 참여해
 outbox_events
 
 id              UUID PK
-event_sequence  BIGINT NOT NULL
 event_type      VARCHAR(80)
 aggregate_type  VARCHAR(50)
 aggregate_id    UUID
@@ -81,16 +80,16 @@ MID4-136
 -> OutboxEvent JPA 엔티티와 repository
 
 MID4-246
--> projection key와 event_sequence 저장 컬럼
--> projection key 단위 직렬화와 sequence 발급
--> 순서 역전 및 stale event 검증
+-> 이벤트별 payload 사용 필드와 RDB 재조회 필드 분류
+-> 대상 ID별 RDB 현재 상태 batch 재조회와 수렴 정책
+-> 중복, 재시도, commit 순서 역전, 물리삭제 후 지연 이벤트 시나리오 검증 기준
 ```
 
-MID4-136 단계에서는 `event_sequence`와 projection key를 아직 저장하지 않는다. 실제 도메인 쓰기 흐름이 Outbox row를 생성하는 MID4-137보다 MID4-246을 먼저 적용하므로, 기본 테이블에 운영 이벤트가 쌓이기 전에 순서 보호 컬럼과 발급 규칙을 완성한다.
+MID4-246은 Outbox 테이블 컬럼이나 애플리케이션 코드를 추가하지 않는 정책 확정 작업이다. 실제 도메인 쓰기 흐름이 Outbox row를 생성하는 MID4-137보다 먼저 payload 책임과 worker 재조회 책임을 구분한다.
 
-`event_sequence`는 outbox 이벤트 간 비교 가능한 단조 증가 값으로 둔다. activity 상태 전이의 순서 보호 기준으로 사용하므로, 같은 activity key를 변경할 수 있는 이벤트에서는 `event_sequence` 순서가 RDB 최종 상태 순서와 어긋나면 안 된다.
+초기 구현에는 `event_sequence`, projection key, advisory lock, 낙관적 락, 비관적 락을 추가하지 않는다. DB sequence는 값 할당 순서와 transaction commit 순서가 일치하지 않으므로, 정확한 순서 guard로 쓰려면 producer 쓰기 경로를 직렬화해야 한다. 이 추가 락은 request transaction의 대기 시간과 DB connection 점유에 영향을 줄 수 있어 현재 범위에서 선택하지 않는다.
 
-DB sequence는 값의 할당 순서만 보장하며 transaction commit 순서를 보장하지 않는다. 따라서 후속 구현에서 DB sequence를 사용한다면 같은 `userId + type + targetType + targetId` activity key 또는 같은 activity 상태를 파생시키는 source aggregate를 먼저 직렬화한 뒤 `event_sequence`를 할당한다. 직렬화 수단은 transaction-scoped advisory lock, row lock, 또는 동등한 DB lock 전략을 후보로 두며, lock은 outbox row 저장과 `event_sequence` 할당 전 획득하고 RDB commit 또는 rollback까지 유지한다.
+대신 Outbox 이벤트를 MongoDB에 적용할 상태 snapshot이 아니라 현재 상태 재계산 신호로 취급한다. worker가 같은 batch의 대상 ID를 모아 RDB 현재 상태를 조회하고 이를 MongoDB에 멱등 반영하면, 이벤트 처리 순서가 바뀌어도 최종 상태는 RDB에 수렴한다.
 
 `source_version`은 바로 확정하지 않고 보류 컬럼으로 둔다.
 
@@ -109,13 +108,6 @@ id
 -> activity_histories 중복 문서 방지는 `userId + type + targetType + targetId` unique index와 atomic upsert로 보장한다.
 -> snapshot 쓰기 멱등성은 commentId, articleId, interestId 같은 대상 ID 기준 upsert로 보장한다.
 -> Outbox id 기준 처리 중복 확인이 필요하면 MongoDB 반영 이력 컬렉션 또는 RDB 처리 로그에 outbox id를 unique하게 기록하는 방식을 별도로 둔다.
-
-event_sequence
--> Outbox 이벤트 간 비교 가능한 단조 증가 값
--> activity_histories의 visible, status, occurredAt 같은 상태 전이 순서 보호에 사용한다.
--> MongoDB activity에는 lastAppliedEventSequence로 마지막 반영 값을 저장한다.
--> source_version처럼 특정 원본 엔티티의 version이 아니라 projection 이벤트 전체의 적용 순서 기준이다.
--> 단순 DB sequence 할당 순서가 아니라 같은 activity key에 대해 RDB commit 순서와 어긋나지 않는 값이어야 한다.
 
 event_type
 -> 이벤트 종류
@@ -139,7 +131,11 @@ payload_json
 -> 운영 DB가 PostgreSQL이면 JSONB, MySQL이면 JSON 사용을 우선한다.
 -> 테스트 DB나 호환성 제약으로 JSON 타입 사용이 어렵다면 TEXT fallback을 허용한다.
 -> TEXT fallback을 사용할 때는 애플리케이션에서 JSON 직렬화/역직렬화 검증을 수행한다.
--> worker가 event_type을 기준으로 해석해 MongoDB Read Model에 반영한다.
+-> event ID, event type, aggregate type/ID, actor user ID, occurredAt은 각각 Outbox row의 공통 envelope 컬럼에 저장하고 payload에 중복하지 않는다.
+-> payload에는 부모 대상 ID, action/reason, 삭제 전 확보한 불변 영향 대상 ID처럼 이벤트별 처리에 필요한 body만 담는다.
+-> 댓글 작성 시각처럼 불변인 값은 payload snapshot을 사용할 수 있다.
+-> content, title, keywords, visible, 좋아요·구독 활성 여부, count처럼 바뀔 수 있는 값은 포함할 수 있어도 MongoDB 최종값으로 신뢰하지 않는다.
+-> worker는 event_type과 ID를 기준으로 대상을 묶고 RDB 현재 상태를 batch 조회해 MongoDB Read Model에 반영한다.
 
 status
 -> Outbox 처리 상태
@@ -174,23 +170,23 @@ created_at, updated_at
 ```text
 PENDING 이벤트 또는 next_retry_at이 지난 FAILED 이벤트 조회
 -> created_at ASC 순서로 처리
--> activity 또는 snapshot upsert 전에 이벤트가 참조하는 RDB source row 존재 여부 확인
--> source row가 물리삭제되어 없으면 MongoDB 문서를 생성하지 않고 stale cleanup event로 보고 PROCESSED 처리
+-> event_type별 target ID를 추출하고 같은 대상의 source row, 관계 활성 상태, 표시값과 count를 batch 조회
+-> source row가 물리삭제되어 없으면 이벤트 매핑에 따라 기존 MongoDB 문서를 숨기거나 삭제하고 payload만으로 새 문서를 생성하지 않음
 -> activity_histories는 natural key 기준 atomic upsert로 중복 문서 생성 방지
--> activity 상태 전이는 직렬화된 event_sequence > lastAppliedEventSequence 조건을 만족할 때만 반영
--> occurredAt은 $max 또는 동등한 단조성 조건으로 갱신
+-> activity의 visible, status는 좋아요·구독 row 존재 여부와 대상·부모의 현재 노출 상태로 계산
+-> occurredAt은 현재 관계 row의 시각 또는 검증된 불변 이벤트 시각을 사용하고, 같은 활동의 시각 갱신은 $max 또는 동등한 단조 조건 적용
 -> *_activity_snapshots는 대상 ID 기준 upsert
--> 수정 가능한 snapshot 값은 오래된 payload로 덮어쓰지 않고 worker 처리 시점의 RDB 현재값을 조회해 반영
+-> 수정 가능한 snapshot 값은 오래된 payload로 덮어쓰지 않고 batch 조회한 RDB 현재값을 반영
 -> count 집계 이벤트 병합 처리 시 성공은 그룹 전체 PROCESSED, 실패 retry와 DEAD_LETTER 판정은 row별 처리
--> 오래된 event_sequence 재처리로 MongoDB update가 no-op이면 stale event로 보고 PROCESSED 처리
+-> 현재 상태를 이미 반영한 중복·지연 이벤트도 멱등 처리 후 PROCESSED
 -> MongoDB Read Model 반영 성공 시 PROCESSED
 -> 개별 이벤트 실패 시 FAILED, retry_count 증가, next_retry_at 설정, last_error 기록
 -> 개별 이벤트가 최대 재시도 횟수를 초과하면 DEAD_LETTER로 전환
 ```
 
-UUID는 순서 기준으로 사용하지 않는다. worker 조회와 처리 시도 순서는 `created_at` 기준으로 두되, activity 상태 반영 가능 여부는 직렬화된 `event_sequence` 기준으로 판단한다. `created_at`은 worker polling 편의를 위한 정렬 기준이지 transaction commit 순서 보장 기준이 아니다. `occurred_at`은 활동 발생 시각과 조회 정렬 기준이지 stale event 방지 기준으로 단독 사용하지 않는다.
+UUID는 순서 기준으로 사용하지 않는다. worker 조회와 처리 시도 순서는 `created_at` 기준으로 두지만 이는 polling 편의를 위한 정렬일 뿐 transaction commit 순서나 projection 정확성 보장 기준이 아니다. `occurred_at`도 활동 발생 시각과 조회 정렬 정보이며 stale event 판정에 단독 사용하지 않는다. 정확성은 처리 시점의 RDB 현재 상태 재조회로 보장한다.
 
-물리삭제 cleanup 이후에는 기존 MongoDB activity 또는 snapshot 문서가 제거되어 `lastAppliedEventSequence`도 함께 사라질 수 있다. 이 경우 sequence guard만으로는 삭제 전 `PENDING` 또는 `FAILED` 이벤트의 재처리 upsert를 막을 수 없다. 따라서 worker는 natural key atomic upsert 또는 snapshot upsert 전에 RDB source row 존재 여부를 확인하고, source row가 없으면 payload만으로 activity나 snapshot을 복원하지 않는다. 이 이벤트는 이미 cleanup 이후 도착한 stale event로 보고 `PROCESSED` 처리한다.
+물리삭제 cleanup 이후 삭제 전 `PENDING` 또는 `FAILED` 이벤트가 재처리될 수 있다. 따라서 worker는 natural key atomic upsert 또는 snapshot upsert 전에 RDB source row 존재 여부를 확인하고, source row가 없으면 payload만으로 activity나 snapshot을 복원하지 않는다. 필요한 숨김·삭제가 이미 반영됐다면 no-op 후 `PROCESSED` 처리한다.
 
 후속 구현 검증에는 cleanup 이후 삭제 전 `PENDING` 또는 `FAILED` 이벤트를 재처리해도 해당 activity와 snapshot 문서가 다시 생성되지 않는 시나리오를 포함한다.
 
@@ -242,50 +238,53 @@ worker 조회 조건은 상태와 처리 가능 시각을 기준으로 두되, �
 
 여러 worker를 동시에 운영해야 하는 경우에는 같은 이벤트를 여러 worker가 동시에 처리하지 않도록 JPQL/native query 또는 DB lock 전략을 별도로 검토한다.
 
-### Activity 상태 순서 보호 기준
+### Activity 현재 상태 수렴 기준
 
-`userId + type + targetType + targetId` natural key와 atomic upsert는 같은 activity 문서가 중복 생성되지 않도록 막는다. 하지만 이전 이벤트가 실패했다가 나중에 재처리되는 경우, natural key만으로는 최신 activity 상태를 오래된 상태로 되돌리는 문제를 막을 수 없다.
+`userId + type + targetType + targetId` natural key와 atomic upsert는 같은 activity 문서가 중복 생성되지 않도록 막는다. 여기에 worker의 RDB 현재 상태 재조회를 결합해 이전 이벤트가 실패했다가 나중에 재처리되어도 payload의 오래된 상태로 되돌아가지 않게 한다.
 
 ```text
 E1: 댓글 좋아요
 E2: 좋아요 취소
 
 E1 처리 실패
--> E2 처리 성공, activity visible=false, status=CANCELED
--> E1 재시도
+-> E2 처리 성공 후 RDB 좋아요 row 없음
+-> E1 재시도 시에도 RDB 좋아요 row 없음으로 조회
+-> activity visible=false, status=CANCELED 유지
 ```
 
-위 순서에서 E1이 단순 upsert로 재처리되면 activity가 다시 `ACTIVE`가 될 수 있다. 따라서 activity 상태 전이는 다음 조건부 update로 보호한다.
+worker는 이벤트의 `COMMENT_LIKED` 또는 `COMMENT_LIKE_CANCELED` 이름만으로 최종 상태를 정하지 않는다. 두 이벤트 모두 사용자 ID와 댓글 ID로 현재 좋아요 row 존재 여부, 댓글과 부모 기사의 노출 여부를 조회하고 같은 계산 규칙을 적용한다.
 
 ```text
-update 조건
--> natural key 일치
--> lastAppliedEventSequence가 없거나 lastAppliedEventSequence < 현재 event_sequence
+좋아요 row 존재 + 댓글/기사 노출 가능
+-> visible=true, status=ACTIVE
+-> occurredAt은 현재 좋아요 row의 생성 시각 기준으로 단조 갱신
 
-update 내용
--> visible, status, hiddenByTargetType, hiddenByTargetId 등 상태 필드 갱신
--> occurredAt은 $max 또는 동등한 단조 조건으로만 갱신
--> lastAppliedEventSequence = 현재 event_sequence
+좋아요 row 없음
+-> visible=false, status=CANCELED
+
+좋아요 row 존재 + 댓글 또는 기사 노출 불가
+-> visible=false, status=TARGET_DELETED
 ```
 
-조건을 만족하지 않는 이벤트는 이미 더 최신 이벤트가 반영된 stale event로 본다. 이 경우 MongoDB update는 no-op이며, outbox row는 재시도 대상이 아니라 처리 완료로 볼 수 있다.
+구독도 같은 방식으로 현재 구독 row와 관심사 노출 상태를 조회한다. 댓글 작성, 기사 조회, 대상 수정·삭제·복구 이벤트도 source row와 부모 대상의 현재 상태를 조회해 activity와 snapshot을 계산한다.
 
-이 기준은 JPA `@Version` 낙관적 락과 유사한 목적을 갖지만, RDB 원본 엔티티의 동시 수정 충돌 제어가 아니라 MongoDB Read Model projection의 오래된 이벤트 재처리 방지 조건이다.
+같은 polling batch에서는 이벤트 row마다 같은 source를 반복 조회하지 않는다. event type을 처리 규칙으로 매핑한 뒤 실제 RDB 조회는 commentId, articleId, interestId, userId 같은 target ID 집합으로 묶는다. MongoDB 반영 성공 여부와 Outbox 상태 전이 규칙은 기존 batch 정책을 그대로 따른다.
 
-다만 이 guard가 올바르게 동작하려면 같은 activity key에 대한 `event_sequence`가 RDB 최종 상태 순서와 같은 방향이어야 한다. 아래 순서가 가능하면 낮은 sequence 이벤트가 나중 commit되더라도 stale event로 버려질 수 있다.
+commit 순서가 이벤트 생성 시도 순서와 역전되는 경우도 별도 sequence 없이 다음과 같이 수렴한다.
 
 ```text
-T1: COMMENT_LIKED, event_sequence=101 할당
-T2: COMMENT_LIKE_CANCELED, event_sequence=102 할당
+T1: 댓글 좋아요 transaction 시작 및 Outbox row 준비
+T2: 좋아요 취소 transaction 시작 및 Outbox row 준비
 T2 먼저 commit
--> worker가 102 반영, lastAppliedEventSequence=102
+-> worker가 RDB 현재 상태를 조회해 취소 상태 반영
 T1 나중 commit
--> worker가 101을 stale event로 보고 no-op
+-> T1 Outbox 이벤트 처리 시 RDB 현재 상태를 다시 조회
+-> 최종 commit된 RDB 상태를 MongoDB에 반영
 ```
 
-후속 구현에서는 같은 activity key를 변경할 수 있는 트랜잭션이 위 순서로 commit되지 않도록 projection key 기준 직렬화를 적용한다. 직렬화가 어려운 이벤트는 payload의 상태값을 그대로 반영하지 않고 worker가 RDB 현재 상태를 재조회해 MongoDB Read Model을 수렴시키는 방식으로 별도 설계한다.
+worker가 두 commit 사이에 실행되면 일시적으로 먼저 commit된 상태가 반영될 수 있다. 하지만 나중 commit된 transaction에도 Outbox row가 있으므로 후속 처리에서 RDB 현재 상태를 다시 읽어 최종 상태로 수렴한다. 중복 처리와 재시도 역시 같은 계산을 반복하므로 멱등하다.
 
-후속 구현 검증에는 같은 activity key에 대해 낮은 `event_sequence`를 먼저 할당한 트랜잭션과 높은 `event_sequence`를 나중에 할당한 트랜잭션의 commit 순서가 역전되는 시나리오를 포함한다. 직렬화 적용 후에는 나중 commit된 이벤트가 낮은 sequence라는 이유로 stale 처리되지 않아야 하며, 최종 MongoDB activity 상태가 RDB 기준 최종 상태와 일치해야 한다.
+후속 구현 검증에는 좋아요/취소, 구독/해제, 삭제/복구의 중복·재시도·commit 순서 역전과 삭제/재생성 시나리오를 포함한다. 최종 MongoDB activity와 snapshot은 처리 이벤트의 순서가 아니라 RDB 기준 최종 상태와 일치해야 한다.
 
 ### Source Version 검토 기준
 
@@ -301,7 +300,7 @@ T1 나중 commit
 - 낙관적 락 예외 처리를 프로젝트 범위에서 감당할 수 있는지
 ```
 
-초기 구현에서는 `source_version` 없이 Outbox 이벤트를 저장하고, 단일 worker가 `created_at ASC` 기준으로 처리한다. 다만 activity 상태 전이는 `source_version`이 아니라 직렬화된 `event_sequence`와 `lastAppliedEventSequence` 비교로 보호한다.
+초기 구현에서는 `source_version` 없이 Outbox 이벤트를 저장하고, 단일 worker가 `created_at ASC` 기준으로 처리한다. activity와 snapshot의 mutable 상태는 대상 ID별 RDB 현재 상태 재조회로 보호한다.
 
 다만 `source_version`이 없는 동안에도 재시도 중인 이전 이벤트가 최신 snapshot을 덮어쓰면 안 된다. 따라서 댓글 내용, 기사 제목/요약/게시일, 관심사 키워드, count 집계값처럼 나중 이벤트로 변경될 수 있는 snapshot 필드는 event payload의 표시값을 그대로 최종값으로 쓰지 않는다.
 

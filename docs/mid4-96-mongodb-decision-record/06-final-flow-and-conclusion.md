@@ -126,7 +126,7 @@ RDB는 Source of Truth로 유지하고, MongoDB만 활동내역 조회 최적화
 
 MongoDB Read Model 반영은 비동기로 처리하되, 이벤트 유실을 막기 위해 RDB 원본 변경과 outbox 이벤트 저장은 같은 트랜잭션에서 수행한다.
 
-Outbox payload는 JSON 계열 타입으로 저장한다. 운영 DB가 PostgreSQL이면 `JSONB`, MySQL이면 `JSON`을 우선하고, 테스트 DB나 호환성 제약이 있으면 `TEXT` fallback을 허용한다.
+Outbox payload는 JSON 계열 타입으로 저장한다. 운영 DB가 PostgreSQL이면 `JSONB`, MySQL이면 `JSON`을 우선하고, 테스트 DB나 호환성 제약이 있으면 `TEXT` fallback을 허용한다. event ID, event type, aggregate type/ID, actor user ID, occurredAt은 Outbox 공통 envelope 컬럼에 두고, payload에는 이를 중복하지 않은 이벤트별 body만 저장한다.
 
 Outbox 적용으로 쓰기 API response가 얼마나 증가하는지는 추정하지 않고, Outbox 적용 전/후 성능 테스트 결과를 기준으로 판단한다.
 
@@ -140,15 +140,15 @@ MongoDB 반영은 response 반환 이후 worker가 비동기로 수행하므로,
 
 MID4-135에서 이 natural key의 unique index는 준비했다. 후속 worker는 atomic upsert를 구현해 같은 outbox 이벤트가 재처리되거나 동일 활동 이벤트가 중복 발행되어도 activity가 중복 생성되지 않도록 보장한다.
 
-다만 natural key와 atomic upsert는 중복 문서 방지 계약이지 이벤트 순서 보호 계약은 아니다. activity의 `visible`, `status`, `occurredAt` 같은 상태 전이는 직렬화된 outbox `event_sequence`와 activity의 `lastAppliedEventSequence`를 비교하는 조건부 update로 보호한다.
+natural key와 atomic upsert는 중복 문서 방지 계약이다. activity의 `visible`, `status`, `occurredAt` 같은 mutable 상태는 payload의 과거 상태를 그대로 반영하지 않고 worker가 좋아요·구독 관계, 원본과 부모 대상의 존재 및 노출 여부를 RDB에서 다시 조회해 계산한다.
 
-worker는 activity update 시 `lastAppliedEventSequence`가 없거나 현재 이벤트의 `event_sequence`보다 작은 경우에만 상태 필드를 갱신한다. 더 오래된 이벤트가 재처리되면 MongoDB update는 no-op 처리하고 outbox row는 처리 완료로 볼 수 있다. `occurredAt`은 `$max` 또는 동등한 단조성 조건으로 갱신해 과거 이벤트가 최신 활동 시각을 낮추지 못하게 한다.
+같은 polling batch의 RDB 조회는 commentId, articleId, interestId, userId 같은 대상 ID 집합으로 묶는다. 중복 이벤트나 실패 후 재시도, transaction commit 순서와 worker 처리 순서의 역전이 발생해도 각 처리는 당시의 RDB 현재 상태를 반영하며, 나중에 commit된 transaction의 이벤트가 최종 상태를 다시 반영한다. `occurredAt`은 현재 관계 row의 시각 또는 검증된 불변 이벤트 시각을 사용하고 `$max` 또는 동등한 단조 조건을 적용한다.
 
-이 guard가 올바르게 동작하려면 같은 activity key를 변경할 수 있는 이벤트의 `event_sequence`가 RDB commit 순서와 어긋나지 않아야 한다. 후속 구현은 04-outbox-design의 projection key 기준 직렬화 계약을 따른다.
+초기 구현에는 `event_sequence`, projection key, advisory lock, 낙관적 락, 비관적 락을 추가하지 않는다. 기존 Outbox row 저장은 원본 변경과 같은 request transaction에서 동기 수행하지만, MongoDB 반영과 RDB 현재 상태 batch 재조회는 response 반환 이후 worker가 비동기로 수행한다.
 
 댓글 내용, 기사 제목/요약/게시일, 관심사 키워드, count 집계값처럼 나중 이벤트로 바뀔 수 있는 snapshot 필드는 오래된 payload로 덮어쓰지 않고, worker 처리 시점의 RDB 현재값을 조회해 반영한다.
 
-`source_version`은 원본 엔티티 snapshot 필드의 순서 보호 후보로 남긴다. activity 상태 전이 보호는 여러 aggregate 이벤트가 같은 activity key를 갱신할 수 있으므로 `source_version`이 아니라 `event_sequence` 기준을 기본으로 둔다.
+`source_version`은 원본 엔티티 snapshot 필드의 순서 보호가 별도로 필요하다고 확인될 때 재검토할 대안으로만 남긴다. 현재 기본안은 엔티티 version이나 producer 락을 추가하지 않는 RDB 현재 상태 수렴 방식이다.
 
 댓글 작성 또는 댓글 좋아요처럼 기사에 종속된 activity는 `parentTargetType=ARTICLE`, `parentTargetId=articleId`를 함께 저장한다. 기사 삭제 또는 비공개 처리 시 이 부모 식별자로 해당 기사에 속한 댓글 activity를 숨김 처리한다.
 
@@ -164,16 +164,16 @@ worker는 activity update 시 `lastAppliedEventSequence`가 없거나 현재 이
 
 사용자, 기사, 댓글이 RDB에서 최종 물리삭제되면 MongoDB Read Model에서도 관련 `activity_histories`와 snapshot 문서를 제거한다. 물리삭제 이후에는 복구를 고려하지 않고, 복구 가능성은 논리삭제 상태에서만 유지한다.
 
-물리삭제 cleanup 후에는 제거된 MongoDB 문서의 `lastAppliedEventSequence`도 사라질 수 있으므로, 삭제 전 지연 이벤트 재처리 차단을 sequence guard에만 의존하지 않는다. worker는 activity 또는 snapshot upsert 전에 RDB source row 존재 여부를 확인하고, source row가 없으면 payload만으로 문서를 재생성하지 않는다. cleanup 후 도착한 stale event는 no-op으로 처리하고 outbox row는 `PROCESSED`로 전환할 수 있다.
+물리삭제 이후 삭제 전 지연 이벤트가 도착하더라도 worker는 activity 또는 snapshot upsert 전에 RDB source row 존재 여부를 확인한다. source row가 없으면 payload만으로 문서를 재생성하지 않고, 필요한 삭제가 이미 반영됐다면 no-op 후 outbox row를 `PROCESSED`로 전환할 수 있다.
 
 최종 구조는 다음과 같다.
 
 ```text
 RDB 원본 데이터
 -> 활동 이벤트 발생
--> 직렬화된 event_sequence가 포함된 outbox_events 저장
--> outbox worker가 event_sequence guard로 activity_histories 갱신
--> snapshot은 대상 ID 기준으로 갱신
+-> 같은 RDB transaction에 event facts와 식별자를 담은 outbox_events 저장
+-> outbox worker가 대상 ID별 RDB 현재 상태를 batch 조회
+-> activity_histories와 snapshot을 natural key 또는 대상 ID 기준으로 멱등 갱신
 -> 활동내역 API 조회
 -> activity_histories 조회
 -> 대상 snapshot 조회 및 매핑
