@@ -36,6 +36,24 @@ bool_value() {
   esac
 }
 
+validate_target_base_refs() {
+  if ! printf '%s' "$JIRA_TARGET_BASE_REFS" \
+    | jq -e 'type == "array" and length > 0 and all(.[]; type == "string" and length > 0)' >/dev/null 2>&1; then
+    error 'JIRA_TARGET_BASE_REFS must be a non-empty JSON string array, for example ["develop","main"]'
+  fi
+}
+
+is_target_base_ref() {
+  local base_ref="$1"
+
+  printf '%s' "$JIRA_TARGET_BASE_REFS" \
+    | jq -e --arg base_ref "$base_ref" 'index($base_ref) != null' >/dev/null
+}
+
+target_base_refs_text() {
+  printf '%s' "$JIRA_TARGET_BASE_REFS" | jq -r 'join(", ")'
+}
+
 keys_from_text() {
   local text="$1"
   printf '%s' "$text" \
@@ -97,8 +115,8 @@ resolve_target_status() {
   local base_ref="$5"
   local review_state="$6"
 
-  if [ "$base_ref" != "$JIRA_TARGET_BASE_REF" ]; then
-    notice "base branch가 ${JIRA_TARGET_BASE_REF}가 아니므로 Jira 상태 동기화를 건너뜁니다: ${base_ref}"
+  if ! is_target_base_ref "$base_ref"; then
+    notice "base branch가 Jira 상태 동기화 대상이 아니므로 건너뜁니다: ${base_ref} (대상: $(target_base_refs_text))"
     return "$STATUS_SYNC_SKIP_CODE"
   fi
 
@@ -299,7 +317,7 @@ main() {
 
   JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-MID4}"
   JIRA_PROJECT_KEY_UPPER="$(printf '%s' "$JIRA_PROJECT_KEY" | tr '[:lower:]' '[:upper:]')"
-  JIRA_TARGET_BASE_REF="${JIRA_TARGET_BASE_REF:-develop}"
+  JIRA_TARGET_BASE_REFS="${JIRA_TARGET_BASE_REFS:-[\"develop\",\"main\"]}"
   JIRA_STATUS_IN_PROGRESS="${JIRA_STATUS_IN_PROGRESS:-진행 중}"
   JIRA_STATUS_CODE_REVIEW="${JIRA_STATUS_CODE_REVIEW:-코드 리뷰}"
   JIRA_STATUS_VERIFYING="${JIRA_STATUS_VERIFYING:-검증 중}"
@@ -309,6 +327,8 @@ main() {
   PR_MERGED="$(bool_value "${PR_MERGED:-false}")"
   PR_REVIEW_STATE="$(printf '%s' "${PR_REVIEW_STATE:-}" | tr '[:upper:]' '[:lower:]')"
   JIRA_DRY_RUN="$(bool_value "${JIRA_DRY_RUN:-false}")"
+
+  validate_target_base_refs
 
   local target_status
   local resolve_status

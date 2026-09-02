@@ -89,7 +89,7 @@ variables는 기본값을 그대로 사용할 수 있지만, 팀 Jira 상태명�
 
 ```plaintext
 JIRA_PROJECT_KEY=MID4
-JIRA_TARGET_BASE_REF=develop
+JIRA_TARGET_BASE_REFS=["develop","main"]
 JIRA_STATUS_IN_PROGRESS=진행 중
 JIRA_STATUS_CODE_REVIEW=코드 리뷰
 JIRA_STATUS_VERIFYING=검증 중
@@ -97,7 +97,22 @@ JIRA_STATUS_DONE=완료
 JIRA_DRY_RUN=false
 ```
 
-`JIRA_DRY_RUN=true`로 설정하면 실제 Jira 상태 변경 없이 workflow 동작을 확인합니다.
+`JIRA_TARGET_BASE_REFS`는 Jira 상태를 동기화할 PR 대상 branch를 비어 있지 않은 문자열로만 구성된 JSON 배열로 설정합니다. 기본값은 `["develop","main"]`이며 빈 배열, 빈 문자열 원소 또는 문자열이 아닌 값을 포함한 배열은 사용할 수 없습니다. `main` 대상 PR의 source branch는 기존 `main-source-guard` 규칙에 따라 같은 저장소의 `develop`만 허용합니다.
+
+PR event와 Jira 상태의 기본 매핑은 다음과 같습니다. `develop`과 `main`에 같은 규칙을 적용합니다.
+
+| PR event | Jira 상태 |
+| --- | --- |
+| Draft PR 생성·전환, 수정 요청 | `코드 리뷰` |
+| Ready 전환(`ready_for_review`), 리뷰 요청(`review_requested`), PR 생성·재오픈·새 commit 반영(`opened`, `reopened`, `synchronize`) | `검증 중` |
+| PR 병합 | `완료` |
+| 병합하지 않고 PR 종료 | `진행 중` 및 Jira 댓글 |
+
+`JIRA_DRY_RUN=true`로 설정하면 실제 Jira 상태 변경 없이 대상 branch와 상태 매핑을 확인합니다. 필요할 때 `.github/scripts/test-sync-jira-pr-status.sh`를 수동으로 실행하며, 이 테스트 결과는 `develop-build-test`의 성공 여부에 영향을 주지 않습니다.
+
+`pull_request_target`과 `pull_request_review`에서는 Jira 인증정보를 사용하므로 PR head 코드를 checkout하거나 실행하지 않습니다. workflow는 PR 대상 branch의 commit만 checkout해 동기화 스크립트를 실행합니다.
+
+`pull_request_target`은 신뢰할 수 있는 기준 branch의 workflow를 사용합니다. 따라서 이 설정 변경을 처음 `main`에 반영하는 PR은 기존 조건으로 실행될 수 있으며, 변경이 `main`에 병합된 뒤 다음 `develop -> main` PR에서 `jira-pr-status-sync` job이 더 이상 `skipped`되지 않는지 확인합니다.
 
 ## CodeRabbit 설정 기준
 
