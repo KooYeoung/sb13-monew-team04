@@ -2,12 +2,11 @@ package com.codeit.sb13.monew.comment.service.impl;
 
 import com.codeit.sb13.monew.comment.domain.Comment;
 import com.codeit.sb13.monew.comment.repository.CommentLikeRepository;
-import com.codeit.sb13.monew.comment.repository.CommentRepository;
+import com.codeit.sb13.monew.comment.service.CommentService;
 import com.codeit.sb13.monew.comment.service.CommentLikeService;
 import com.codeit.sb13.monew.comment.service.dto.CommentLikeDto;
 import com.codeit.sb13.monew.comment.service.dto.CommentLikeRegisterCommand;
 import com.codeit.sb13.monew.global.exception.comment.CommentLikeNotFoundException;
-import com.codeit.sb13.monew.global.exception.comment.CommentNotFoundException;
 import com.codeit.sb13.monew.notification.service.NotificationService;
 import com.codeit.sb13.monew.notification.service.dto.CommentLikedDto;
 import com.codeit.sb13.monew.user.domain.User;
@@ -28,12 +27,12 @@ import org.springframework.validation.annotation.Validated;
 public class CommentLikeServiceImpl implements CommentLikeService {
 
   private final CommentLikeRepository commentLikeRepository;
-  private final CommentRepository commentRepository;
+  private final CommentService commentService;
   private final UserService userService;
   private final CommentLikeSaveService commentLikeSaveService;
   private final NotificationService notificationService;
 
-  // 기존 좋아요가 없을 때만 사용자 엔티티를 조회해 새로운 좋아요를 등록한다.
+  // 댓글과 요청 사용자의 유효성을 검증하고 기존 좋아요를 반환하거나 새로운 좋아요를 등록한다.
   @Override
   public CommentLikeDto likeComment(CommentLikeRegisterCommand command) {
     UUID commentId = command.commentId();
@@ -41,9 +40,8 @@ public class CommentLikeServiceImpl implements CommentLikeService {
 
     log.debug("댓글 좋아요 등록 시작 - 댓글 아이디: {}", commentId);
 
-    Comment comment = commentRepository.findActiveById(commentId)
-            .orElseThrow(() -> new CommentNotFoundException(commentId));
-    User likedByUser = userService.findActiveById(likedById); // 활성 사용자만 댓글 등록 허용
+    Comment comment = commentService.findActiveById(commentId);
+    User likedByUser = userService.findActiveById(likedById); // 활성 사용자만 좋아요 등록 허용
     return commentLikeRepository.findActiveResponseProjection(commentId, likedById)
         .map(CommentLikeDto::from)
         .orElseGet(() -> createOrReturnExisting(comment, likedByUser));
@@ -103,7 +101,7 @@ public class CommentLikeServiceImpl implements CommentLikeService {
 
     log.debug("댓글 좋아요 취소 시작 - 댓글 아이디: {}", commentId);
 
-    commentRepository.findActiveById(commentId).orElseThrow(()-> new CommentNotFoundException(commentId));
+    commentService.validateActiveExists(commentId);
     userService.findActiveById(requestUserId); // 활성화된 사용자만 댓글 취소 가능
 
     Long deletedCount = commentLikeRepository.deleteByCommentIdAndLikedById(commentId, requestUserId);

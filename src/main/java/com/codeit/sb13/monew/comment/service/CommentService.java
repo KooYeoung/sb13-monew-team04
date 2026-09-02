@@ -1,5 +1,6 @@
 package com.codeit.sb13.monew.comment.service;
 
+import com.codeit.sb13.monew.comment.domain.Comment;
 import com.codeit.sb13.monew.comment.service.dto.CommentDto;
 import com.codeit.sb13.monew.comment.service.dto.CursorPageResponseCommentDto;
 import com.codeit.sb13.monew.comment.service.dto.CommentRegisterCommand;
@@ -15,6 +16,10 @@ public interface CommentService {
   CursorPageResponseCommentDto search(@Valid CommentSearchCommand command);
 
   CommentDto update(@Valid CommentUpdateCommand command);
+
+  Comment findActiveById(UUID commentId);
+
+  void validateActiveExists(UUID commentId); // Active 존재 여부만 확인
 
   void softDelete(UUID commentId);
 

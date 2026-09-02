@@ -836,7 +836,11 @@ class CommentRepositoryTest {
             () -> assertThat(commentRepository.findActiveById(activeWithDeletedArticle.getId())).isPresent(),
             () -> assertThat(commentRepository.findActiveById(commentDeleted.getId())).isEmpty(),
             () -> assertThat(commentRepository.findActiveById(userDeleted.getId())).isEmpty(),
-            () -> assertThat(commentRepository.findActiveById(articleDeleted.getId())).isEmpty()
+            () -> assertThat(commentRepository.findActiveById(articleDeleted.getId())).isEmpty(),
+            () -> assertThat(commentRepository.existsActiveById(active.getId())).isTrue(),
+            () -> assertThat(commentRepository.existsActiveById(commentDeleted.getId())).isFalse(),
+            () -> assertThat(commentRepository.existsActiveById(userDeleted.getId())).isFalse(),
+            () -> assertThat(commentRepository.existsActiveById(articleDeleted.getId())).isFalse()
         );
     }
 

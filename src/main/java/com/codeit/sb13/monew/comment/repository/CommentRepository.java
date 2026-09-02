@@ -25,6 +25,14 @@ public interface CommentRepository extends JpaRepository<Comment, UUID>, Comment
       """)
   Optional<Comment> findActiveById(@Param("commentId") UUID commentId);
 
+  @Query("""
+      SELECT CASE WHEN COUNT(C) > 0 THEN TRUE ELSE FALSE END
+      FROM Comment C
+      WHERE C.id = :commentId
+          AND C.visibilityStatus = com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus.ACTIVE
+      """)
+  boolean existsActiveById(@Param("commentId") UUID commentId);
+
   // deletedAt이 null인 댓글만 논리 삭제해 이미 삭제된 댓글의 재시도는 0건으로 처리한다.
   // 댓글 자신의 논리 삭제는 조회 시 노출 상태 판단 우선순위가 가장 높으므로
   // 기존에 ARTICLE_DELETED/USER_DELETED로 표시되어 있었더라도 COMMENT_DELETED로 갱신한다

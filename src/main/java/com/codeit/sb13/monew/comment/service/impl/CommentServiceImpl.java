@@ -100,11 +100,16 @@ public class CommentServiceImpl implements CommentService {
     return content.get(content.size() - 1).createdAt().toString();
   }
 
+  @Override
+  public Comment findActiveById(UUID commentId) {
+    return commentRepository.findActiveById(commentId)
+        .orElseThrow(() -> new CommentNotFoundException(commentId));
+  }
+
   @Transactional
   @Override
   public CommentDto update(CommentUpdateCommand command) {
-    Comment comment = commentRepository.findActiveById(command.commentId())
-        .orElseThrow(() -> new CommentNotFoundException(command.commentId()));
+    Comment comment = findActiveById(command.commentId());
 
     if (!comment.getUser().getId().equals(command.requestUserId())) {
       throw new CommentPermissionDeniedException(command.commentId(), command.requestUserId());
@@ -140,5 +145,12 @@ public class CommentServiceImpl implements CommentService {
         .orElseThrow(() -> new CommentNotFoundException(commentId));
     commentLikeRepository.deleteByCommentId(commentId);
     commentRepository.delete(comment);
+  }
+
+  @Override
+  public void validateActiveExists(UUID commentId) {
+    if (!commentRepository.existsActiveById(commentId)) {
+      throw new CommentNotFoundException(commentId);
+    }
   }
 }

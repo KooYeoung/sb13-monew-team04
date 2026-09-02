@@ -139,6 +139,51 @@ public class CommentServiceTest {
   }
 
   @Test
+  @DisplayName("Active 댓글 조회 성공")
+  void Active_댓글_조회_성공() {
+    articleUserSetUp();
+    Comment comment = Comment.builder().article(article).user(user).content("테스트 댓글").build();
+    ReflectionTestUtils.setField(comment, "id", UUID.randomUUID());
+    given(commentRepository.findActiveById(comment.getId()))
+        .willReturn(Optional.of(comment));
+
+    Comment result = commentService.findActiveById(comment.getId());
+
+    assertThat(result).isEqualTo(comment);
+  }
+
+  @Test
+  @DisplayName("Active하지 않거나 존재하지 않는 댓글 조회 시 CommentNotFoundException 예외가 발생한다")
+  void 비활성_댓글_조회_실패() {
+    UUID commentId = UUID.randomUUID();
+    given(commentRepository.findActiveById(commentId)).willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> commentService.findActiveById(commentId))
+        .isInstanceOf(CommentNotFoundException.class);
+  }
+
+  @Test
+  @DisplayName("Active 댓글 존재 검증 성공")
+  void Active_댓글_존재_검증_성공() {
+    UUID commentId = UUID.randomUUID();
+    given(commentRepository.existsActiveById(commentId)).willReturn(true);
+
+    commentService.validateActiveExists(commentId);
+
+    then(commentRepository).should().existsActiveById(commentId);
+  }
+
+  @Test
+  @DisplayName("Active하지 않거나 존재하지 않는 댓글에 대한 존재 검증 시 CommentNotFoundException 예외가 발생한다")
+  void 비활성_댓글_존재_검증_실패() {
+    UUID commentId = UUID.randomUUID();
+    given(commentRepository.existsActiveById(commentId)).willReturn(false);
+
+    assertThatThrownBy(() -> commentService.validateActiveExists(commentId))
+        .isInstanceOf(CommentNotFoundException.class);
+  }
+
+  @Test
   @DisplayName("생성일 기준 내림차순으로 댓글 목록 조회 - GREEN")
   void 생성일_내림차순_기준_댓글_목록_조회() {
     // given
