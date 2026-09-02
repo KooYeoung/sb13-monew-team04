@@ -6,6 +6,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.*;
 
 import com.codeit.sb13.monew.activity.service.ActivityVisibilityUpdater;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
+import com.codeit.sb13.monew.activity.outbox.payload.CommentOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.CountOutboxPayload;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.repository.ArticleRepository;
@@ -62,6 +68,9 @@ public class CommentServiceTest {
   @Mock
   private ActivityVisibilityUpdater activityVisibilityUpdater;
 
+  @Mock
+  private OutboxEventWriter outboxEventWriter;
+
   @InjectMocks
   private CommentServiceImpl commentService;
 
@@ -108,6 +117,20 @@ public class CommentServiceTest {
     // then
     then(commentRepository).should(times(1)).save(captor.capture());
     Comment savedComment = captor.getValue();
+    then(outboxEventWriter).should().write(
+        OutboxEventType.COMMENT_WRITTEN,
+        OutboxAggregateType.COMMENT,
+        commentId,
+        user.getId(),
+        new CommentOutboxPayload(article.getId(), OutboxEventAction.WRITTEN)
+    );
+    then(outboxEventWriter).should().write(
+        OutboxEventType.ARTICLE_COMMENT_COUNT_CHANGED,
+        OutboxAggregateType.ARTICLE,
+        article.getId(),
+        user.getId(),
+        new CountOutboxPayload(OutboxEventAction.COUNT_CHANGED)
+    );
     Assertions.assertAll(
         () -> assertThat(savedComment.getArticle().getId()).isEqualTo(article.getId()),
         () -> assertThat(savedComment.getUser().getId()).isEqualTo(user.getId()),
@@ -372,6 +395,13 @@ public class CommentServiceTest {
     then(commentLikeRepository).should(times(1)).countActiveLikesByCommentId(comment.getId());
     then(commentLikeRepository).should(times(1))
         .existsActiveByCommentIdAndLikedById(comment.getId(), user.getId());
+    then(outboxEventWriter).should().write(
+        OutboxEventType.COMMENT_UPDATED,
+        OutboxAggregateType.COMMENT,
+        comment.getId(),
+        user.getId(),
+        new CommentOutboxPayload(article.getId(), OutboxEventAction.UPDATED)
+    );
         
   }
 
@@ -435,9 +465,17 @@ public class CommentServiceTest {
   @DisplayName("댓글은 논리 삭제할 수 있다 - GREEN")
   void 댓글_논리_삭제() {
     // given
+    articleUserSetUp();
     UUID commentId = UUID.randomUUID();
+    Comment comment = Comment.builder()
+        .article(article)
+        .user(user)
+        .content("테스트 댓글")
+        .build();
+    ReflectionTestUtils.setField(comment, "id", commentId);
     given(commentRepository.softDeleteIfNotDeleted(eq(commentId), any(LocalDateTime.class)))
         .willReturn(1);
+    given(commentRepository.findForHardDeleteById(commentId)).willReturn(Optional.of(comment));
     given(activityVisibilityUpdater.hideActiveByDeletedComment(eq(commentId)))
             .willReturn(0L);
 
@@ -449,6 +487,20 @@ public class CommentServiceTest {
         .softDeleteIfNotDeleted(eq(commentId), any(LocalDateTime.class));
     then(activityVisibilityUpdater).should(times(1))
             .hideActiveByDeletedComment(eq(commentId));
+    then(outboxEventWriter).should().write(
+        OutboxEventType.COMMENT_SOFT_DELETED,
+        OutboxAggregateType.COMMENT,
+        commentId,
+        null,
+        new CommentOutboxPayload(article.getId(), OutboxEventAction.SOFT_DELETED)
+    );
+    then(outboxEventWriter).should().write(
+        OutboxEventType.ARTICLE_COMMENT_COUNT_CHANGED,
+        OutboxAggregateType.ARTICLE,
+        article.getId(),
+        null,
+        new CountOutboxPayload(OutboxEventAction.COUNT_CHANGED)
+    );
   }
 
   @Test
@@ -465,6 +517,7 @@ public class CommentServiceTest {
     // then
     then(commentRepository).should(times(1))
         .softDeleteIfNotDeleted(eq(commentId), any(LocalDateTime.class));
+    then(outboxEventWriter).shouldHaveNoInteractions();
         
   }
 
@@ -491,5 +544,19 @@ public class CommentServiceTest {
     InOrder inOrder = inOrder(commentRepository, commentLikeRepository);
     inOrder.verify(commentLikeRepository).deleteByCommentId(comment.getId());
     inOrder.verify(commentRepository).delete(comment);
+    then(outboxEventWriter).should().write(
+        OutboxEventType.COMMENT_HARD_DELETED,
+        OutboxAggregateType.COMMENT,
+        comment.getId(),
+        null,
+        new CommentOutboxPayload(article.getId(), OutboxEventAction.HARD_DELETED)
+    );
+    then(outboxEventWriter).should().write(
+        OutboxEventType.ARTICLE_COMMENT_COUNT_CHANGED,
+        OutboxAggregateType.ARTICLE,
+        article.getId(),
+        null,
+        new CountOutboxPayload(OutboxEventAction.COUNT_CHANGED)
+    );
   }
 }

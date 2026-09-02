@@ -1,6 +1,12 @@
 package com.codeit.sb13.monew.comment.service.impl;
 
 import com.codeit.sb13.monew.activity.service.ActivityVisibilityUpdater;
+import com.codeit.sb13.monew.activity.outbox.payload.CommentOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.CountOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.repository.ArticleRepository;
 import com.codeit.sb13.monew.comment.domain.Comment;
@@ -17,6 +23,7 @@ import com.codeit.sb13.monew.comment.service.dto.CommentUpdateCommand;
 import com.codeit.sb13.monew.global.exception.article.ArticleNotFoundException;
 import com.codeit.sb13.monew.global.exception.comment.CommentNotFoundException;
 import com.codeit.sb13.monew.global.exception.comment.CommentPermissionDeniedException;
+import com.codeit.sb13.monew.global.domain.ActivityVisibilityStatus;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.service.UserService;
 import java.time.LocalDateTime;
@@ -40,6 +47,7 @@ public class CommentServiceImpl implements CommentService {
   private final ArticleRepository articleRepository;
   private final CommentLikeRepository commentLikeRepository;
   private final ActivityVisibilityUpdater activityVisibilityUpdater;
+  private final OutboxEventWriter outboxEventWriter;
 
   @Transactional
   @Override
@@ -52,6 +60,17 @@ public class CommentServiceImpl implements CommentService {
         .article(article).user(user).content(command.content())
         .build();
     Comment savedComment = commentRepository.save(comment);
+    outboxEventWriter.write(
+        OutboxEventType.COMMENT_WRITTEN,
+        OutboxAggregateType.COMMENT,
+        savedComment.getId(),
+        command.userId(),
+        new CommentOutboxPayload(
+            savedComment.getArticle().getId(),
+            OutboxEventAction.WRITTEN
+        )
+    );
+    writeArticleCommentCountChanged(savedComment.getArticle().getId(), command.userId());
     log.info("댓글 생성 완료 - 댓글 아이디: {}, 기사 아이디: {}", savedComment.getId(), savedComment.getArticle().getId());
     return CommentDto.from(savedComment, 0L, false); // 댓글 생성 직후, 좋아요 수는 0, 좋아요 여부는 false로 반환
   }
@@ -116,6 +135,16 @@ public class CommentServiceImpl implements CommentService {
     }
 
     comment.changeContent(command.content());
+    outboxEventWriter.write(
+        OutboxEventType.COMMENT_UPDATED,
+        OutboxAggregateType.COMMENT,
+        comment.getId(),
+        command.requestUserId(),
+        new CommentOutboxPayload(
+            comment.getArticle().getId(),
+            OutboxEventAction.UPDATED
+        )
+    );
     Long likeCount = commentLikeRepository.countActiveLikesByCommentId(
         command.commentId());// 좋아요 수를 업데이트하기 위해 count 조회
     boolean likedBy = commentLikeRepository.existsActiveByCommentIdAndLikedById(
@@ -133,8 +162,22 @@ public class CommentServiceImpl implements CommentService {
       // API 계약상 이미 삭제된 댓글과 존재하지 않는 댓글 모두 404로 응답한다 ("404 댓글 정보 없음")
       throw new CommentNotFoundException(commentId);
     }
+    Comment comment = commentRepository.findForHardDeleteById(commentId)
+        .orElseThrow(() -> new CommentNotFoundException(commentId));
+    UUID articleId = comment.getArticle().getId();
 
     long commentLikeCount = activityVisibilityUpdater.hideActiveByDeletedComment(commentId);
+    outboxEventWriter.write(
+        OutboxEventType.COMMENT_SOFT_DELETED,
+        OutboxAggregateType.COMMENT,
+        commentId,
+        null,
+        new CommentOutboxPayload(
+            articleId,
+            OutboxEventAction.SOFT_DELETED
+        )
+    );
+    writeArticleCommentCountChanged(articleId, null);
     log.info("댓글 논리 삭제 성공 - commentId: {}, 숨김 처리된 댓글 좋아요 수: {}", commentId, commentLikeCount);
   }
 
@@ -143,8 +186,35 @@ public class CommentServiceImpl implements CommentService {
   public void hardDelete(UUID commentId) {
     Comment comment = commentRepository.findForHardDeleteById(commentId)
         .orElseThrow(() -> new CommentNotFoundException(commentId));
+    UUID articleId = comment.getArticle().getId();
+    boolean wasActive = comment.getVisibilityStatus() == ActivityVisibilityStatus.ACTIVE;
     commentLikeRepository.deleteByCommentId(commentId);
     commentRepository.delete(comment);
+    outboxEventWriter.write(
+        OutboxEventType.COMMENT_HARD_DELETED,
+        OutboxAggregateType.COMMENT,
+        commentId,
+        null,
+        new CommentOutboxPayload(
+            articleId,
+            OutboxEventAction.HARD_DELETED
+        )
+    );
+    if (wasActive) {
+      writeArticleCommentCountChanged(articleId, null);
+    }
+  }
+
+  private void writeArticleCommentCountChanged(UUID articleId, UUID actorUserId) {
+    outboxEventWriter.write(
+        OutboxEventType.ARTICLE_COMMENT_COUNT_CHANGED,
+        OutboxAggregateType.ARTICLE,
+        articleId,
+        actorUserId,
+        new CountOutboxPayload(
+            OutboxEventAction.COUNT_CHANGED
+        )
+    );
   }
 
   @Override

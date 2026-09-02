@@ -11,6 +11,12 @@ import static org.mockito.Mockito.times;
 
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
+import com.codeit.sb13.monew.activity.outbox.payload.CommentLikeOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.CountOutboxPayload;
 import com.codeit.sb13.monew.comment.domain.Comment;
 import com.codeit.sb13.monew.comment.repository.CommentLikeRepository;
 import com.codeit.sb13.monew.comment.repository.dto.CommentLikeResponseProjection;
@@ -62,6 +68,9 @@ public class CommentLikeServiceTest {
 
   @Mock
   NotificationService notificationService;
+
+  @Mock
+  OutboxEventWriter outboxEventWriter;
 
   private Comment comment;
   private User likedBy;
@@ -138,7 +147,8 @@ public class CommentLikeServiceTest {
     then(userService).should(times(1)).findActiveById(likedBy.getId());
     then(commentLikeRepository).should(times(2))
         .findActiveResponseProjection(comment.getId(), likedBy.getId());
-    then(commentLikeSaveService).should(times(1)).create(comment.getId(), likedBy.getId());
+    then(commentLikeSaveService).should(times(1))
+        .create(comment.getId(), article.getId(), likedBy.getId());
     then(commentLikeRepository).should(never()).countActiveLikesByCommentId(any(UUID.class));
     then(notificationService).should(times(1))
             .notifyCommentLiked(new CommentLikedDto(likedBy, commentUser, comment.getId()));
@@ -167,7 +177,7 @@ public class CommentLikeServiceTest {
 
     doThrow(duplicateException)
         .when(commentLikeSaveService)
-        .create(comment.getId(), likedBy.getId());
+        .create(comment.getId(), article.getId(), likedBy.getId());
 
     // when
     CommentLikeDto result = commentLikeService.likeComment(command);
@@ -190,7 +200,8 @@ public class CommentLikeServiceTest {
     then(userService).should(times(1)).findActiveById(likedBy.getId());
     then(commentLikeRepository).should(times(2))
         .findActiveResponseProjection(comment.getId(), likedBy.getId());
-    then(commentLikeSaveService).should(times(1)).create(comment.getId(), likedBy.getId());
+    then(commentLikeSaveService).should(times(1))
+        .create(comment.getId(), article.getId(), likedBy.getId());
     then(commentLikeRepository).should(never()).countActiveLikesByCommentId(any(UUID.class));
     then(notificationService).should(never()).notifyCommentLiked(any(CommentLikedDto.class));
   }
@@ -212,7 +223,7 @@ public class CommentLikeServiceTest {
     given(commentLikeRepository.findActiveResponseProjection(comment.getId(), likedBy.getId()))
         .willReturn(Optional.empty());
     doThrow(foreignKeyException).when(commentLikeSaveService)
-        .create(comment.getId(), likedBy.getId());
+        .create(comment.getId(), article.getId(), likedBy.getId());
 
     assertThatThrownBy(() -> commentLikeService.likeComment(command))
         .isSameAs(foreignKeyException);
@@ -255,9 +266,11 @@ public class CommentLikeServiceTest {
     then(userService).should(times(1)).findActiveById(likedBy.getId());
     then(commentLikeRepository).should(times(1))
         .findActiveResponseProjection(comment.getId(), likedBy.getId());
-    then(commentLikeSaveService).should(never()).create(any(UUID.class), any(UUID.class));
+    then(commentLikeSaveService).should(never())
+        .create(any(UUID.class), any(UUID.class), any(UUID.class));
     then(commentLikeRepository).should(never()).countActiveLikesByCommentId(any(UUID.class));
     then(notificationService).shouldHaveNoInteractions();
+    then(outboxEventWriter).shouldHaveNoInteractions();
   }
 
   @Test
@@ -304,6 +317,7 @@ public class CommentLikeServiceTest {
     // given
     CommentLikeRegisterCommand command = new CommentLikeRegisterCommand(comment.getId(), likedBy.getId());
     given(userService.findActiveById(likedBy.getId())).willReturn(likedBy);
+    given(commentService.findActiveById(comment.getId())).willReturn(comment);
     given(commentLikeRepository.deleteByCommentIdAndLikedById(comment.getId(), likedBy.getId()))
         .willReturn(1L);
 
@@ -313,9 +327,23 @@ public class CommentLikeServiceTest {
     // then
     then(commentLikeRepository).should(times(1))
         .deleteByCommentIdAndLikedById(comment.getId(), likedBy.getId());
-    then(commentService).should(times(1)).validateActiveExists(comment.getId());
+    then(commentService).should(times(1)).findActiveById(comment.getId());
     then(userService).should(times(1)).findActiveById(likedBy.getId());
     then(notificationService).shouldHaveNoInteractions();
+    then(outboxEventWriter).should().write(
+        OutboxEventType.COMMENT_LIKE_CANCELED,
+        OutboxAggregateType.COMMENT,
+        comment.getId(),
+        likedBy.getId(),
+        new CommentLikeOutboxPayload(article.getId(), OutboxEventAction.LIKE_CANCELED)
+    );
+    then(outboxEventWriter).should().write(
+        OutboxEventType.COMMENT_LIKE_CHANGED,
+        OutboxAggregateType.COMMENT,
+        comment.getId(),
+        likedBy.getId(),
+        new CountOutboxPayload(OutboxEventAction.COUNT_CHANGED)
+    );
   }
 
   @Test
@@ -324,6 +352,7 @@ public class CommentLikeServiceTest {
     // given
     CommentLikeRegisterCommand command = new CommentLikeRegisterCommand(comment.getId(), likedBy.getId());
     given(userService.findActiveById(likedBy.getId())).willReturn(likedBy);
+    given(commentService.findActiveById(comment.getId())).willReturn(comment);
     given(commentLikeRepository.deleteByCommentIdAndLikedById(comment.getId(), likedBy.getId()))
         .willReturn(0L);
 
@@ -331,8 +360,9 @@ public class CommentLikeServiceTest {
     assertThatThrownBy(() -> commentLikeService.unlikeComment(command))
         .isInstanceOf(CommentLikeNotFoundException.class);
 
-    then(commentService).should(times(1)).validateActiveExists(comment.getId());
+    then(commentService).should(times(1)).findActiveById(comment.getId());
     then(userService).should(times(1)).findActiveById(likedBy.getId());
+    then(outboxEventWriter).shouldHaveNoInteractions();
   }
 
   @Test
@@ -364,7 +394,8 @@ public class CommentLikeServiceTest {
             () -> assertThat(result.commentLikeCount()).isEqualTo(1L)
     );
 
-    then(commentLikeSaveService).should(times(1)).create(comment.getId(), likedBy.getId());
+    then(commentLikeSaveService).should(times(1))
+        .create(comment.getId(), article.getId(), likedBy.getId());
     then(notificationService).should(times(1)).notifyCommentLiked(any(CommentLikedDto.class));
   }
 

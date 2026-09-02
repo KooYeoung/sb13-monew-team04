@@ -1,6 +1,12 @@
 package com.codeit.sb13.monew.comment.service.impl;
 
 import com.codeit.sb13.monew.comment.domain.Comment;
+import com.codeit.sb13.monew.activity.outbox.payload.CommentLikeOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.CountOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
 import com.codeit.sb13.monew.comment.repository.CommentLikeRepository;
 import com.codeit.sb13.monew.comment.service.CommentService;
 import com.codeit.sb13.monew.comment.service.CommentLikeService;
@@ -31,6 +37,7 @@ public class CommentLikeServiceImpl implements CommentLikeService {
   private final UserService userService;
   private final CommentLikeSaveService commentLikeSaveService;
   private final NotificationService notificationService;
+  private final OutboxEventWriter outboxEventWriter;
 
   // 댓글과 요청 사용자의 유효성을 검증하고 기존 좋아요를 반환하거나 새로운 좋아요를 등록한다.
   @Override
@@ -50,7 +57,11 @@ public class CommentLikeServiceImpl implements CommentLikeService {
   // 새로운 트랜잭션으로 댓글 좋아요 등록 시도 -> 동시 중복 요청 발생으로 UNIQUE 제약을 위반하면 기존 좋아요 반환
   private CommentLikeDto createOrReturnExisting(Comment comment, User likedByUser) {
     try {
-      commentLikeSaveService.create(comment.getId(), likedByUser.getId());
+      commentLikeSaveService.create(
+          comment.getId(),
+          comment.getArticle().getId(),
+          likedByUser.getId()
+      );
       log.info("댓글 좋아요 등록 완료 - 댓글 아이디: {}", comment.getId());
 
     } catch (DataIntegrityViolationException e) {
@@ -101,13 +112,33 @@ public class CommentLikeServiceImpl implements CommentLikeService {
 
     log.debug("댓글 좋아요 취소 시작 - 댓글 아이디: {}", commentId);
 
-    commentService.validateActiveExists(commentId);
+    Comment comment = commentService.findActiveById(commentId);
     userService.findActiveById(requestUserId); // 활성화된 사용자만 댓글 취소 가능
 
     Long deletedCount = commentLikeRepository.deleteByCommentIdAndLikedById(commentId, requestUserId);
     if (deletedCount == 0L) {
       throw new CommentLikeNotFoundException(commentId, requestUserId);
     }
+
+    outboxEventWriter.write(
+        OutboxEventType.COMMENT_LIKE_CANCELED,
+        OutboxAggregateType.COMMENT,
+        commentId,
+        requestUserId,
+        new CommentLikeOutboxPayload(
+            comment.getArticle().getId(),
+            OutboxEventAction.LIKE_CANCELED
+        )
+    );
+    outboxEventWriter.write(
+        OutboxEventType.COMMENT_LIKE_CHANGED,
+        OutboxAggregateType.COMMENT,
+        commentId,
+        requestUserId,
+        new CountOutboxPayload(
+            OutboxEventAction.COUNT_CHANGED
+        )
+    );
 
     log.info("댓글 좋아요 취소 완료 - 댓글 아이디: {}", commentId);
   }
