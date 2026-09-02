@@ -211,7 +211,9 @@ MID4-137에서 저장하는 이벤트 계약은 다음과 같다. `aggregate_id`
 | `ARTICLE_VIEW_COUNT_CHANGED` | `ARTICLE` | 조회 사용자 | `{"action":"COUNT_CHANGED"}` |
 | `ARTICLE_COMMENT_COUNT_CHANGED` | `ARTICLE` | 댓글 작성자는 사용자 ID, 삭제는 `NULL` | `{"action":"COUNT_CHANGED"}` |
 
-사용자 물리삭제 payload의 영향 ID 목록은 연관 row를 삭제하기 전에 수집하고 중복을 제거한 불변 snapshot이다. 이는 worker의 cleanup 대상 탐색에 사용하기 위한 정보이며, 삭제된 원본이나 MongoDB 문서를 복원하는 근거로 사용하지 않는다.
+사용자 물리삭제 payload의 영향 ID 목록은 연관 row를 삭제하기 전에 수집하고 중복을 제거한, 해당 transaction이 수집 시점에 관찰한 불변 snapshot이다. 초기 구현은 producer 락을 사용하지 않으므로 수집 이후 연관 row 삭제 전에 다른 transaction이 commit한 관계까지 포함하는 선형화 가능한 전체 목록은 아니다. 이는 worker의 cleanup 후보 탐색에 사용하기 위한 정보이며, 삭제된 원본이나 MongoDB 문서를 복원하는 근거나 유일한 cleanup 대상 목록으로 사용하지 않는다.
+
+후속 worker는 `USER_HARD_DELETED`의 `aggregate_id`로 해당 사용자의 `activity_histories`를 제거하고, payload 영향 ID를 snapshot 제거와 count 재계산 후보로 사용한다. 사용자 물리삭제 이후 처리되는 활동 이벤트는 actor 사용자와 source row의 RDB 존재 여부를 다시 확인해 새 activity 또는 snapshot을 만들지 않는다. 수집과 삭제 사이의 동시 관계 쓰기로 payload에서 누락될 수 있는 대상은 worker 구현 시 동시성 시나리오로 검증하며, producer 락을 추가하지 않는 현재 정책의 제한으로 관리한다.
 
 상태 전이는 애플리케이션 도메인 모델에서 검증한다. `PENDING`과 `FAILED`에서만 처리 성공, 처리 실패, `DEAD_LETTER` 전환을 허용하고, `PROCESSED`와 `DEAD_LETTER`는 일반 worker 처리에서 변경할 수 없는 종결 상태로 취급한다. 허용되지 않은 전이는 Outbox 전용 커스텀 예외로 거부하며 상태와 재시도 메타데이터를 변경하지 않는다. 이 규칙은 애플리케이션 계층에서 관리하고 DB `CHECK` 제약은 추가하지 않는다.
 

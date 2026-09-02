@@ -167,6 +167,8 @@ natural key와 atomic upsert는 중복 문서 방지 계약이다. activity의 `
 
 초기 구현에는 `event_sequence`, projection key, advisory lock, 낙관적 락, 비관적 락을 추가하지 않는다. 기존 Outbox row 저장은 원본 변경과 같은 request transaction에서 동기 수행하지만, MongoDB 반영과 RDB 현재 상태 batch 재조회는 response 반환 이후 worker가 비동기로 수행한다.
 
+따라서 사용자 물리삭제 payload의 영향 ID는 수집 transaction이 관찰한 snapshot이며, 수집과 연관 row 삭제 사이에 commit된 관계까지 포함하는 전체 목록을 보장하지 않는다. worker는 이 목록을 유일한 cleanup 근거로 사용하지 않고 `aggregate_id`의 사용자 활동 제거, actor와 source row 존재 여부 재확인과 함께 cleanup 후보로 사용한다. 이 경쟁 조건은 producer 락 없이 운영하는 초기 정책의 제한이며 후속 worker 동시성 검증에 포함한다.
+
 댓글 내용, 기사 제목/요약/게시일, 관심사 키워드, count 집계값처럼 나중 이벤트로 바뀔 수 있는 snapshot 필드는 오래된 payload로 덮어쓰지 않고, worker 처리 시점의 RDB 현재값을 조회해 반영한다.
 
 `source_version`은 원본 엔티티 snapshot 필드의 순서 보호가 별도로 필요하다고 확인될 때 재검토할 대안으로만 남긴다. 현재 기본안은 엔티티 version이나 producer 락을 추가하지 않는 RDB 현재 상태 수렴 방식이다.
