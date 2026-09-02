@@ -5,6 +5,10 @@ spring:
     default: dev
   jpa:
     open-in-view: false
+  data:
+    mongodb:
+      repositories:
+        type: none
 
 springdoc:
   api-docs:

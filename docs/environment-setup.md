@@ -66,7 +66,30 @@ docker compose --env-file .env.dev up -d postgres
 docker compose down
 ```
 
-## 7. NAVER API 설정
+## 7. MongoDB Read Model 로컬 설정
+
+MongoDB Read Model은 기본적으로 비활성화되어 있습니다. 후속 MongoDB 작업을 실행할 때만 `.env.dev`에서 활성화합니다.
+
+```properties
+MONEW_MONGODB_ENABLED=true
+MONEW_MONGODB_INITIALIZE_INDEXES=true
+MONEW_MONGODB_PORT=27017
+MONEW_MONGODB_DATABASE=monew
+MONEW_MONGODB_USERNAME=monew
+MONEW_MONGODB_PASSWORD=change-me
+MONEW_MONGODB_URI=mongodb://monew:change-me@localhost:27017/monew?authSource=admin
+```
+
+MongoDB만 수동 실행할 때는 다음 명령을 사용합니다.
+
+```powershell
+docker compose --env-file .env.dev up -d mongodb
+docker compose --env-file .env.dev ps mongodb
+```
+
+`MONEW_MONGODB_ENABLED=true`이고 `MONEW_MONGODB_INITIALIZE_INDEXES=true`이면 애플리케이션 시작 시 `activity_histories`와 세 snapshot 컬렉션의 필수 인덱스를 멱등하게 확인하고 생성합니다. 테스트 profile에서는 MongoDB와 인덱스 초기화를 비활성화해 H2 기반 테스트를 유지합니다.
+
+## 8. NAVER API 설정
 
 NAVER 뉴스 검색 API를 사용하려면 NAVER API Hub에서 검색 API 사용 권한을 준비합니다.
 
@@ -104,7 +127,7 @@ timeout 값은 선택 설정이며 지정하지 않으면 연결 timeout은 3초
 
 `display`는 최대 100, `start`는 최대 1000까지 사용할 수 있습니다. `sort`는 정확도순 `sim` 또는 날짜순 `date`를 사용합니다. JSON 응답은 `format=json` 요청 파라미터로 명시합니다.
 
-## 8. 외부 호출 smoke 테스트
+## 9. 외부 호출 smoke 테스트
 
 기본 테스트는 외부 네트워크 호출을 실행하지 않습니다. 외부 호출 검증이 필요한 테스트는 `@Tag("external")`로 분리하고, 기본 `test` task에서는 제외합니다.
 

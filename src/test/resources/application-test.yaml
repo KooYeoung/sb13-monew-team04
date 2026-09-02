@@ -19,6 +19,8 @@ spring:
   h2:
     console:
       enabled: false
+  mongodb:
+    uri: mongodb://localhost:27017/monew-test
 
 logging:
   level:
@@ -30,6 +32,9 @@ logging:
     org.hibernate.orm.jdbc.bind: off
 
 monew:
+  mongodb:
+    enabled: false
+    initialize-indexes: false
   s3:
     bucket: monew-test-backup
     region: ap-northeast-2
