@@ -66,7 +66,70 @@ docker compose --env-file .env.dev up -d postgres
 docker compose down
 ```
 
-## 7. NAVER API 설정
+## 7. MongoDB Read Model 로컬 설정
+
+MongoDB Read Model은 기본적으로 비활성화되어 있습니다. 후속 MongoDB 작업을 실행할 때만 `.env.dev`에서 활성화합니다.
+
+이 환경 준비는 MongoDB Read Model의 운영 적용 결정을 의미하지 않습니다. 현재 활동내역 API는 계속 RDB를 사용하며, 적용 판단과 미구현 범위는 [MID4-96 MongoDB/Redis 적용 여부 판단 기록](mid4-96-mongodb-decision-record/README.md)에서 관리합니다.
+
+MongoDB 컨테이너는 관리 전용 root 계정과 애플리케이션 전용 계정을 분리합니다. 애플리케이션 계정에는 `MONEW_MONGODB_DATABASE`에 대한 `readWrite` 권한만 부여됩니다. 아래의 계정명과 비밀번호는 개인 로컬 값으로 교체하고, URI의 비밀번호에 특수 문자가 있으면 URL encoding합니다.
+
+```properties
+MONEW_MONGODB_ENABLED=true
+MONEW_MONGODB_INITIALIZE_INDEXES=true
+MONEW_MONGODB_PORT=27017
+MONEW_MONGODB_DATABASE=monew
+MONEW_MONGODB_ROOT_USERNAME=<관리자-계정>
+MONEW_MONGODB_ROOT_PASSWORD=<관리자-비밀번호>
+MONEW_MONGODB_APP_USERNAME=<애플리케이션-계정>
+MONEW_MONGODB_APP_PASSWORD=<애플리케이션-비밀번호>
+MONEW_MONGODB_URI=mongodb://<애플리케이션-계정>:<URL-인코딩된-애플리케이션-비밀번호>@localhost:27017/monew?authSource=monew
+```
+
+root 계정은 `admin` database에서 초기화와 관리 작업에만 사용합니다. 애플리케이션과 `MONEW_MONGODB_URI`에서는 root 계정을 사용하지 않습니다. 로컬 Compose 포트는 `127.0.0.1`에만 열리며, 원격 또는 운영 MongoDB에 연결할 때는 서버 인증서를 검증하는 TLS URI를 사용합니다.
+
+MongoDB만 수동 실행할 때는 다음 명령을 사용합니다.
+
+```powershell
+docker compose --env-file .env.dev up -d mongodb
+docker compose --env-file .env.dev ps mongodb
+```
+
+`MONEW_MONGODB_ENABLED=true`이고 `MONEW_MONGODB_INITIALIZE_INDEXES=true`이면 애플리케이션 시작 시 `activity_histories`와 세 snapshot 컬렉션의 필수 인덱스를 멱등하게 확인하고 생성합니다. 테스트 profile에서는 MongoDB와 인덱스 초기화를 비활성화해 H2 기반 테스트를 유지합니다.
+
+### MongoDB 계정 변경과 개발 볼륨 재생성
+
+MongoDB 공식 이미지의 계정과 `/docker-entrypoint-initdb.d` 스크립트는 빈 `mongodb-data` 볼륨을 처음 초기화할 때만 적용됩니다. 기존 볼륨을 유지하면서 `.env.dev`의 비밀번호만 바꾸면 database 계정은 변경되지 않아 healthcheck와 애플리케이션 인증이 실패합니다.
+
+기존 데이터를 유지해야 하면 현재 root 계정으로 `admin` database에 인증합니다. `--password` 뒤에 값을 쓰지 않으면 `mongosh`가 비밀번호를 대화형으로 입력받습니다.
+
+```powershell
+docker compose --env-file .env.dev exec mongodb mongosh --username "<현재-root-계정>" --authenticationDatabase admin --password
+```
+
+접속한 `mongosh`에서 `passwordPrompt()`를 사용해 root 계정과 애플리케이션 계정의 비밀번호를 각각 변경합니다. 비밀번호를 명령이나 shell history에 직접 입력하지 않습니다.
+
+```javascript
+db.getSiblingDB("admin").changeUserPassword("<root-계정>", passwordPrompt())
+db.getSiblingDB("monew").changeUserPassword("<애플리케이션-계정>", passwordPrompt())
+```
+
+그 다음 `.env.dev`의 `MONEW_MONGODB_ROOT_PASSWORD`, `MONEW_MONGODB_APP_PASSWORD`, `MONEW_MONGODB_URI`를 같은 값으로 갱신하고 새 환경변수를 읽도록 컨테이너를 다시 생성합니다.
+
+```powershell
+docker compose --env-file .env.dev up -d --force-recreate mongodb
+docker compose --env-file .env.dev ps mongodb
+```
+
+개발 데이터를 폐기해도 되면 다음 명령으로 MongoDB 컨테이너와 `mongodb-data` 볼륨만 제거한 뒤 새 자격 증명으로 초기화합니다. 이 작업은 로컬 MongoDB 데이터를 복구할 수 없게 삭제합니다.
+
+```powershell
+docker compose --env-file .env.dev down --volumes mongodb
+docker compose --env-file .env.dev up -d mongodb
+docker compose --env-file .env.dev ps mongodb
+```
+
+## 8. NAVER API 설정
 
 NAVER 뉴스 검색 API를 사용하려면 NAVER API Hub에서 검색 API 사용 권한을 준비합니다.
 
@@ -104,7 +167,7 @@ timeout 값은 선택 설정이며 지정하지 않으면 연결 timeout은 3초
 
 `display`는 최대 100, `start`는 최대 1000까지 사용할 수 있습니다. `sort`는 정확도순 `sim` 또는 날짜순 `date`를 사용합니다. JSON 응답은 `format=json` 요청 파라미터로 명시합니다.
 
-## 8. 외부 호출 smoke 테스트
+## 9. 외부 호출 smoke 테스트
 
 기본 테스트는 외부 네트워크 호출을 실행하지 않습니다. 외부 호출 검증이 필요한 테스트는 `@Tag("external")`로 분리하고, 기본 `test` task에서는 제외합니다.
 

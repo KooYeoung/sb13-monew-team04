@@ -138,7 +138,7 @@ MongoDB 반영은 response 반환 이후 worker가 비동기로 수행하므로,
 
 사용자가 같은 대상에 대해 같은 종류의 활동을 반복하면 activity를 계속 추가하지 않고 `userId + type + targetType + targetId` 기준으로 기존 activity를 upsert한다.
 
-이 upsert 기준은 후속 구현 시 unique index와 atomic upsert로 보장한다. 같은 outbox 이벤트가 재처리되거나 동일 활동 이벤트가 중복 발행되어도 activity는 중복 생성하지 않는다.
+MID4-135에서 이 natural key의 unique index는 준비했다. 후속 worker는 atomic upsert를 구현해 같은 outbox 이벤트가 재처리되거나 동일 활동 이벤트가 중복 발행되어도 activity가 중복 생성되지 않도록 보장한다.
 
 다만 natural key와 atomic upsert는 중복 문서 방지 계약이지 이벤트 순서 보호 계약은 아니다. activity의 `visible`, `status`, `occurredAt` 같은 상태 전이는 직렬화된 outbox `event_sequence`와 activity의 `lastAppliedEventSequence`를 비교하는 조건부 update로 보호한다.
 

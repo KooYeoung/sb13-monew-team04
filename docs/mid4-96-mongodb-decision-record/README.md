@@ -4,9 +4,11 @@
 
 ## 결론
 
-이번 배포 전에는 활동내역 조회에 MongoDB Read Model과 Redis를 적용하지 않는다.
+이번 배포 전에는 활동내역 조회 경로에 MongoDB Read Model과 Redis를 적용하지 않는다.
 
-MID4-125와 MID4-179 측정 결과 기준으로 RDB 인덱스 최적화 후 `GET /api/user-activities/{userId}`는 10m seed에서 `200 rps`까지 안정적으로 처리됐다. 현재 근거만으로는 MongoDB 환경 구성, Outbox, projection 동기화, 삭제 전파, 장애 재처리 정책을 배포 전에 추가할 만큼의 성능 병목이 확인되지 않았다.
+MID4-125와 MID4-179 측정 결과 기준으로 RDB 인덱스 최적화 후 `GET /api/user-activities/{userId}`는 10m seed에서 `200 rps`까지 안정적으로 처리됐다. 당시에는 MongoDB 환경 구성부터 Outbox, projection 동기화, 삭제 전파, 장애 재처리 정책까지 배포 전에 추가할 만큼의 성능 병목이 확인되지 않았다.
+
+이후 MID4-135에서 후속 구현과 비교 검증을 위한 MongoDB 연결 설정, 로컬 Compose, 컬렉션 이름과 인덱스 초기화 기반을 준비했다. 이는 운영 조회 경로를 MongoDB로 전환하거나 Read Model projection을 구현했다는 의미가 아니다.
 
 따라서 현재 판단은 MongoDB Read Model을 배포 범위에 포함하지 않고, RDB를 활동내역 조회의 기준 구현이자 Source of Truth로 유지하는 것이다. Redis도 활동내역 Read Model 저장소나 캐시로 적용하지 않는다.
 
@@ -19,7 +21,21 @@ MID4-125와 MID4-179 측정 결과 기준으로 RDB 인덱스 최적화 후 `GET
 | MongoDB Read Model | 후순위 |
 | Redis | 미적용 |
 | RDB | Source of Truth로 유지 |
-| 배포 전 작업 | RDB 최적화 상태 유지 |
+| 배포 조회 경로 | RDB 최적화 상태 유지 |
+
+## MID4-135 이후 현재 구현 상태
+
+MID4-135는 MongoDB 적용 결론을 변경하지 않고, 후속 구현이 필요할 때 재사용할 수 있는 환경 기반만 추가했다.
+
+| 구분 | 현재 상태 |
+| --- | --- |
+| 연결과 실행 환경 | Spring Data MongoDB 의존성, dev/prod/test 설정, 로컬 `mongo:8.0` Compose 준비 |
+| 활성화 정책 | dev/prod 기본 비활성화, test 비활성화 |
+| 컬렉션과 인덱스 | `activity_histories`와 세 snapshot 컬렉션 이름 및 인덱스 초기화 준비 |
+| 로컬 권한 | root와 애플리케이션 계정 분리, 애플리케이션 계정은 대상 DB `readWrite`만 사용 |
+| 아직 구현하지 않은 범위 | MongoDB document/repository, projection writer, Outbox worker, 삭제 전파, 조회 경로 전환, RDB/MongoDB 성능 비교 |
+
+따라서 현재 API는 계속 RDB를 조회하며, MongoDB 인덱스 기반은 `MONEW_MONGODB_ENABLED=true`로 명시적으로 활성화한 환경에서만 초기화한다.
 
 ## k6 측정 해석 범위
 
@@ -60,3 +76,4 @@ MID4-179의 k6 결과는 이번 의사결정의 참고 근거로 사용하되, �
 - [MID4-132 RDB baseline 성능 측정](../mid4-132-activity-history-rdb-baseline/README.md)
 - [MID4-134 RDB 최적화 후 성능 재측정](../mid4-134-rdb-optimized-remeasure/README.md)
 - [MID4-179 RDB 최적화 후 최대 요청량 측정](../mid4-179-rdb-throughput-limit/README.md)
+- [MongoDB Read Model 로컬 환경 설정](../environment-setup.md#7-mongodb-read-model-로컬-설정)

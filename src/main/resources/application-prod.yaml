@@ -13,6 +13,8 @@ spring:
     show-sql: false
   flyway:
     enabled: ${MONEW_FLYWAY_ENABLED:true}
+  mongodb:
+    uri: ${MONEW_MONGODB_URI:mongodb://localhost:27017/monew}
   docker:
     compose:
       enabled: false
@@ -30,6 +32,9 @@ logging:
     org.hibernate.orm.jdbc.bind: warn
 
 monew:
+  mongodb:
+    enabled: ${MONEW_MONGODB_ENABLED:false}
+    initialize-indexes: ${MONEW_MONGODB_INITIALIZE_INDEXES:true}
   openapi:
     server-url: ${MONEW_OPENAPI_SERVER_URL}
     server-description: 운영 배포 서버

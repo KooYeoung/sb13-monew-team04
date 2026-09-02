@@ -39,5 +39,36 @@ services:
           psql -h postgres -U "$$MONEW_DB_USERNAME" -d "$$MONEW_DB_NAME" -v ON_ERROR_STOP=1
       '
 
+  mongodb:
+    image: 'mongo:8.0'
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONEW_MONGODB_ROOT_USERNAME:-}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONEW_MONGODB_ROOT_PASSWORD:-}
+      MONGO_INITDB_DATABASE: ${MONEW_MONGODB_DATABASE:-monew}
+      MONEW_MONGODB_APP_USERNAME: ${MONEW_MONGODB_APP_USERNAME:-}
+      MONEW_MONGODB_APP_PASSWORD: ${MONEW_MONGODB_APP_PASSWORD:-}
+    entrypoint:
+      - /bin/bash
+      - -ec
+      - |
+        : "$${MONGO_INITDB_ROOT_USERNAME:?MONEW_MONGODB_ROOT_USERNAME is required}"
+        : "$${MONGO_INITDB_ROOT_PASSWORD:?MONEW_MONGODB_ROOT_PASSWORD is required}"
+        : "$${MONEW_MONGODB_APP_USERNAME:?MONEW_MONGODB_APP_USERNAME is required}"
+        : "$${MONEW_MONGODB_APP_PASSWORD:?MONEW_MONGODB_APP_PASSWORD is required}"
+        exec /usr/local/bin/docker-entrypoint.sh "$$@"
+      - --
+    command: ['mongod']
+    ports:
+      - '127.0.0.1:${MONEW_MONGODB_PORT:-27017}:27017'
+    volumes:
+      - mongodb-data:/data/db
+      - ./scripts/mongodb/init-app-user.js:/docker-entrypoint-initdb.d/01-create-app-user.js:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'mongosh --quiet --username "$$MONGO_INITDB_ROOT_USERNAME" --password "$$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "db.adminCommand({ ping: 1 })"']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres-data:
+  mongodb-data:
