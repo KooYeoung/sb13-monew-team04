@@ -8,6 +8,8 @@ import static com.codeit.sb13.monew.activity.mongo.MongoReadModelCollections.INT
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
+import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -18,19 +20,12 @@ import org.springframework.data.mongodb.core.index.IndexDefinition;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "monew.mongodb", name = "enabled", havingValue = "true")
 public class MongoReadModelIndexInitializer implements ApplicationRunner {
 
     private final MongoTemplate mongoTemplate;
     private final MongoReadModelProperties properties;
-
-    public MongoReadModelIndexInitializer(
-            MongoTemplate mongoTemplate,
-            MongoReadModelProperties properties
-    ) {
-        this.mongoTemplate = mongoTemplate;
-        this.properties = properties;
-    }
 
     @Override
     public void run(ApplicationArguments args) {
