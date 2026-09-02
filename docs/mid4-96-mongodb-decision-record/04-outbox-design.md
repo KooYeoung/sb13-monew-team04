@@ -73,6 +73,21 @@ created_at      TIMESTAMP
 updated_at      TIMESTAMP
 ```
 
+위 구조는 후속 구현이 모두 완료됐을 때의 최종 목표다. 실제 적용은 티켓 의존 순서에 맞춰 나눈다.
+
+```text
+MID4-136
+-> event_type, aggregate 정보, payload_json, 상태, retry, 처리 시각을 포함한 기본 outbox_events 저장 구조
+-> OutboxEvent JPA 엔티티와 repository
+
+MID4-246
+-> projection key와 event_sequence 저장 컬럼
+-> projection key 단위 직렬화와 sequence 발급
+-> 순서 역전 및 stale event 검증
+```
+
+MID4-136 단계에서는 `event_sequence`와 projection key를 아직 저장하지 않는다. 실제 도메인 쓰기 흐름이 Outbox row를 생성하는 MID4-137보다 MID4-246을 먼저 적용하므로, 기본 테이블에 운영 이벤트가 쌓이기 전에 순서 보호 컬럼과 발급 규칙을 완성한다.
+
 `event_sequence`는 outbox 이벤트 간 비교 가능한 단조 증가 값으로 둔다. activity 상태 전이의 순서 보호 기준으로 사용하므로, 같은 activity key를 변경할 수 있는 이벤트에서는 `event_sequence` 순서가 RDB 최종 상태 순서와 어긋나면 안 된다.
 
 DB sequence는 값의 할당 순서만 보장하며 transaction commit 순서를 보장하지 않는다. 따라서 후속 구현에서 DB sequence를 사용한다면 같은 `userId + type + targetType + targetId` activity key 또는 같은 activity 상태를 파생시키는 source aggregate를 먼저 직렬화한 뒤 `event_sequence`를 할당한다. 직렬화 수단은 transaction-scoped advisory lock, row lock, 또는 동등한 DB lock 전략을 후보로 두며, lock은 outbox row 저장과 `event_sequence` 할당 전 획득하고 RDB commit 또는 rollback까지 유지한다.
@@ -109,6 +124,8 @@ event_type
 aggregate_type
 -> 원본 도메인 종류
 -> 예: COMMENT, ARTICLE, INTEREST
+
+MID4-136의 기본 저장 모델에서는 아직 실제 도메인 이벤트 연동 범위가 확정되지 않았으므로 `event_type`과 `aggregate_type`을 Java `String`으로 둔다. MID4-137에서 도메인 담당자와 실제 저장할 이벤트 목록을 합의한 뒤 `OutboxEventType`, `OutboxAggregateType` enum을 함께 추가하고 JPA `EnumType.STRING`으로 전환한다. DB 컬럼은 PostgreSQL 전용 enum으로 바꾸지 않고 기존 `VARCHAR(80)`, `VARCHAR(50)`을 유지해 이후 이벤트 추가가 DB migration을 요구하지 않도록 한다.
 
 aggregate_id
 -> 원본 엔티티 ID
@@ -205,13 +222,19 @@ max_retry_count = 5
 
 `DEAD_LETTER` 이벤트는 worker가 자동 재처리하지 않는다. 운영자가 `last_error`와 원본 데이터를 확인한 뒤 수동으로 상태를 `PENDING`으로 되돌리거나 별도 보정 작업으로 처리한다.
 
-worker 조회를 위한 권장 인덱스는 다음과 같다.
+MID4-136에서는 worker 조회 인덱스를 미리 추가하지 않는다. worker 구현 후 실제 polling query와 데이터 분포로 실행계획을 측정하고, 순차 조회나 retry 대상 조회가 병목으로 확인될 때 별도 티켓에서 인덱스를 결정한다.
 
 ```text
-status, next_retry_at, created_at
+인덱스 후보
+-> status, next_retry_at, created_at
+
+추가 조건
+-> 실제 worker polling query가 확정됨
+-> 운영과 유사한 상태별 row 분포로 실행계획을 측정함
+-> 인덱스가 쓰기 비용보다 큰 조회 개선을 제공함
 ```
 
-worker 조회 조건은 상태와 처리 가능 시각을 기준으로 둔다. payload 내부 필드를 조회 조건으로 사용하지 않는 한 별도 JSON path/index는 만들지 않는다.
+worker 조회 조건은 상태와 처리 가능 시각을 기준으로 두되, 측정 전에는 해당 컬럼 인덱스도 만들지 않는다. payload 내부 필드를 조회 조건으로 사용하지 않는 한 JSON path/index 역시 만들지 않는다.
 
 여러 worker를 동시에 운영해야 하는 경우에는 같은 이벤트를 여러 worker가 동시에 처리하지 않도록 JPQL/native query 또는 DB lock 전략을 별도로 검토한다.
 

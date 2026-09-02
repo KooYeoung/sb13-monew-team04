@@ -21,7 +21,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
         "spring.datasource.driver-class-name=org.postgresql.Driver",
         "spring.flyway.enabled=true",
         "spring.jpa.hibernate.ddl-auto=validate",
-        "spring.docker.compose.enabled=false"
+        "spring.docker.compose.enabled=false",
+        "monew.mongodb.enabled=false"
 })
 class FlywayMigrationIntegrationTest {
 
@@ -61,5 +62,45 @@ class FlywayMigrationIntegrationTest {
             assertThat(column.get("is_nullable")).isEqualTo("NO");
             assertThat((String) column.get("column_default")).contains("ACTIVE");
         }
+    }
+
+    @Test
+    void outboxEventsTableIsCreated() {
+        var payloadColumn = jdbcTemplate.queryForMap("""
+                select data_type, is_nullable
+                from information_schema.columns
+                where table_schema = current_schema()
+                  and table_name = 'outbox_events'
+                  and column_name = 'payload_json'
+                """);
+        var statusColumn = jdbcTemplate.queryForMap("""
+                select is_nullable, column_default
+                from information_schema.columns
+                where table_schema = current_schema()
+                  and table_name = 'outbox_events'
+                  and column_name = 'status'
+                """);
+        var retryCountColumn = jdbcTemplate.queryForMap("""
+                select is_nullable, column_default
+                from information_schema.columns
+                where table_schema = current_schema()
+                  and table_name = 'outbox_events'
+                  and column_name = 'retry_count'
+                """);
+        Long secondaryIndexCount = jdbcTemplate.queryForObject("""
+                select count(*)
+                from pg_indexes
+                where schemaname = current_schema()
+                  and tablename = 'outbox_events'
+                  and indexname <> 'pk_outbox_events'
+                """, Long.class);
+
+        assertThat(payloadColumn.get("data_type")).isEqualTo("jsonb");
+        assertThat(payloadColumn.get("is_nullable")).isEqualTo("NO");
+        assertThat(statusColumn.get("is_nullable")).isEqualTo("NO");
+        assertThat((String) statusColumn.get("column_default")).contains("PENDING");
+        assertThat(retryCountColumn.get("is_nullable")).isEqualTo("NO");
+        assertThat((String) retryCountColumn.get("column_default")).contains("0");
+        assertThat(secondaryIndexCount).isZero();
     }
 }
