@@ -140,9 +140,11 @@ MongoDB 반영은 response 반환 이후 worker가 비동기로 수행하므로,
 
 MID4-135에서 이 natural key의 unique index는 준비했다. 후속 worker는 atomic upsert를 구현해 같은 outbox 이벤트가 재처리되거나 동일 활동 이벤트가 중복 발행되어도 activity가 중복 생성되지 않도록 보장한다.
 
-natural key와 atomic upsert는 중복 문서 방지 계약이다. activity의 `visible`, `status`, `occurredAt` 같은 mutable 상태는 payload의 과거 상태를 그대로 반영하지 않고 worker가 좋아요·구독 관계, 원본과 부모 대상의 존재 및 노출 여부를 RDB에서 다시 조회해 계산한다.
+natural key와 atomic upsert는 중복 문서 방지 계약이다. activity의 `visible`, `status`, `occurredAt` 같은 mutable 상태는 payload의 과거 상태를 그대로 반영하지 않고 worker가 좋아요·구독 관계, actor 사용자의 존재·논리삭제 상태, 원본과 부모 대상의 존재 및 노출 여부를 RDB에서 다시 조회해 계산한다. 삭제된 actor의 지연 이벤트는 새 activity를 만들지 않고 기존 `USER_DELETED` 상태를 유지한다.
 
 같은 polling batch의 RDB 조회는 commentId, articleId, interestId, userId 같은 대상 ID 집합으로 묶는다. 중복 이벤트나 실패 후 재시도, transaction commit 순서와 worker 처리 순서의 역전이 발생해도 각 처리는 당시의 RDB 현재 상태를 반영하며, 나중에 commit된 transaction의 이벤트가 최종 상태를 다시 반영한다. `occurredAt`은 현재 관계 row의 시각 또는 검증된 불변 이벤트 시각을 사용하고 `$max` 또는 동등한 단조 조건을 적용한다.
+
+초기 worker는 instance 하나만 운영하며 batch의 대상별 MongoDB 쓰기를 순차 실행하고 완료를 기다린다. 동일 대상의 서로 다른 RDB 조회 결과가 MongoDB 쓰기 단계에서 interleaving되지 않게 한다. 다중 worker나 병렬 writer를 도입할 때는 대상별 직렬화 또는 RDB revision 기반 조건부 쓰기를 선행한다.
 
 초기 구현에는 `event_sequence`, projection key, advisory lock, 낙관적 락, 비관적 락을 추가하지 않는다. 기존 Outbox row 저장은 원본 변경과 같은 request transaction에서 동기 수행하지만, MongoDB 반영과 RDB 현재 상태 batch 재조회는 response 반환 이후 worker가 비동기로 수행한다.
 

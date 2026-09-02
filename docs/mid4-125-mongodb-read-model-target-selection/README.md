@@ -138,6 +138,8 @@ MongoDB Read Model을 후속 적용하는 경우 삭제 상태 반영 기준은 
 - payload는 공통 envelope를 중복하지 않고 부모 대상 ID, action/reason, 이미 알고 있는 불변 영향 대상 ID처럼 이벤트별 처리에 필요한 body만 담는다.
 - content, title, keywords, visible, 좋아요·구독 활성 여부, count처럼 바뀔 수 있는 값은 payload에 포함할 수 있어도 MongoDB 최종 상태로 신뢰하지 않는다.
 - worker는 event type별 대상 ID를 묶어 source row 존재 여부, 표시값, 관계 활성 상태와 count를 RDB에서 batch 조회하고 MongoDB Read Model을 현재 상태로 수렴시킨다.
+- 초기 worker는 단일 instance에서 batch의 MongoDB 쓰기를 순차 실행하고 각 쓰기 완료를 기다린 뒤 다음 대상을 처리한다. 같은 대상에 대한 RDB 조회와 MongoDB 쓰기를 병렬 interleaving하지 않는다.
+- 활동 actor 사용자의 존재·논리삭제 상태도 batch 조회하며, 삭제된 사용자의 지연 이벤트는 새 activity를 만들거나 `USER_DELETED` 상태를 다시 활성화하지 않는다.
 - 초기 구현에는 `event_sequence`, projection key, producer 측 advisory/낙관적/비관적 락을 추가하지 않는다.
 - 일반 projection 갱신 이벤트의 `activityType`, 활동 record ID, `sourceEntityType`, `sourceEntityId`, 활동 시각, 화면 응답용 대상 데이터 전달 방식은 후속 구현 티켓에서 확정한다.
 - 화면 응답용 mutable 대상 데이터는 worker가 RDB에서 재조회하고, 불변인 이벤트 사실만 payload snapshot 사용을 허용한다.

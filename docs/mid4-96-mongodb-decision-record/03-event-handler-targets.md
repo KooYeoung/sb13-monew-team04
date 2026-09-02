@@ -16,7 +16,7 @@ MongoDB Read Model을 적용하면 RDB 원본 데이터의 변경을 MongoDB 조
 
 `TARGET_DELETED`로 숨길 때는 어떤 대상의 삭제 또는 비노출 전파로 visible=true activity가 숨겨졌는지 `hiddenByTargetType`, `hiddenByTargetId`를 함께 저장한다. 이미 숨겨진 activity는 다른 삭제 사유로 `hiddenByTargetType`, `hiddenByTargetId`가 갱신되지 않을 수 있으므로, 대상 복구 이벤트는 이 한 쌍만으로 복구 후보를 제한하지 않는다.
 
-아래 이벤트는 MongoDB에 적용할 상태값 자체가 아니라 RDB 현재 상태를 다시 확인해야 한다는 신호다. worker는 polling batch에서 대상 ID별로 source row 존재 여부, 노출 여부, 좋아요·구독 활성 여부와 필요한 count를 묶어 조회한 뒤 `visible`, `status`, `occurredAt`과 snapshot을 갱신한다. payload의 과거 mutable 값을 그대로 반영하지 않는다.
+아래 이벤트는 MongoDB에 적용할 상태값 자체가 아니라 RDB 현재 상태를 다시 확인해야 한다는 신호다. worker는 polling batch에서 대상 ID별로 source row 존재 여부, 노출 여부, 좋아요·구독 활성 여부, actor 사용자의 존재·논리삭제 상태와 필요한 count를 묶어 조회한 뒤 `visible`, `status`, `occurredAt`과 snapshot을 갱신한다. payload의 과거 mutable 값을 그대로 반영하지 않는다. 삭제된 actor의 지연 이벤트는 activity를 생성하거나 기존 `USER_DELETED` 상태를 활성화하지 않는다.
 
 ```text
 사용자 논리삭제 또는 탈퇴

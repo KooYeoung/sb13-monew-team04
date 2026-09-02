@@ -236,7 +236,7 @@ MID4-136에서는 worker 조회 인덱스를 미리 추가하지 않는다. work
 
 worker 조회 조건은 상태와 처리 가능 시각을 기준으로 두되, 측정 전에는 해당 컬럼 인덱스도 만들지 않는다. payload 내부 필드를 조회 조건으로 사용하지 않는 한 JSON path/index 역시 만들지 않는다.
 
-여러 worker를 동시에 운영해야 하는 경우에는 같은 이벤트를 여러 worker가 동시에 처리하지 않도록 JPQL/native query 또는 DB lock 전략을 별도로 검토한다.
+초기 구현은 worker instance 하나가 polling batch의 대상별 RDB 조회와 MongoDB 쓰기를 순차 실행하고, 각 MongoDB 쓰기 완료를 기다린 뒤 다음 대상을 처리한다. batch 내부에서 같은 대상을 병렬 처리하지 않는다. 여러 worker 또는 병렬 writer가 필요해지면 이벤트 선점뿐 아니라 동일 대상의 오래된 RDB 조회 결과가 최신 결과를 나중에 덮어쓰지 않도록 대상별 직렬화나 RDB revision 기반 조건부 쓰기를 함께 도입한다.
 
 ### Activity 현재 상태 수렴 기준
 
@@ -252,7 +252,7 @@ E1 처리 실패
 -> activity visible=false, status=CANCELED 유지
 ```
 
-worker는 이벤트의 `COMMENT_LIKED` 또는 `COMMENT_LIKE_CANCELED` 이름만으로 최종 상태를 정하지 않는다. 두 이벤트 모두 사용자 ID와 댓글 ID로 현재 좋아요 row 존재 여부, 댓글과 부모 기사의 노출 여부를 조회하고 같은 계산 규칙을 적용한다.
+worker는 이벤트의 `COMMENT_LIKED` 또는 `COMMENT_LIKE_CANCELED` 이름만으로 최종 상태를 정하지 않는다. 두 이벤트 모두 사용자 ID와 댓글 ID로 현재 좋아요 row 존재 여부, actor 사용자의 존재·논리삭제 상태, 댓글과 부모 기사의 노출 여부를 조회하고 같은 계산 규칙을 적용한다.
 
 ```text
 좋아요 row 존재 + 댓글/기사 노출 가능
@@ -264,6 +264,10 @@ worker는 이벤트의 `COMMENT_LIKED` 또는 `COMMENT_LIKE_CANCELED` 이름만�
 
 좋아요 row 존재 + 댓글 또는 기사 노출 불가
 -> visible=false, status=TARGET_DELETED
+
+actor 사용자 논리삭제 또는 물리삭제
+-> 새 activity upsert 금지
+-> 기존 activity가 있으면 visible=false, status=USER_DELETED 유지
 ```
 
 구독도 같은 방식으로 현재 구독 row와 관심사 노출 상태를 조회한다. 댓글 작성, 기사 조회, 대상 수정·삭제·복구 이벤트도 source row와 부모 대상의 현재 상태를 조회해 activity와 snapshot을 계산한다.
@@ -284,7 +288,7 @@ T1 나중 commit
 
 worker가 두 commit 사이에 실행되면 일시적으로 먼저 commit된 상태가 반영될 수 있다. 하지만 나중 commit된 transaction에도 Outbox row가 있으므로 후속 처리에서 RDB 현재 상태를 다시 읽어 최종 상태로 수렴한다. 중복 처리와 재시도 역시 같은 계산을 반복하므로 멱등하다.
 
-후속 구현 검증에는 좋아요/취소, 구독/해제, 삭제/복구의 중복·재시도·commit 순서 역전과 삭제/재생성 시나리오를 포함한다. 최종 MongoDB activity와 snapshot은 처리 이벤트의 순서가 아니라 RDB 기준 최종 상태와 일치해야 한다.
+후속 구현 검증에는 좋아요/취소, 구독/해제, 삭제/복구의 중복·재시도·commit 순서 역전과 삭제/재생성 시나리오를 포함한다. 단일 worker의 대상별 쓰기가 interleaving되지 않는지와 사용자 삭제 후 지연된 활동 이벤트가 `USER_DELETED` 상태를 덮어쓰지 않는지도 검증한다. 최종 MongoDB activity와 snapshot은 처리 이벤트의 순서가 아니라 RDB 기준 최종 상태와 일치해야 한다.
 
 ### Source Version 검토 기준
 

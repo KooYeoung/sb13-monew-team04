@@ -221,6 +221,10 @@ activity 상태 변경은 이벤트 종류만 보고 payload의 과거 상태를
 
 따라서 중복 이벤트, 실패 후 재시도, RDB transaction commit 순서와 worker 처리 순서의 역전이 발생해도 각 처리는 당시의 RDB 현재 상태를 반영한다. 두 transaction 사이에 worker가 실행되어 일시적인 중간 상태가 반영되더라도 나중에 commit된 transaction의 Outbox 이벤트가 다시 현재 상태를 조회하므로 최종 MongoDB Read Model은 RDB에 수렴한다.
 
+이 수렴 보장은 동일 대상의 두 RDB 조회 결과를 MongoDB에 동시에 쓰지 않는다는 조건을 포함한다. 초기 구현은 worker instance를 하나만 두고 polling batch의 대상별 MongoDB 쓰기를 순차 실행하며, 한 쓰기의 완료를 기다린 뒤 다음 대상을 처리한다. batch 내부 parallel stream, 비동기 fire-and-forget, 동일 대상 concurrent bulk write는 사용하지 않는다. 다중 worker 또는 병렬 writer를 도입하려면 대상별 직렬화나 RDB revision 기반 조건부 쓰기를 먼저 정의한다.
+
+worker는 `actor_user_id` 집합으로 사용자 존재 여부와 `deleted_at`도 batch 조회한다. actor가 논리삭제 또는 물리삭제된 활동 이벤트는 새 activity를 upsert하지 않으며, 기존 activity가 `USER_DELETED`이면 좋아요·구독·조회 관계가 남아 있어도 `ACTIVE`로 되돌리지 않는다. 후속 worker 테스트는 같은 대상을 서로 다른 시점에 조회한 두 결과가 MongoDB 쓰기 단계에서 interleaving되지 않는지와 사용자 삭제 후 지연 활동 이벤트가 `USER_DELETED`를 덮어쓰지 않는지를 포함한다.
+
 `occurredAt`은 최신 활동 정렬 기준이므로 역행하지 않게 처리한다. 좋아요, 구독, 기사 조회처럼 활동 시각을 갱신하는 이벤트는 `$max` 또는 동등한 단조성 조건으로만 `occurredAt`을 갱신한다. 취소, 삭제, 비노출, 복구 이벤트도 과거 이벤트가 최신 `occurredAt`을 낮추지 못하게 한다.
 
 예시는 다음과 같다.
