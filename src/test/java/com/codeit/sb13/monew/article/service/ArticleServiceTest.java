@@ -2,6 +2,11 @@ package com.codeit.sb13.monew.article.service;
 
 import com.codeit.sb13.monew.activity.service.ActivityVisibilityUpdater;
 import com.codeit.sb13.monew.activity.service.ArticleActivityVisibilityUpdateResult;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
+import com.codeit.sb13.monew.activity.outbox.payload.ArticleOutboxPayload;
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchCondition;
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchPage;
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchRow;
@@ -72,6 +77,9 @@ class ArticleServiceTest {
 
     @Mock
     private ActivityVisibilityUpdater activityVisibilityUpdater;
+
+    @Mock
+    private OutboxEventWriter outboxEventWriter;
 
     @InjectMocks
     private ArticleServiceImpl articleService;
@@ -251,6 +259,13 @@ class ArticleServiceTest {
         verify(articleRepository, times(1)).findByIdAndDeletedAtIsNull(testArticleId);
         verify(articleRepository, times(1)).save(any(Article.class));
         verify(activityVisibilityUpdater, times(1)).hideActiveByDeletedArticle(testArticleId);
+        verify(outboxEventWriter).write(
+                OutboxEventType.ARTICLE_SOFT_DELETED,
+                OutboxAggregateType.ARTICLE,
+                testArticleId,
+                null,
+                new ArticleOutboxPayload(OutboxEventAction.SOFT_DELETED)
+        );
     }
 
     @Test
@@ -284,6 +299,13 @@ class ArticleServiceTest {
         inOrder.verify(commentRepository).deleteByArticle_Id(testArticleId);
         inOrder.verify(articleViewRepository).deleteByArticle_Id(testArticleId);
         inOrder.verify(articleRepository).deleteById(testArticleId);
+        verify(outboxEventWriter).write(
+                OutboxEventType.ARTICLE_HARD_DELETED,
+                OutboxAggregateType.ARTICLE,
+                testArticleId,
+                null,
+                new ArticleOutboxPayload(OutboxEventAction.HARD_DELETED)
+        );
     }
 
     @Test

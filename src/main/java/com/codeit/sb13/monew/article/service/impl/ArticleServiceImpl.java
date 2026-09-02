@@ -1,6 +1,11 @@
 package com.codeit.sb13.monew.article.service.impl;
 
 import com.codeit.sb13.monew.activity.service.ActivityVisibilityUpdater;
+import com.codeit.sb13.monew.activity.outbox.payload.ArticleOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
 import com.codeit.sb13.monew.activity.service.ArticleActivityVisibilityUpdateResult;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
@@ -45,6 +50,7 @@ public class ArticleServiceImpl implements ArticleService {
     private final ActivityVisibilityUpdater activityVisibilityUpdater;
     private final ArticleMapper articleMapper;
     private final UserService userService;
+    private final OutboxEventWriter outboxEventWriter;
 
     @Override
     public List<Article> findAll() {
@@ -166,6 +172,15 @@ public class ArticleServiceImpl implements ArticleService {
 
         ArticleActivityVisibilityUpdateResult updateResult =
                 activityVisibilityUpdater.hideActiveByDeletedArticle(id);
+        outboxEventWriter.write(
+                OutboxEventType.ARTICLE_SOFT_DELETED,
+                OutboxAggregateType.ARTICLE,
+                id,
+                null,
+                new ArticleOutboxPayload(
+                        OutboxEventAction.SOFT_DELETED
+                )
+        );
         log.info(
                 "기사 논리 삭제 완료 - articleId: {}, 숨김 처리된 조회 기록 수: {}, 댓글 수: {}, 댓글 좋아요 수: {}",
                 id,
@@ -186,6 +201,15 @@ public class ArticleServiceImpl implements ArticleService {
         commentRepository.deleteByArticle_Id(id);
         articleViewRepository.deleteByArticle_Id(id);
         articleRepository.deleteById(id);
+        outboxEventWriter.write(
+                OutboxEventType.ARTICLE_HARD_DELETED,
+                OutboxAggregateType.ARTICLE,
+                id,
+                null,
+                new ArticleOutboxPayload(
+                        OutboxEventAction.HARD_DELETED
+                )
+        );
     }
 
     private boolean isLinkUniqueViolation(DataIntegrityViolationException e) {
