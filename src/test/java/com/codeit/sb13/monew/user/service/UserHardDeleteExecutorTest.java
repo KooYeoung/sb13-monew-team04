@@ -4,8 +4,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 
 import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
+import com.codeit.sb13.monew.activity.outbox.payload.UserHardDeleteOutboxPayload;
 import com.codeit.sb13.monew.comment.repository.CommentLikeRepository;
 import com.codeit.sb13.monew.comment.repository.CommentRepository;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
@@ -15,11 +22,13 @@ import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -38,6 +47,8 @@ public class UserHardDeleteExecutorTest {
   private NotificationRepository notificationRepository;
   @Mock
   private UserRepository userRepository;
+  @Mock
+  private OutboxEventWriter outboxEventWriter;
 
   @InjectMocks
   UserHardDeleteExecutor userHardDeleteExecutor;
@@ -66,6 +77,58 @@ public class UserHardDeleteExecutorTest {
     verify(articleViewRepository).deleteByUser_Id(userId);
     verify(subscribeRepository).deleteByUserId(userId);
     verify(notificationRepository).deleteByUser_Id(userId);
+    verify(userRepository).deleteById(userId);
+  }
+
+  @Test
+  @DisplayName("사용자 물리삭제 전에 영향 ID를 snapshot하고 삭제 후 Outbox payload로 보존한다")
+  void hardDeleteSnapshotsImpactedIdsBeforeDeletion() {
+    UUID userId = UUID.randomUUID();
+    UUID commentId = UUID.randomUUID();
+    UUID articleId = UUID.randomUUID();
+    UUID likedCommentId = UUID.randomUUID();
+    UUID viewedArticleId = UUID.randomUUID();
+    UUID interestId = UUID.randomUUID();
+    when(userRepository.findById(userId)).thenReturn(Optional.of(User.builder()
+        .email("payload@test.com")
+        .nickname("payload")
+        .password("password")
+        .build()));
+    when(commentRepository.findIdsByUserId(userId))
+        .thenReturn(List.of(commentId, commentId));
+    when(commentRepository.findArticleIdsByUserId(userId))
+        .thenReturn(List.of(articleId));
+    when(commentLikeRepository.findCommentIdsLikedByUserId(userId))
+        .thenReturn(List.of(likedCommentId));
+    when(articleViewRepository.findArticleIdsByUserId(userId))
+        .thenReturn(List.of(viewedArticleId));
+    when(subscribeRepository.findInterestIdsByUserId(userId))
+        .thenReturn(List.of(interestId));
+
+    userHardDeleteExecutor.hardDeleteUser(userId);
+
+    ArgumentCaptor<UserHardDeleteOutboxPayload> payloadCaptor =
+        ArgumentCaptor.forClass(UserHardDeleteOutboxPayload.class);
+    verify(outboxEventWriter).write(
+        eq(OutboxEventType.USER_HARD_DELETED),
+        eq(OutboxAggregateType.USER),
+        eq(userId),
+        isNull(),
+        payloadCaptor.capture()
+    );
+    UserHardDeleteOutboxPayload payload = payloadCaptor.getValue();
+    org.assertj.core.api.Assertions.assertThat(payload.action())
+        .isEqualTo(OutboxEventAction.HARD_DELETED);
+    org.assertj.core.api.Assertions.assertThat(payload.authoredCommentIds())
+        .containsExactly(commentId);
+    org.assertj.core.api.Assertions.assertThat(payload.impactedArticleIds())
+        .containsExactly(articleId);
+    org.assertj.core.api.Assertions.assertThat(payload.likedCommentIds())
+        .containsExactly(likedCommentId);
+    org.assertj.core.api.Assertions.assertThat(payload.viewedArticleIds())
+        .containsExactly(viewedArticleId);
+    org.assertj.core.api.Assertions.assertThat(payload.subscribedInterestIds())
+        .containsExactly(interestId);
     verify(userRepository).deleteById(userId);
   }
 

@@ -37,6 +37,9 @@ public interface ArticleViewRepository extends JpaRepository<ArticleView, UUID> 
 
     void deleteByUser_Id(UUID userId);
 
+    @Query("SELECT DISTINCT at.article.id FROM ArticleView at WHERE at.user.id = :userId")
+    List<UUID> findArticleIdsByUserId(@Param("userId") UUID userId);
+
     // 기사 물리 삭제 시 조회 기록 정리 (MID4-146)
     void deleteByArticle_Id(UUID articleId);
 

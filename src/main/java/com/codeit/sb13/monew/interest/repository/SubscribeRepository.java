@@ -42,6 +42,9 @@ public interface SubscribeRepository extends JpaRepository<Subscribe, UUID> {
      */
     void deleteByInterest_IdAndUserId(UUID interestId, UUID userId);
 
+    @Query("SELECT DISTINCT s.interest.id FROM Subscribe s WHERE s.userId = :userId")
+    List<UUID> findInterestIdsByUserId(@Param("userId") UUID userId);
+
     /**
      * 특정 관심사의 활성 구독 수를 센다.
      *

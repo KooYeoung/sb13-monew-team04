@@ -1,6 +1,11 @@
 package com.codeit.sb13.monew.user.service.impl;
 
 import com.codeit.sb13.monew.activity.service.ActivityVisibilityUpdater;
+import com.codeit.sb13.monew.activity.outbox.payload.UserOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
 import com.codeit.sb13.monew.activity.service.UserActivityVisibilityUpdateResult;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.user.domain.User;
@@ -38,6 +43,7 @@ public class UserServiceImpl implements UserService {
   private final PasswordEncoder passwordEncoder;
   private final UserMapper userMapper;
   private final ActivityVisibilityUpdater activityVisibilityUpdater;
+  private final OutboxEventWriter outboxEventWriter;
 
   @Transactional
   public UserCreateResult signUp(UserCreateCommand command) {
@@ -108,6 +114,15 @@ public class UserServiceImpl implements UserService {
 
     user.updateNickname(command.nickname());
     User saveUser = userRepository.saveAndFlush(user);
+    outboxEventWriter.write(
+        OutboxEventType.USER_NICKNAME_UPDATED,
+        OutboxAggregateType.USER,
+        saveUser.getId(),
+        command.userId(),
+        new UserOutboxPayload(
+            OutboxEventAction.UPDATED
+        )
+    );
 
     log.info("닉네임 변경 성공 - userId: {}, nickname: {}", command.userId(), command.nickname());
     return userMapper.toUpdateNicknameResult(saveUser);
@@ -148,6 +163,15 @@ public class UserServiceImpl implements UserService {
 
     UserActivityVisibilityUpdateResult updateResult =
             activityVisibilityUpdater.hideActiveByDeletedUser(userId);
+    outboxEventWriter.write(
+        OutboxEventType.USER_SOFT_DELETED,
+        OutboxAggregateType.USER,
+        userId,
+        userId,
+        new UserOutboxPayload(
+            OutboxEventAction.SOFT_DELETED
+        )
+    );
     log.info(
             "논리 삭제 성공 - userId: {}, 숨김 처리된 구독 수: {}, 조회 기록 수: {}, 댓글 수: {}, 댓글 좋아요 수: {}",
             userId,
