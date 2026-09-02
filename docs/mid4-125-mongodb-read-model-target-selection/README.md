@@ -125,7 +125,7 @@ MongoDB Read Model을 후속 적용하는 경우 삭제 상태 반영 기준은 
 - 물리삭제: RDB source row 삭제 시 연결된 MongoDB projection과 snapshot도 cleanup 대상에 포함한다.
 - cleanup은 RDB 삭제 정책과 같은 이벤트 또는 배치 기준으로 맞추며, MongoDB 문서만 독립적으로 정리하지 않는다.
 - 지연 이벤트나 재처리 이벤트는 upsert 전에 RDB source row 존재 여부를 확인하고, source row가 없으면 MongoDB 문서를 재생성하지 않고 no-op 및 `PROCESSED` 처리한다.
-- MID4-96 설계에서는 activity 상태 전이 순서 보호 기준을 직렬화된 outbox `event_sequence`와 activity `lastAppliedEventSequence` 비교로 구체화했다.
+- MID4-96 설계에서는 activity와 snapshot의 mutable 상태를 payload의 과거 값이 아니라 worker가 batch 조회한 RDB 현재 상태로 수렴시키는 기준을 구체화했다.
 - 후속 검토 항목은 `eventId` 중복 처리 방식, aggregate별 `version` 도입 여부, 삭제 이벤트 우선순위, tombstone 또는 삭제 처리 기록 보존 기간, 운영자 재처리 절차다.
 
 ## 변경 이벤트에 담을 정보 기준
@@ -134,11 +134,15 @@ MongoDB Read Model을 후속 적용하는 경우 삭제 상태 반영 기준은 
 - MySQL: `JSON`
 - 테스트 DB: `TEXT fallback`
 - payload 내부 필드를 DB에서 직접 조회하는 요구가 없으면 JSON path/index는 만들지 않는다.
-- payload는 이벤트 재처리와 projection 갱신에 필요한 최소 정보만 담는 방향으로 검토한다.
-- MongoDB Read Model 적용 시 outbox 이벤트 후보에는 `eventId`, `eventSequence`, `eventType`, `aggregateType`, `aggregateId`, `occurredAt`, 삭제 여부, 영향 받는 사용자 식별 정보를 포함할 수 있다.
-- `payload.eventSequence`는 직렬화 조건을 만족한 `outbox_events.event_sequence`를 payload에 담은 값이며, 별도 도메인 sequence나 aggregate version이 아니다. worker는 이 값을 MongoDB `activity_histories.lastAppliedEventSequence`에 저장하고, activity 상태 전이는 `eventSequence > lastAppliedEventSequence` 조건으로 보호한다.
+- event ID, event type, aggregate ID, actor user ID, occurredAt은 Outbox 공통 컬럼이 담당한다.
+- payload는 공통 envelope를 중복하지 않고 부모 대상 ID, action/reason, 이미 알고 있는 불변 영향 대상 ID처럼 이벤트별 처리에 필요한 body만 담는다.
+- content, title, keywords, visible, 좋아요·구독 활성 여부, count처럼 바뀔 수 있는 값은 payload에 포함할 수 있어도 MongoDB 최종 상태로 신뢰하지 않는다.
+- worker는 event type별 대상 ID를 묶어 source row 존재 여부, 표시값, 관계 활성 상태와 count를 RDB에서 batch 조회하고 MongoDB Read Model을 현재 상태로 수렴시킨다.
+- 초기 worker는 단일 instance에서 batch의 MongoDB 쓰기를 순차 실행하고 각 쓰기 완료를 기다린 뒤 다음 대상을 처리한다. 같은 대상에 대한 RDB 조회와 MongoDB 쓰기를 병렬 interleaving하지 않는다.
+- 활동 actor 사용자의 존재·논리삭제 상태도 batch 조회하며, 삭제된 사용자의 지연 이벤트는 새 activity를 만들거나 `USER_DELETED` 상태를 다시 활성화하지 않는다.
+- 초기 구현에는 `event_sequence`, projection key, producer 측 advisory/낙관적/비관적 락을 추가하지 않는다.
 - 일반 projection 갱신 이벤트의 `activityType`, 활동 record ID, `sourceEntityType`, `sourceEntityId`, 활동 시각, 화면 응답용 대상 데이터 전달 방식은 후속 구현 티켓에서 확정한다.
-- 화면 응답용 대상 데이터를 payload에 직렬화할지, worker가 RDB에서 재조회할지는 이번 티켓에서 결정하지 않는다.
+- 화면 응답용 mutable 대상 데이터는 worker가 RDB에서 재조회하고, 불변인 이벤트 사실만 payload snapshot 사용을 허용한다.
 - 기사/댓글 삭제처럼 여러 사용자 활동에 영향을 줄 수 있는 이벤트는 reverse index 조회 또는 사용자별 이벤트 fan-out 중 어떤 방식을 사용할지 후속 설계에서 결정한다.
 
 ## Redis를 사용하지 않은 이유

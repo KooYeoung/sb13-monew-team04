@@ -16,7 +16,7 @@ MongoDB Read Model을 적용하면 RDB 원본 데이터의 변경을 MongoDB 조
 
 `TARGET_DELETED`로 숨길 때는 어떤 대상의 삭제 또는 비노출 전파로 visible=true activity가 숨겨졌는지 `hiddenByTargetType`, `hiddenByTargetId`를 함께 저장한다. 이미 숨겨진 activity는 다른 삭제 사유로 `hiddenByTargetType`, `hiddenByTargetId`가 갱신되지 않을 수 있으므로, 대상 복구 이벤트는 이 한 쌍만으로 복구 후보를 제한하지 않는다.
 
-아래 이벤트별 `visible`, `status`, `occurredAt` 갱신은 Outbox 설계의 `event_sequence` guard를 통과한 경우에만 반영한다. 오래된 이벤트 재처리가 최신 activity 상태를 덮어쓰면 안 된다.
+아래 이벤트는 MongoDB에 적용할 상태값 자체가 아니라 RDB 현재 상태를 다시 확인해야 한다는 신호다. worker는 polling batch에서 대상 ID별로 source row 존재 여부, 노출 여부, 좋아요·구독 활성 여부, actor 사용자의 존재·논리삭제 상태와 필요한 count를 묶어 조회한 뒤 `visible`, `status`, `occurredAt`과 snapshot을 갱신한다. payload의 과거 mutable 값을 그대로 반영하지 않는다. 삭제된 actor의 지연 이벤트는 activity를 생성하거나 기존 `USER_DELETED` 상태를 활성화하지 않는다.
 
 ```text
 사용자 논리삭제 또는 탈퇴
@@ -48,6 +48,21 @@ MongoDB Read Model을 적용하면 RDB 원본 데이터의 변경을 MongoDB 조
 ```
 
 물리삭제 이후에는 복구를 고려하지 않는다. 삭제 전 `PENDING` 또는 재시도 가능한 `FAILED` 이벤트가 나중에 처리되더라도, worker는 activity 또는 snapshot upsert 전에 RDB 현재 상태를 확인한다. source row가 없으면 payload만으로 MongoDB 문서를 재생성하지 않고 no-op 처리한다.
+
+## Payload와 RDB 재조회 기준
+
+Outbox의 공통 envelope는 row의 `id`, `event_type`, `aggregate_type`, `aggregate_id`, `actor_user_id`, `occurred_at` 컬럼에 저장한다. payload에는 공통 envelope를 중복하지 않고 이벤트 발생 시 이미 알고 있는 사실과 worker가 추가 대상을 찾는 데 필요한 식별자를 저장한다. 변경 가능한 표시값과 관계의 현재 활성 상태는 projection의 최종값으로 신뢰하지 않는다.
+
+| 구분 | payload 사용 필드 | worker RDB batch 재조회 | source row 없음 |
+| --- | --- | --- | --- |
+| 공통 envelope 컬럼 | event ID, event type, aggregate type/ID, actor user ID, occurredAt | 원본 및 필요한 부모 대상의 존재·노출 여부 | payload만으로 생성하지 않고 숨김·삭제 또는 no-op |
+| 이벤트별 payload body | 부모 대상 ID, action/reason, 이미 알고 있는 불변 영향 대상 ID | 이벤트별 추가 대상과 현재 상태 | source row가 없으면 복원 근거로 사용하지 않음 |
+| 좋아요·구독 | user ID, comment/interest ID, 발생한 action | 현재 좋아요·구독 row 존재 여부 | activity를 비노출 상태로 수렴 |
+| 댓글·기사·관심사 변경 | 대상 ID와 변경 발생 사실 | 현재 content, title, summary, publishedAt, name, keywords 등 표시값 | snapshot을 복원하지 않음 |
+| count 변경 | 집계 대상 ID와 변경 발생 사실 | 현재 likeCount, viewCount, commentCount, subscriberCount | snapshot을 복원하지 않음 |
+| 물리삭제 | 삭제 대상 ID와 삭제 발생 사실 | 대상과 연관 row의 현재 존재 여부 | 관련 activity/snapshot 삭제 또는 no-op |
+
+이미 알고 있는 불변 값은 payload snapshot으로 사용할 수 있다. 다만 producer가 이미 알고 있는 mutable 값도 감사·디버깅 목적으로 payload에 포함할 수 있을 뿐, worker는 이를 MongoDB의 최종 상태로 사용하지 않는다.
 
 ## 공통 복구 이벤트
 

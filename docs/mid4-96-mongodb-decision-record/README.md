@@ -34,7 +34,7 @@ MID4-135와 MID4-136은 MongoDB 적용 결론을 변경하지 않고, 후속 구
 | 컬렉션과 인덱스 | `activity_histories`와 세 snapshot 컬렉션 이름 및 인덱스 초기화 준비 |
 | 로컬 권한 | root와 애플리케이션 계정 분리, 애플리케이션 계정은 대상 DB `readWrite`만 사용 |
 | Outbox 기본 저장 | PostgreSQL JSONB payload, 처리 상태와 retry 필드를 가진 `outbox_events`, JPA 엔티티와 repository 준비 |
-| 아직 구현하지 않은 범위 | `event_sequence` 직렬화, 도메인 이벤트 저장 연동, MongoDB document/repository, projection writer와 Outbox worker, 삭제 전파, 조회 경로 전환, RDB/MongoDB 성능 비교 |
+| 아직 구현하지 않은 범위 | 도메인 이벤트 저장 연동, MongoDB document/repository, RDB 현재 상태 batch 재조회 기반 projection writer와 Outbox worker, 삭제 전파, 조회 경로 전환, RDB/MongoDB 성능 비교 |
 
 따라서 현재 API는 계속 RDB를 조회하며, 쓰기 요청도 아직 Outbox row를 생성하지 않는다. MongoDB 인덱스 기반은 `MONEW_MONGODB_ENABLED=true`로 명시적으로 활성화한 환경에서만 초기화한다.
 
