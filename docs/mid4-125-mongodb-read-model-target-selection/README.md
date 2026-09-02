@@ -98,7 +98,7 @@ RDB baseline의 10m 실패 원인은 최근 조회 기사 read-path 인덱스 �
 | 최근 조회 기사 | RDB 유지 | baseline 병목이었지만 인덱스 후 10m median 0.525ms |
 | 구독 중인 관심사 | RDB 유지, fan-out 후속 관찰 | 현재 total median 1.283ms, 단 worst-case fan-out은 미측정 |
 
-MongoDB Read Model 적용 대상은 현재 선정하지 않는다. 결론은 `후순위`다. MID4-125 수행 당시에는 MongoDB dev 환경구성도 작업 범위에 포함하지 않았으며, 이후 MID4-135에서 비활성 기본값의 환경·인덱스 기반을, MID4-136에서 RDB Outbox 기본 저장 구조를 준비했다. 어느 작업도 조회 경로 전환이나 도메인 이벤트 연동을 포함하지 않는다.
+MongoDB Read Model 적용 대상은 현재 선정하지 않는다. 결론은 `후순위`다. MID4-125 수행 당시에는 MongoDB dev 환경구성도 작업 범위에 포함하지 않았으며, 이후 MID4-135에서 비활성 기본값의 환경·인덱스 기반을, MID4-136에서 RDB Outbox 기본 저장 구조를 준비했다. 두 작업은 조회 경로 전환이나 도메인 이벤트 연동을 포함하지 않았다. 이후 MID4-137에서 도메인 Outbox producer를 연동했지만 projection, worker와 조회 전환은 아직 구현하지 않았으므로 적용 결론은 그대로다.
 
 ## 나중에 MongoDB를 적용한다면
 
@@ -151,7 +151,7 @@ Redis는 영구 저장소가 아니므로 활동내역 Read Model 저장소로 �
 
 ## 최종 의사결정과의 관계
 
-MID4-96의 MongoDB/Redis 적용 여부 판단에는 이 문서, [MID4-179 RDB 최대 요청량 측정](../mid4-179-rdb-throughput-limit/README.md), [MongoDB/Redis 적용 판단 기록](../mid4-96-mongodb-decision-record/README.md)을 근거로 연결한다. 현재 MID4-125 결론은 MongoDB `후순위`, Redis `미적용`이다. 이후 MID4-135에서 MongoDB 환경과 인덱스 초기화 기반을, MID4-136에서 PostgreSQL JSONB payload를 사용하는 Outbox 기본 저장 구조를 준비했지만 projection, 도메인 쓰기 연동, worker, 조회 전환은 구현하지 않았으므로 적용 결론은 그대로다.
+MID4-96의 MongoDB/Redis 적용 여부 판단에는 이 문서, [MID4-179 RDB 최대 요청량 측정](../mid4-179-rdb-throughput-limit/README.md), [MongoDB/Redis 적용 판단 기록](../mid4-96-mongodb-decision-record/README.md)을 근거로 연결한다. 현재 MID4-125 결론은 MongoDB `후순위`, Redis `미적용`이다. 이후 MID4-135에서 MongoDB 환경과 인덱스 초기화 기반을, MID4-136에서 PostgreSQL JSONB payload를 사용하는 Outbox 기본 저장 구조를 준비했고 MID4-137에서 도메인 쓰기 연동을 구현했다. projection, worker와 조회 전환은 아직 구현하지 않았으므로 적용 결론은 그대로다.
 
 ## 완료 조건 대응
 
@@ -168,7 +168,7 @@ MID4-96의 MongoDB/Redis 적용 여부 판단에는 이 문서, [MID4-179 RDB �
 
 ## 다시 검토할 조건
 
-MongoDB 환경 구성은 MID4-135에서, Outbox 기본 저장 구조는 MID4-136에서 준비했다. 실제 Read Model document, projection 동기화, 조회 전환과 성능 비교는 다음 조건 중 하나가 충족될 때 별도 티켓으로 진행한다.
+MongoDB 환경 구성은 MID4-135에서, Outbox 기본 저장 구조는 MID4-136에서, 도메인 Outbox producer는 MID4-137에서 준비했다. 실제 Read Model document, projection 동기화, 조회 전환과 성능 비교는 다음 조건 중 하나가 충족될 때 별도 티켓으로 진행한다.
 
 - 목표 RPS, p95/p99 SLO, 허용 error rate, dropped iteration 기준이 확정된다.
 - 확정된 기준으로 재측정했을 때 RDB 최적화 후에도 composite API가 목표 기준을 넘고 특정 SQL/query 병목이 확인된다.

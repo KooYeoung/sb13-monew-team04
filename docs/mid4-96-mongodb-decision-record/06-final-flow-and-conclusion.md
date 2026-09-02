@@ -44,6 +44,25 @@ MongoDB 후속 적용 시 요청 처리 흐름은 다음과 같이 둔다.
 -> *_activity_snapshots 저장 또는 갱신
 ```
 
+### MID4-137 현재 구현 경계
+
+MID4-137에서는 위 흐름 중 원본 변경과 `outbox_events` 저장까지 구현했다. 별도 도메인 이벤트 버스에 발행한 뒤 수집하는 구조가 아니라, 각 도메인 서비스가 타입이 지정된 payload record를 만들고 `OutboxEventWriter`를 호출한다.
+
+```text
+현재 쓰기 요청
+-> 기존 RDB 트랜잭션 시작
+-> 원본 데이터 변경
+-> OutboxEventPayload record 생성
+-> 같은 트랜잭션에 MANDATORY로 참여하는 writer 호출
+-> payload를 JsonNode로 직렬화하고 outbox_events 저장
+-> RDB 커밋
+-> 사용자 response 반환
+```
+
+writer는 기존 트랜잭션이 없으면 실행을 거부하며 별도 커밋하지 않는다. payload 직렬화 실패 시 `OutboxPayloadSerializationException`이 발생하고 원본 변경도 함께 롤백된다. 따라서 Outbox row 저장은 논블로킹 작업이 아니라 요청 트랜잭션에 포함된 동기 작업이다.
+
+MongoDB document/repository, RDB 현재 상태 batch 재조회, projection writer와 Outbox worker는 아직 구현하지 않았다. 현재 조회 API는 계속 RDB를 사용한다.
+
 Outbox 적용에 따른 쓰기 API response 영향은 추정하지 않고 테스트로 확인한다.
 
 기존 쓰기 흐름과 Outbox 적용 후 쓰기 흐름의 차이는 다음과 같다.
@@ -63,7 +82,7 @@ Outbox 적용 후 쓰기 API
 
 따라서 Outbox 적용 후 쓰기 API가 추가로 부담하는 작업은 MongoDB 반영이 아니라 `outbox_events` 저장이다.
 
-이 추가 작업이 실제 response time에 얼마나 영향을 주는지는 수치로 단정하지 않고, 동일 조건의 성능 테스트로 검증한다.
+MID4-137 이후 쓰기 요청에는 이 저장 비용이 포함되지만 아직 동일 조건 성능 측정을 수행하지 않았다. 기존 MID4-206의 `rdb-mixed-no-outbox` 결과는 측정 당시 상태를 나타내므로 Outbox 적용 후 결과로 재분류하지 않는다. 실제 response time 영향은 수치로 단정하지 않고 후속 동일 조건 성능 테스트로 검증한다.
 
 측정 대상은 다음과 같이 둔다.
 

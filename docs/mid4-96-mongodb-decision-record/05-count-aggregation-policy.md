@@ -23,23 +23,29 @@ count snapshot뿐 아니라 좋아요·구독 활성 여부와 대상 노출 상
 
 ```text
 COMMENT_LIKE_CHANGED
--> commentId는 aggregate_id, eventId와 occurredAt은 공통 envelope 컬럼을 사용하며 payload body는 비워 둘 수 있다.
+-> commentId는 aggregate_id, eventId와 occurredAt은 공통 envelope 컬럼을 사용한다.
+-> MID4-137 producer는 payload body에 {"action":"COUNT_CHANGED"}를 저장하고 현재 count 값은 넣지 않는다.
 -> worker가 이벤트 처리 시점에 RDB에서 현재 likeCount를 다시 집계한다.
 -> MongoDB comment snapshot에 likeCount를 $set으로 반영한다.
 
 ARTICLE_COMMENT_COUNT_CHANGED
+-> articleId는 aggregate_id에 저장하고 payload body에는 {"action":"COUNT_CHANGED"}만 저장한다.
 -> worker가 RDB에서 현재 commentCount를 다시 집계한다.
 -> MongoDB article snapshot에 commentCount를 $set으로 반영한다.
 
 ARTICLE_VIEW_COUNT_CHANGED
--> articleId는 aggregate_id, eventId와 occurredAt은 공통 envelope 컬럼을 사용하며 payload body는 비워 둘 수 있다.
+-> articleId는 aggregate_id, eventId와 occurredAt은 공통 envelope 컬럼을 사용한다.
+-> payload body에는 {"action":"COUNT_CHANGED"}만 저장한다.
 -> worker가 이벤트 처리 시점에 RDB에서 현재 viewCount를 다시 조회한다.
 -> MongoDB article snapshot에 viewCount를 $set으로 반영한다.
 
 INTEREST_SUBSCRIBER_COUNT_CHANGED
+-> interestId는 aggregate_id에 저장하고 payload body에는 {"action":"COUNT_CHANGED"}만 저장한다.
 -> worker가 RDB에서 현재 subscriberCount를 다시 집계한다.
 -> MongoDB interest snapshot에 subscriberCount를 $set으로 반영한다.
 ```
+
+MID4-137은 위 네 종류의 count 변경 신호를 저장하는 producer까지만 구현했다. batch 병합, RDB 현재 count 재조회와 MongoDB `$set`은 후속 Outbox worker 범위다.
 
 기사 조회는 발생 빈도가 높을 수 있으므로 조회수 변경 이벤트는 worker가 outbox row마다 RDB를 1회씩 재조회하지 않는다.
 
