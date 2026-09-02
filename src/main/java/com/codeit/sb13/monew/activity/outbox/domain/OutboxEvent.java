@@ -1,6 +1,7 @@
 package com.codeit.sb13.monew.activity.outbox.domain;
 
 import com.codeit.sb13.monew.global.domain.UpdatedAtEntity;
+import com.codeit.sb13.monew.global.exception.outbox.OutboxEventStateTransitionException;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -93,6 +94,7 @@ public class OutboxEvent extends UpdatedAtEntity {
     }
 
     public void markProcessed(LocalDateTime processedAt) {
+        validateTransitionTo(OutboxEventStatus.PROCESSED);
         this.status = OutboxEventStatus.PROCESSED;
         this.processedAt = processedAt;
         this.nextRetryAt = null;
@@ -100,6 +102,7 @@ public class OutboxEvent extends UpdatedAtEntity {
     }
 
     public void markFailed(String lastError, LocalDateTime nextRetryAt) {
+        validateTransitionTo(OutboxEventStatus.FAILED);
         this.status = OutboxEventStatus.FAILED;
         this.retryCount++;
         this.nextRetryAt = nextRetryAt;
@@ -108,10 +111,18 @@ public class OutboxEvent extends UpdatedAtEntity {
     }
 
     public void markDeadLetter(String lastError) {
+        validateTransitionTo(OutboxEventStatus.DEAD_LETTER);
         this.status = OutboxEventStatus.DEAD_LETTER;
         this.retryCount++;
         this.nextRetryAt = null;
         this.processedAt = null;
         this.lastError = lastError;
+    }
+
+    private void validateTransitionTo(OutboxEventStatus targetStatus) {
+        if (status == OutboxEventStatus.PENDING || status == OutboxEventStatus.FAILED) {
+            return;
+        }
+        throw new OutboxEventStateTransitionException(status.name(), targetStatus.name());
     }
 }

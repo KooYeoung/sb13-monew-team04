@@ -49,6 +49,13 @@ public enum ApiErrorCode {
     COMMENT_INVALID("CMT_004", HttpStatus.BAD_REQUEST, "댓글 내용이 올바르지 않습니다."),
     COMMENT_PERMISSION_DENIED("CMT_005", HttpStatus.FORBIDDEN, "댓글 수정 권한이 없습니다."),
 
+    // OUTBOX OBX
+    OUTBOX_STATE_TRANSITION_INVALID(
+            "OBX_001",
+            HttpStatus.CONFLICT,
+            "Outbox 이벤트 상태를 변경할 수 없습니다."
+    ),
+
     // GLOBAL/COMMON GLB
     INVALID_REQUEST("GLB_001", HttpStatus.BAD_REQUEST, "요청 데이터가 올바르지 않습니다."),
     ADVISORY_LOCK_FAILED("GLB_002", HttpStatus.INTERNAL_SERVER_ERROR, "DB락 처리에 실패했습니다."),
