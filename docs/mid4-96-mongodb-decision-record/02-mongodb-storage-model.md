@@ -667,11 +667,6 @@ ARTICLE_VIEWED + 기사 삭제 또는 비공개
 -> status=TARGET_DELETED
 -> hiddenByTargetType=ARTICLE, hiddenByTargetId=articleId
 
-INTEREST_SUBSCRIBED + 관심사 비노출(후속 이벤트 후보)
--> visible=false
--> status=TARGET_DELETED
--> hiddenByTargetType=INTEREST, hiddenByTargetId=interestId
-
 사용자 U1 삭제 또는 탈퇴
 -> userId=U1, visible=true인 activity만 visible=false
 -> status=USER_DELETED
