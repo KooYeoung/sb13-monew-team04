@@ -667,7 +667,7 @@ ARTICLE_VIEWED + 기사 삭제 또는 비공개
 -> status=TARGET_DELETED
 -> hiddenByTargetType=ARTICLE, hiddenByTargetId=articleId
 
-INTEREST_SUBSCRIBED + 관심사 비노출
+INTEREST_SUBSCRIBED + 관심사 비노출(후속 이벤트 후보)
 -> visible=false
 -> status=TARGET_DELETED
 -> hiddenByTargetType=INTEREST, hiddenByTargetId=interestId
@@ -707,6 +707,10 @@ INTEREST_SUBSCRIBED + 관심사 비노출
 기사 A1 물리삭제
 -> articleId=A1 및 자식 comment snapshot의 결정적 _id에 scrubbed tombstone upsert
 -> 조회, 댓글 작성, 댓글 좋아요 activity key마다 scrubbed tombstone upsert
+
+관심사 I1 물리삭제
+-> interestId=I1의 결정적 snapshot _id에 scrubbed tombstone upsert
+-> 기존 구독 activity와 삭제 전에 수집한 구독 activity key마다 scrubbed tombstone upsert
 ```
 
 물리삭제 이후에는 복구를 고려하지 않는다. 복구 가능성은 논리삭제 상태에서만 유지한다.

@@ -214,11 +214,11 @@ W1: 이전 상태를 나중에 MongoDB 반영
 
 댓글 작성 또는 댓글 좋아요처럼 기사에 종속된 activity는 `parentTargetType=ARTICLE`, `parentTargetId=articleId`를 함께 저장한다. 기사 삭제 또는 비공개 처리 시 이 부모 식별자로 해당 기사에 속한 댓글 activity를 숨김 처리한다.
 
-좋아요 취소, 구독 해제, 사용자/기사/댓글 논리삭제, 관심사 비노출처럼 기존 활동내역에서 더 이상 노출되면 안 되는 이벤트가 발생하면 기존 activity를 삭제하지 않고 `visible=false`로 변경한다.
+좋아요 취소, 구독 해제와 사용자/기사/댓글 논리삭제처럼 기존 활동내역에서 더 이상 노출되면 안 되는 현재 이벤트는 기존 activity를 삭제하지 않고 `visible=false`로 변경한다. 현재 관심사는 별도 비노출 이벤트가 없고 제거 시 물리삭제 tombstone을 남긴다. 관심사 비노출은 후속 이벤트 후보에만 해당한다.
 
 논리삭제 이벤트는 기존에 `visible=true`인 activity만 숨김 처리한다. 이미 취소, 구독 해제, 다른 삭제 사유로 숨겨진 activity의 `status`는 덮어쓰지 않는다.
 
-`status`는 activity가 노출되는지와 별개로 현재 상태 또는 숨김 사유를 표현한다. 기본 상태는 `ACTIVE`이며, 좋아요 취소는 `CANCELED`, 구독 해제는 `UNSUBSCRIBED`, 기사/댓글 삭제, 기사 비공개, 관심사 비노출 처리는 `TARGET_DELETED`, 사용자 삭제 또는 탈퇴는 `USER_DELETED`로 둔다.
+`status`는 activity가 노출되는지와 별개로 현재 상태 또는 숨김 사유를 표현한다. 기본 상태는 `ACTIVE`이며, 좋아요 취소는 `CANCELED`, 구독 해제는 `UNSUBSCRIBED`, 기사/댓글 논리삭제와 기사 비공개 처리는 `TARGET_DELETED`, 사용자 삭제 또는 탈퇴는 `USER_DELETED`로 둔다. 후속 관심사 비노출 이벤트를 추가한다면 `TARGET_DELETED`를 적용한다.
 
 `TARGET_DELETED`로 숨긴 activity에는 `hiddenByTargetType`, `hiddenByTargetId`를 함께 저장해 어떤 대상의 삭제 또는 비노출 전파로 visible=true activity가 숨겨졌는지 기록한다. 이미 숨겨진 activity는 다른 삭제 사유로 이 값이 갱신되지 않을 수 있으므로, 대상 복구 이벤트는 `hiddenByTargetType`, `hiddenByTargetId` 일치만으로 복구 후보를 제한하지 않는다.
 

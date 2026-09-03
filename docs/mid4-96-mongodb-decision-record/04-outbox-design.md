@@ -105,7 +105,7 @@ MID4-138
 -> row별 retry와 DEAD_LETTER 상태 전이
 
 MID4-248
--> 댓글·기사·관심사·사용자 물리삭제 cleanup의 실제 MongoDB 반영 검증
+-> 댓글·기사·관심사·사용자 물리삭제 cleanup의 실제 MongoDB projection 반영 검증
 -> 삭제 전 PENDING과 재시도 가능한 FAILED 이벤트가 높은 버전 tombstone을 되살리지 못하는지 검증
 -> worker가 삭제 전 source를 읽은 뒤 늦게 쓰는 in-flight stale 시나리오 검증
 -> 같은 ID의 RDB 복구·재노출 동작이 없으므로 복구 event type과 producer는 추가하지 않음
@@ -302,7 +302,7 @@ UUID는 순서 기준으로 사용하지 않는다. worker 조회와 처리 시�
 
 물리삭제 cleanup 이후 삭제 전 `PENDING` 또는 `FAILED` 이벤트가 재처리될 수 있다. worker는 RDB source row 존재 여부를 확인하고, 삭제 이벤트가 남긴 더 높은 `projectionVersion` tombstone과 CAS로 과거 activity/snapshot 재생성을 차단한다. 같은 버전 재시도는 이미 반영한 문서를 stale 성공으로 건너뛰고 누락된 fan-out 문서를 계속 처리한 뒤 `PROCESSED`로 전환할 수 있다.
 
-MID4-248은 cleanup 이후 삭제 전 `PENDING` 또는 재시도 가능한 `FAILED` 이벤트를 재처리해도 해당 activity와 snapshot 문서가 다시 생성되지 않는 시나리오를 실제 MongoDB에서 검증한다. worker가 삭제 전 RDB source를 이미 읽은 in-flight 상태여도, 더 높은 삭제 version이 먼저 저장되면 늦은 live upsert는 CAS no-op으로 끝난다.
+MID4-248은 cleanup 이후 삭제 전 `PENDING` 또는 재시도 가능한 `FAILED` 이벤트를 재처리해도 해당 activity와 snapshot 문서가 다시 생성되지 않는 시나리오를 실제 MongoDB projection 통합 테스트로 검증한다. worker가 삭제 전 RDB source를 이미 읽은 in-flight 상태여도, 더 높은 삭제 version이 먼저 저장되면 늦은 live upsert는 CAS no-op으로 끝난다. 이 테스트는 worker가 stale 성공 후 `markProcessed`를 요청하는 지점까지 확인하며, claim의 동시성·소유권과 상태의 RDB 영속화는 기존 PostgreSQL claim 및 상태 서비스 테스트가 별도로 검증한다.
 
 현재 RDB에는 댓글·기사·관심사를 같은 ID로 복구 또는 재노출하는 명령이 없다. 기사 S3 복원은 새 UUID를 발급하는 신규 생성 흐름이므로 기존 MongoDB 문서를 되살리는 복구 이벤트가 아니다. 복구·재노출 event type, producer와 handler는 실제 RDB 트리거가 생길 때 함께 추가한다.
 
@@ -516,7 +516,7 @@ T1: T2 commit 뒤 clock row 잠금, version=42 발급 및 commit
 
 worker가 두 commit 사이에 실행되면 먼저 commit된 상태가 일시적으로 보일 수 있다. 나중 commit된 transaction의 더 큰 버전이 최종 상태를 반영하며, 과거 이벤트가 뒤늦게 끝나도 CAS가 이를 덮지 못하게 한다. 중복 처리와 재시도도 같은 버전에서는 no-op이므로 멱등하다.
 
-MID4-138 테스트는 서로 다른 worker의 claim batch가 겹치지 않는지, 만료 claim 회수, 이전 claim UUID의 상태 갱신 차단, row별 retry와 heartbeat 갱신을 검증한다. MID4-247 테스트는 4개 count type의 동일 대상 병합, 최고 projection version 선택, 그룹 성공·실패 상태 전이와 부분 claim 상실 차단을 검증한다. MID4-248 테스트는 댓글·기사·관심사·사용자 물리삭제 fan-out, 부모 기사가 비노출인 댓글 활동 차단, 낮은 version의 `PENDING`·`FAILED`·in-flight stale replay를 검증한다. PostgreSQL 통합 테스트는 clock 잠금이 commit까지 다음 할당을 막고 rollback된 버전을 재사용하는지 확인한다. 실제 MongoDB 컨테이너 테스트는 V2 후 V1 역순 쓰기, 문서 없는 취소 guard, scrubbed tombstone, 동일 버전 재시도와 fan-out의 빠진 문서 후속 반영을 검증한다.
+MID4-138 테스트는 서로 다른 worker의 claim batch가 겹치지 않는지, 만료 claim 회수, 이전 claim UUID의 상태 갱신 차단, row별 retry와 heartbeat 갱신을 검증한다. MID4-247 테스트는 4개 count type의 동일 대상 병합, 최고 projection version 선택, 그룹 성공·실패 상태 전이와 부분 claim 상실 차단을 검증한다. MID4-248의 MongoDB projection 통합 테스트는 댓글·기사·관심사·사용자 물리삭제 fan-out과 낮은 version의 `PENDING`·`FAILED`·in-flight stale replay를 검증하고, JPA source reader와 handler 단위 테스트는 부모 기사가 비노출인 댓글 활동 차단을 검증한다. PostgreSQL 통합 테스트는 claim의 동시성·소유권과 상태 영속화, clock 잠금이 commit까지 다음 할당을 막고 rollback된 버전을 재사용하는지 확인한다. 실제 MongoDB 컨테이너 테스트는 V2 후 V1 역순 쓰기, 문서 없는 취소 guard, scrubbed tombstone, 동일 버전 재시도와 fan-out의 빠진 문서 후속 반영을 검증한다.
 
 ### Projection Version과 CAS 기준
 

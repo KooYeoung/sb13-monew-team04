@@ -39,7 +39,7 @@ MID4-135 이후 MID4-248까지의 작업은 MongoDB 적용 결론을 변경하�
 | MongoDB 문서 | activity와 댓글·기사·관심사 snapshot 문서, 결정적 SHA-256 `_id`, `projectionVersion`, hidden guard와 scrubbed tombstone 정의 |
 | Outbox worker | `PENDING`과 재시도 시각이 지난 `FAILED`를 `SKIP LOCKED`와 lease로 batch claim하고 RDB 현재 상태를 조회해 version CAS upsert, 숨김 또는 tombstone 처리 |
 | count batch 병합 | 4개 count 이벤트를 같은 polling batch의 `event_type + snapshot 대상 ID`로 묶고 최고 projection version으로 MongoDB를 한 번 갱신한 뒤 그룹 전체 상태 전이. 현재 네 이벤트에서 snapshot 대상 ID는 `aggregate_id`와 같다. |
-| 삭제·stale replay 검증 | 댓글·기사·관심사·사용자 물리삭제의 bulk cleanup과 payload fan-out tombstone을 실제 MongoDB에 반영하고, 더 낮은 version의 `PENDING`·`FAILED`·in-flight stale 쓰기가 tombstone을 되살리지 못함을 검증 |
+| 삭제·stale replay 검증 | 댓글·기사·관심사·사용자 물리삭제의 bulk cleanup과 payload fan-out tombstone을 실제 MongoDB projection에 반영하고, 더 낮은 version의 `PENDING`·`FAILED`·in-flight stale 쓰기가 tombstone을 되살리지 못함을 검증 |
 | 실패 처리 | 1분, 5분, 15분, 1시간 retry 후 5회 실패 시 `DEAD_LETTER`; 단건 또는 count 그룹 상태 저장은 독립 트랜잭션으로 처리 |
 | 다중 인스턴스 순서 보호 | commit 순서와 일치하는 전역 projection version 및 MongoDB CAS로 서로 다른 batch의 동일 target stale write 차단 |
 | 아직 구현하지 않은 범위 | 복구·재노출, 초기 투영, MongoDB 조회 경로 전환, 운영 재처리 |
@@ -49,6 +49,8 @@ MID4-135 이후 MID4-248까지의 작업은 MongoDB 적용 결론을 변경하�
 MongoDB와 RDB 상태 변경은 하나의 트랜잭션이 아니므로 전달 보장은 at-least-once다. producer는 singleton clock row를 요청 트랜잭션 종료까지 잠가 commit 순서의 `projection_version`을 발급한다. MongoDB writer는 natural key의 결정적 `_id`와 저장 version이 incoming보다 작은 경우만 반영해 서로 다른 worker의 동일 target stale overwrite를 막는다. 취소/해제는 hidden guard를, 물리삭제는 식별·표시 필드를 지운 tombstone을 문서가 없어도 남긴다. 상세 계약은 [MongoDB 저장 모델](./02-mongodb-storage-model.md#activity-생성-및-수정-기준)과 [Outbox worker 동시성 설명](./04-outbox-design.md#다중-worker-실행과-projection-version-cas)에 기록한다.
 
 현재 RDB 도메인에는 논리삭제된 대상의 같은 ID 복구·재노출 동작이 없다. S3 기사 복원은 새 UUID의 기사를 생성하므로 기존 Read Model 복구가 아니다. 따라서 MID4-248은 사용되지 않는 복구 event type이나 handler를 미리 만들지 않고 현재 존재하는 삭제와 stale replay만 검증했다.
+
+MID4-248의 MongoDB projection 통합 테스트는 실제 MongoDB writer와 handler를 사용하고 claim, source 조회, Outbox 상태 저장은 test double로 격리한다. stale 성공 후 worker가 `markProcessed`를 요청하는 데까지 확인하며, claim의 동시성·소유권과 상태의 RDB 영속화는 기존 PostgreSQL 및 상태 서비스 테스트가 별도로 담당한다.
 
 ## k6 측정 해석 범위
 
