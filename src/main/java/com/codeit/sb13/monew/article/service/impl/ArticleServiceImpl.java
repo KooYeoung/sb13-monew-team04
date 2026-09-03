@@ -3,6 +3,8 @@ package com.codeit.sb13.monew.article.service.impl;
 import com.codeit.sb13.monew.activity.service.ActivityVisibilityUpdater;
 import com.codeit.sb13.monew.activity.outbox.payload.ArticleOutboxPayload;
 import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxProjectionImpactReader;
+import com.codeit.sb13.monew.activity.outbox.payload.ProjectionImpact;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
@@ -51,6 +53,7 @@ public class ArticleServiceImpl implements ArticleService {
     private final ArticleMapper articleMapper;
     private final UserService userService;
     private final OutboxEventWriter outboxEventWriter;
+    private final OutboxProjectionImpactReader projectionImpactReader;
 
     @Override
     public List<Article> findAll() {
@@ -167,6 +170,7 @@ public class ArticleServiceImpl implements ArticleService {
     @Transactional
     public void softDelete(UUID id) {
         Article article = findById(id);
+        ProjectionImpact impact = projectionImpactReader.forArticle(id);
         article.softDelete();
         articleRepository.save(article);
 
@@ -178,7 +182,8 @@ public class ArticleServiceImpl implements ArticleService {
                 id,
                 null,
                 new ArticleOutboxPayload(
-                        OutboxEventAction.SOFT_DELETED
+                        OutboxEventAction.SOFT_DELETED,
+                        impact
                 )
         );
         log.info(
@@ -196,6 +201,7 @@ public class ArticleServiceImpl implements ArticleService {
         if (!articleRepository.existsById(id)) {
             throw new ArticleNotFoundException(id);
         }
+        ProjectionImpact impact = projectionImpactReader.forArticle(id);
         // FK 제약 순서: CommentLike -> Comment -> ArticleView -> Article
         commentLikeRepository.deleteByComment_Article_Id(id);
         commentRepository.deleteByArticle_Id(id);
@@ -207,7 +213,8 @@ public class ArticleServiceImpl implements ArticleService {
                 id,
                 null,
                 new ArticleOutboxPayload(
-                        OutboxEventAction.HARD_DELETED
+                        OutboxEventAction.HARD_DELETED,
+                        impact
                 )
         );
     }

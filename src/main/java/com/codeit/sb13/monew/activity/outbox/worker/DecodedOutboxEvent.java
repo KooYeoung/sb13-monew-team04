@@ -18,6 +18,7 @@ import java.util.UUID;
  * @param aggregateId 원본 엔티티 식별자
  * @param actorUserId 이벤트를 발생시킨 사용자 식별자, 시스템 이벤트이면 {@code null}
  * @param payload 이벤트 타입에 맞게 복원된 payload record
+ * @param projectionVersion MongoDB CAS에 사용하는 전역 commit 순서 버전
  * @param retryCount 현재까지 기록된 처리 실패 횟수
  * @param occurredAt 도메인 변경 발생 시각
  * @param createdAt Outbox row 생성 시각
@@ -29,6 +30,7 @@ public record DecodedOutboxEvent(
         UUID aggregateId,
         UUID actorUserId,
         OutboxEventPayload payload,
+        long projectionVersion,
         int retryCount,
         LocalDateTime occurredAt,
         LocalDateTime createdAt

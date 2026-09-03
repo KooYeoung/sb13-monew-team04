@@ -280,6 +280,7 @@ class OutboxWorkerTest {
                 new ArticleOutboxPayload(
                         com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction.VIEWED
                 ),
+                1L,
                 0,
                 fixedNow(),
                 fixedNow()

@@ -90,6 +90,11 @@ public enum ApiErrorCode {
             HttpStatus.INTERNAL_SERVER_ERROR,
             "Outbox claim heartbeat 갱신에 실패했습니다."
     ),
+    OUTBOX_PROJECTION_VERSION_ALLOCATION_FAILED(
+            "OBX_009",
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Outbox projection 버전을 발급하지 못했습니다."
+    ),
 
     // GLOBAL/COMMON GLB
     INVALID_REQUEST("GLB_001", HttpStatus.BAD_REQUEST, "요청 데이터가 올바르지 않습니다."),

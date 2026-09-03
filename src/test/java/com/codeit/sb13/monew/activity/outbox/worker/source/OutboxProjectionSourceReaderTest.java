@@ -134,6 +134,7 @@ class OutboxProjectionSourceReaderTest {
                 aggregateId,
                 actorUserId,
                 payload,
+                1L,
                 0,
                 now,
                 now

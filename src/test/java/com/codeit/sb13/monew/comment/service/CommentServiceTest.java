@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.*;
 
 import com.codeit.sb13.monew.activity.service.ActivityVisibilityUpdater;
 import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxProjectionImpactReader;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
@@ -70,6 +71,9 @@ public class CommentServiceTest {
 
   @Mock
   private OutboxEventWriter outboxEventWriter;
+
+  @Mock
+  private OutboxProjectionImpactReader projectionImpactReader;
 
   @InjectMocks
   private CommentServiceImpl commentService;

@@ -18,6 +18,7 @@ import java.util.UUID;
  * @param likedCommentIds 사용자가 좋아요한 댓글 식별자 목록
  * @param viewedArticleIds 사용자가 조회한 기사 식별자 목록
  * @param subscribedInterestIds 사용자가 구독한 관심사 식별자 목록
+ * @param impact 삭제 전에 수집한 activity natural key와 작성 댓글 snapshot 식별자
  */
 public record UserHardDeleteOutboxPayload(
         OutboxEventAction action,
@@ -25,7 +26,8 @@ public record UserHardDeleteOutboxPayload(
         List<UUID> impactedArticleIds,
         List<UUID> likedCommentIds,
         List<UUID> viewedArticleIds,
-        List<UUID> subscribedInterestIds
+        List<UUID> subscribedInterestIds,
+        ProjectionImpact impact
 ) implements OutboxEventPayload {
 
     public UserHardDeleteOutboxPayload {
@@ -34,9 +36,22 @@ public record UserHardDeleteOutboxPayload(
         likedCommentIds = distinctCopy(likedCommentIds);
         viewedArticleIds = distinctCopy(viewedArticleIds);
         subscribedInterestIds = distinctCopy(subscribedInterestIds);
+        impact = impact == null ? ProjectionImpact.EMPTY : impact;
+    }
+
+    public UserHardDeleteOutboxPayload(
+            OutboxEventAction action,
+            List<UUID> authoredCommentIds,
+            List<UUID> impactedArticleIds,
+            List<UUID> likedCommentIds,
+            List<UUID> viewedArticleIds,
+            List<UUID> subscribedInterestIds
+    ) {
+        this(action, authoredCommentIds, impactedArticleIds, likedCommentIds,
+                viewedArticleIds, subscribedInterestIds, ProjectionImpact.EMPTY);
     }
 
     private static List<UUID> distinctCopy(List<UUID> values) {
-        return List.copyOf(new LinkedHashSet<>(values));
+        return values == null ? List.of() : List.copyOf(new LinkedHashSet<>(values));
     }
 }

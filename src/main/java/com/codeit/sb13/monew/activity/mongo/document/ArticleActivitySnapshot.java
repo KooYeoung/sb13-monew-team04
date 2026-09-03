@@ -19,6 +19,8 @@ public record ArticleActivitySnapshot(
         long viewCount,
         long commentCount,
         boolean visible,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        long projectionVersion,
+        boolean tombstone
 ) {
 }

@@ -57,6 +57,7 @@ public class OutboxEventDecoder {
                 event.getAggregateId(),
                 event.getActorUserId(),
                 payload,
+                event.getProjectionVersion(),
                 event.getRetryCount(),
                 event.getOccurredAt(),
                 event.getCreatedAt()

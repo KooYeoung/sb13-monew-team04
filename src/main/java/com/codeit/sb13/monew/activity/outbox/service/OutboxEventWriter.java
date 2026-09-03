@@ -24,6 +24,7 @@ public class OutboxEventWriter {
 
     private final OutboxEventRepository outboxEventRepository;
     private final OutboxPayloadSerializer payloadSerializer;
+    private final OutboxProjectionVersionAllocator projectionVersionAllocator;
 
     /**
      * 타입이 지정된 payload를 JSON으로 직렬화해 처리 대기 이벤트로 저장한다.
@@ -45,13 +46,16 @@ public class OutboxEventWriter {
             UUID actorUserId,
             OutboxEventPayload payload
     ) {
+        var payloadJson = payloadSerializer.serialize(payload);
+        long projectionVersion = projectionVersionAllocator.allocate();
         return outboxEventRepository.save(OutboxEvent.createPending(
                 eventType,
                 aggregateType,
                 aggregateId,
                 actorUserId,
-                payloadSerializer.serialize(payload),
-                LocalDateTime.now()
+                payloadJson,
+                LocalDateTime.now(),
+                projectionVersion
         ));
     }
 }

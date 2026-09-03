@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 
 import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
 import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxProjectionImpactReader;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
@@ -49,6 +50,8 @@ public class UserHardDeleteExecutorTest {
   private UserRepository userRepository;
   @Mock
   private OutboxEventWriter outboxEventWriter;
+  @Mock
+  private OutboxProjectionImpactReader projectionImpactReader;
 
   @InjectMocks
   UserHardDeleteExecutor userHardDeleteExecutor;

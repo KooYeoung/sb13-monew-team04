@@ -22,6 +22,8 @@ public record ActivityHistoryDocument(
         ActivityTargetType hiddenByTargetType,
         String hiddenByTargetId,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        long projectionVersion,
+        boolean tombstone
 ) {
 }

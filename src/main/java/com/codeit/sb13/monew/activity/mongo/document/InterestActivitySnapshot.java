@@ -15,6 +15,8 @@ public record InterestActivitySnapshot(
         List<String> keywords,
         long subscriberCount,
         boolean visible,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        long projectionVersion,
+        boolean tombstone
 ) {
 }

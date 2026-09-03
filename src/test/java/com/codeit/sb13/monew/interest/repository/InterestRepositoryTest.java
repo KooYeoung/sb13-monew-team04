@@ -175,7 +175,8 @@ class InterestRepositoryTest {
                 interestRepository,
                 subscribeRepository,
                 Mockito.mock(NotificationService.class),
-                Mockito.mock(com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter.class));
+                Mockito.mock(com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter.class),
+                Mockito.mock(com.codeit.sb13.monew.activity.outbox.service.OutboxProjectionImpactReader.class));
 
         // when
         interestService.delete(interest.getId());

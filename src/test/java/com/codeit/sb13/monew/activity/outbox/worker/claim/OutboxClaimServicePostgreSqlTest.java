@@ -194,7 +194,8 @@ class OutboxClaimServicePostgreSqlTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 JsonNodeFactory.instance.objectNode().put("action", "VIEWED"),
-                LocalDateTime.now()
+                LocalDateTime.now(),
+                1L
         );
     }
 

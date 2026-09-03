@@ -18,6 +18,8 @@ public record CommentActivitySnapshot(
         long likeCount,
         boolean visible,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        long projectionVersion,
+        boolean tombstone
 ) {
 }

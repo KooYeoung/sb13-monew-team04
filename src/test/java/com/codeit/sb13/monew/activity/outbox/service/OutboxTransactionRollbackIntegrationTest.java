@@ -28,6 +28,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.IllegalTransactionStateException;
@@ -60,6 +61,9 @@ class OutboxTransactionRollbackIntegrationTest {
 
     @Autowired
     private OutboxEventWriter outboxEventWriter;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @MockitoBean
     private OutboxPayloadSerializer payloadSerializer;
@@ -104,6 +108,24 @@ class OutboxTransactionRollbackIntegrationTest {
     }
 
     @Test
+    @DisplayName("Outbox 저장 뒤 원본 트랜잭션이 실패하면 projection version도 롤백한다")
+    void transactionFailureRollsBackProjectionVersion() {
+        String email = UUID.randomUUID() + "@test.com";
+        long before = currentProjectionVersion();
+        given(payloadSerializer.serialize(any()))
+                .willReturn(tools.jackson.databind.node.JsonNodeFactory.instance.objectNode()
+                        .put("action", OutboxEventAction.UPDATED.name()));
+
+        assertThatThrownBy(() -> rollbackProbeService.saveUserOutboxAndFail(email))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("rollback after outbox");
+
+        assertThat(userRepository.existsByEmail(email)).isFalse();
+        assertThat(outboxEventRepository.count()).isZero();
+        assertThat(currentProjectionVersion()).isEqualTo(before);
+    }
+
+    @Test
     @DisplayName("Outbox writer는 기존 트랜잭션 없이 단독 실행할 수 없다")
     void writerRequiresExistingTransaction() {
         assertThatThrownBy(() -> outboxEventWriter.write(
@@ -121,6 +143,13 @@ class OutboxTransactionRollbackIntegrationTest {
                         "TestPayload",
                         new IllegalArgumentException("serialization failed")
                 ));
+    }
+
+    private long currentProjectionVersion() {
+        return jdbcTemplate.queryForObject(
+                "select current_version from outbox_projection_clock where id = 1",
+                Long.class
+        );
     }
 
     @TestConfiguration
@@ -162,6 +191,12 @@ class OutboxTransactionRollbackIntegrationTest {
                     user.getId(),
                     new UserOutboxPayload(OutboxEventAction.UPDATED)
             );
+        }
+
+        @Transactional
+        public void saveUserOutboxAndFail(String email) {
+            saveUserAndOutbox(email);
+            throw new IllegalStateException("rollback after outbox");
         }
     }
 }

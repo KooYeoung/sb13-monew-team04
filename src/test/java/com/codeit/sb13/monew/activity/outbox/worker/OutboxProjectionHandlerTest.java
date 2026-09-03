@@ -18,6 +18,9 @@ import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
 import com.codeit.sb13.monew.activity.outbox.payload.CommentLikeOutboxPayload;
 import com.codeit.sb13.monew.activity.outbox.payload.CountOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.ActivityProjectionKeyPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.ArticleOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.ProjectionImpact;
 import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch;
 import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch.ArticleState;
 import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch.CommentState;
@@ -27,6 +30,7 @@ import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -74,8 +78,8 @@ class OutboxProjectionHandlerTest {
         ArgumentCaptor<ActivityProjection> activityCaptor =
                 ArgumentCaptor.forClass(ActivityProjection.class);
         InOrder order = inOrder(writer);
-        order.verify(writer).upsertCommentSnapshot(comment, now);
-        order.verify(writer).upsertActivity(activityCaptor.capture(), eq(now));
+        order.verify(writer).upsertCommentSnapshot(comment, 1L, now);
+        order.verify(writer).upsertActivity(activityCaptor.capture(), eq(1L), eq(now));
         ActivityProjection activity = activityCaptor.getValue();
         assertThat(activity.sourceActivityId()).isEqualTo(likeId);
         assertThat(activity.type()).isEqualTo(ActivityHistoryType.COMMENT_LIKED);
@@ -111,9 +115,10 @@ class OutboxProjectionHandlerTest {
                 eq(ActivityHistoryStatus.CANCELED),
                 eq(null),
                 eq(null),
+                eq(1L),
                 eq(now)
         );
-        verify(writer, never()).upsertActivity(any(), any());
+        verify(writer, never()).upsertActivity(any(), eq(1L), any());
     }
 
     @Test
@@ -142,10 +147,11 @@ class OutboxProjectionHandlerTest {
         handler.project(event, source, now);
 
         InOrder order = inOrder(writer);
-        order.verify(writer).upsertCommentSnapshot(comment, now);
-        order.verify(writer).hideActivitiesByUser(userId, now);
-        order.verify(writer).hideCommentSnapshotsByAuthor(userId, now);
-        verify(writer, never()).upsertActivity(any(), any());
+        order.verify(writer).upsertCommentSnapshot(comment, 1L, now);
+        order.verify(writer).hideActivity(
+                any(), eq(ActivityHistoryStatus.USER_DELETED), eq(null), eq(null),
+                eq(1L), eq(now));
+        verify(writer, never()).upsertActivity(any(), eq(1L), any());
     }
 
     @Test
@@ -163,9 +169,10 @@ class OutboxProjectionHandlerTest {
 
         handler.project(event, source(Map.of(), Map.of(), Map.of(), Map.of()), now);
 
-        verify(writer).deleteComment(commentId);
-        verify(writer, never()).upsertCommentSnapshot(any(), any());
-        verify(writer, never()).upsertActivity(any(), any());
+        verify(writer).tombstoneComment(commentId, 1L, now);
+        verify(writer).tombstoneActivity(any(), eq(1L), eq(now));
+        verify(writer, never()).upsertCommentSnapshot(any(), eq(1L), any());
+        verify(writer, never()).upsertActivity(any(), eq(1L), any());
     }
 
     @Test
@@ -194,6 +201,7 @@ class OutboxProjectionHandlerTest {
                 articleId,
                 UUID.randomUUID(),
                 new CountOutboxPayload(OutboxEventAction.COUNT_CHANGED),
+                1L,
                 0,
                 now,
                 now
@@ -201,7 +209,37 @@ class OutboxProjectionHandlerTest {
 
         handler.project(event, source, now);
 
-        verify(writer).upsertArticleSnapshot(article, now);
+        verify(writer).upsertArticleSnapshot(article, 1L, now);
+    }
+
+    @Test
+    @DisplayName("기사 물리삭제는 payload fan-out key와 자식 snapshot을 tombstone 처리한다")
+    void hardDeleteArticleMaterializesFanOutTombstones() {
+        UUID articleId = UUID.randomUUID();
+        UUID commentId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        ProjectionImpact impact = new ProjectionImpact(
+                List.of(new ActivityProjectionKeyPayload(
+                        viewerId, OutboxEventType.ARTICLE_VIEWED, articleId)),
+                List.of(commentId)
+        );
+        DecodedOutboxEvent event = new DecodedOutboxEvent(
+                UUID.randomUUID(), OutboxEventType.ARTICLE_HARD_DELETED,
+                OutboxAggregateType.ARTICLE, articleId, null,
+                new ArticleOutboxPayload(OutboxEventAction.HARD_DELETED, impact),
+                8L, 0, now, now
+        );
+
+        handler.project(event, source(Map.of(), Map.of(), Map.of(), Map.of()), now);
+
+        verify(writer).tombstoneArticle(articleId, 8L, now);
+        verify(writer).tombstoneComment(commentId, 8L, now);
+        ArgumentCaptor<ActivityProjection> activity =
+                ArgumentCaptor.forClass(ActivityProjection.class);
+        verify(writer).tombstoneActivity(activity.capture(), eq(8L), eq(now));
+        assertThat(activity.getValue().userId()).isEqualTo(viewerId);
+        assertThat(activity.getValue().type()).isEqualTo(ActivityHistoryType.ARTICLE_VIEWED);
+        assertThat(activity.getValue().targetId()).isEqualTo(articleId);
     }
 
     private DecodedOutboxEvent commentLikeEvent(
@@ -217,6 +255,7 @@ class OutboxProjectionHandlerTest {
                 commentId,
                 userId,
                 new CommentLikeOutboxPayload(articleId, OutboxEventAction.LIKED),
+                1L,
                 0,
                 now.minusMinutes(2),
                 now.minusMinutes(2)

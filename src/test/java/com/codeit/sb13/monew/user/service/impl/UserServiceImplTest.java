@@ -3,6 +3,7 @@ package com.codeit.sb13.monew.user.service.impl;
 import com.codeit.sb13.monew.activity.service.ActivityVisibilityUpdater;
 import com.codeit.sb13.monew.activity.service.UserActivityVisibilityUpdateResult;
 import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxProjectionImpactReader;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
@@ -63,6 +64,9 @@ public class UserServiceImplTest {
 
   @Mock
   private OutboxEventWriter outboxEventWriter;
+
+  @Mock
+  private OutboxProjectionImpactReader projectionImpactReader;
 
   @Mock
   PasswordEncoder passwordEncoder;

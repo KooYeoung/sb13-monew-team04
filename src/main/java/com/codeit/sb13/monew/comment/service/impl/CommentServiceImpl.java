@@ -4,6 +4,8 @@ import com.codeit.sb13.monew.activity.service.ActivityVisibilityUpdater;
 import com.codeit.sb13.monew.activity.outbox.payload.CommentOutboxPayload;
 import com.codeit.sb13.monew.activity.outbox.payload.CountOutboxPayload;
 import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxProjectionImpactReader;
+import com.codeit.sb13.monew.activity.outbox.payload.ProjectionImpact;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
@@ -48,6 +50,7 @@ public class CommentServiceImpl implements CommentService {
   private final CommentLikeRepository commentLikeRepository;
   private final ActivityVisibilityUpdater activityVisibilityUpdater;
   private final OutboxEventWriter outboxEventWriter;
+  private final OutboxProjectionImpactReader projectionImpactReader;
 
   @Transactional
   @Override
@@ -157,6 +160,7 @@ public class CommentServiceImpl implements CommentService {
   @Transactional
   @Override
   public void softDelete(UUID commentId) {
+    ProjectionImpact impact = projectionImpactReader.forComment(commentId);
     int updatedCount = commentRepository.softDeleteIfNotDeleted(commentId, LocalDateTime.now());
     if (updatedCount == 0) {
       // API 계약상 이미 삭제된 댓글과 존재하지 않는 댓글 모두 404로 응답한다 ("404 댓글 정보 없음")
@@ -174,7 +178,8 @@ public class CommentServiceImpl implements CommentService {
         null,
         new CommentOutboxPayload(
             articleId,
-            OutboxEventAction.SOFT_DELETED
+            OutboxEventAction.SOFT_DELETED,
+            impact
         )
     );
     writeArticleCommentCountChanged(articleId, null);
@@ -186,6 +191,7 @@ public class CommentServiceImpl implements CommentService {
   public void hardDelete(UUID commentId) {
     Comment comment = commentRepository.findForHardDeleteById(commentId)
         .orElseThrow(() -> new CommentNotFoundException(commentId));
+    ProjectionImpact impact = projectionImpactReader.forComment(commentId);
     UUID articleId = comment.getArticle().getId();
     boolean wasActive = comment.getVisibilityStatus() == ActivityVisibilityStatus.ACTIVE;
     commentLikeRepository.deleteByCommentId(commentId);
@@ -197,7 +203,8 @@ public class CommentServiceImpl implements CommentService {
         null,
         new CommentOutboxPayload(
             articleId,
-            OutboxEventAction.HARD_DELETED
+            OutboxEventAction.HARD_DELETED,
+            impact
         )
     );
     if (wasActive) {

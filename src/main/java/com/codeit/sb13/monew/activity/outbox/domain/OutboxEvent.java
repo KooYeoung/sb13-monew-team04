@@ -61,6 +61,9 @@ public class OutboxEvent extends UpdatedAtEntity {
     @Column(name = "occurred_at", nullable = false)
     private LocalDateTime occurredAt;
 
+    @Column(name = "projection_version", nullable = false)
+    private long projectionVersion;
+
     @Column(name = "processed_at")
     private LocalDateTime processedAt;
 
@@ -82,7 +85,8 @@ public class OutboxEvent extends UpdatedAtEntity {
             UUID aggregateId,
             UUID actorUserId,
             JsonNode payloadJson,
-            LocalDateTime occurredAt
+            LocalDateTime occurredAt,
+            long projectionVersion
     ) {
         this.eventType = eventType;
         this.aggregateType = aggregateType;
@@ -92,6 +96,7 @@ public class OutboxEvent extends UpdatedAtEntity {
         this.status = OutboxEventStatus.PENDING;
         this.retryCount = 0;
         this.occurredAt = occurredAt;
+        this.projectionVersion = projectionVersion;
     }
 
     /**
@@ -103,6 +108,7 @@ public class OutboxEvent extends UpdatedAtEntity {
      * @param actorUserId 이벤트를 발생시킨 사용자 식별자, 시스템 이벤트이면 {@code null}
      * @param payloadJson 타입별 payload를 직렬화한 JSON
      * @param occurredAt 도메인 변경이 발생한 시각
+     * @param projectionVersion 원본 transaction commit 순서를 표현하는 전역 버전
      * @return {@link OutboxEventStatus#PENDING} 상태의 새 이벤트
      */
     public static OutboxEvent createPending(
@@ -111,7 +117,8 @@ public class OutboxEvent extends UpdatedAtEntity {
             UUID aggregateId,
             UUID actorUserId,
             JsonNode payloadJson,
-            LocalDateTime occurredAt
+            LocalDateTime occurredAt,
+            long projectionVersion
     ) {
         return new OutboxEvent(
                 eventType,
@@ -119,7 +126,8 @@ public class OutboxEvent extends UpdatedAtEntity {
                 aggregateId,
                 actorUserId,
                 payloadJson,
-                occurredAt
+                occurredAt,
+                projectionVersion
         );
     }
 

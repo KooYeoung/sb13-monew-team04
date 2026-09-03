@@ -48,7 +48,8 @@ class OutboxEventRepositoryTest {
                 aggregateId,
                 actorUserId,
                 payload,
-                occurredAt
+                occurredAt,
+                1L
         ));
         em.clear();
 
@@ -138,7 +139,8 @@ class OutboxEventRepositoryTest {
                 UUID.randomUUID(),
                 actorUserId,
                 JsonNodeFactory.instance.objectNode().put("viewed", true),
-                LocalDateTime.now()
+                LocalDateTime.now(),
+                1L
         );
     }
 }

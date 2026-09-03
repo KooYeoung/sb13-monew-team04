@@ -3,6 +3,8 @@ package com.codeit.sb13.monew.interest.service;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.activity.outbox.payload.InterestOutboxPayload;
 import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxProjectionImpactReader;
+import com.codeit.sb13.monew.activity.outbox.payload.ProjectionImpact;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
@@ -59,6 +61,7 @@ public class InterestServiceImpl implements InterestService{
     private final SubscribeRepository subscribeRepository;
     private final NotificationService notificationService;
     private final OutboxEventWriter outboxEventWriter;
+    private final OutboxProjectionImpactReader projectionImpactReader;
 
     /**
      * {@inheritDoc}
@@ -203,6 +206,7 @@ public class InterestServiceImpl implements InterestService{
     public void delete(UUID interestId) {
         Interest interest = interestRepository.findById(interestId)
                 .orElseThrow(() -> new InterestNotFoundException(interestId));
+        ProjectionImpact impact = projectionImpactReader.forInterest(interestId);
 
         subscribeRepository.deleteByInterest_Id(interestId);
         interestRepository.delete(interest);
@@ -212,7 +216,8 @@ public class InterestServiceImpl implements InterestService{
                 interestId,
                 null,
                 new InterestOutboxPayload(
-                        OutboxEventAction.HARD_DELETED
+                        OutboxEventAction.HARD_DELETED,
+                        impact
                 )
         );
     }

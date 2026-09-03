@@ -12,6 +12,11 @@ import static com.codeit.sb13.monew.user.domain.QUser.user;
 import com.codeit.sb13.monew.activity.outbox.payload.CommentLikeOutboxPayload;
 import com.codeit.sb13.monew.activity.outbox.payload.CommentOutboxPayload;
 import com.codeit.sb13.monew.activity.outbox.payload.UserHardDeleteOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.ArticleOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.InterestOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.OutboxEventPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.ProjectionImpact;
+import com.codeit.sb13.monew.activity.outbox.payload.UserOutboxPayload;
 import com.codeit.sb13.monew.activity.outbox.worker.DecodedOutboxEvent;
 import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch.ArticleState;
 import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch.CommentState;
@@ -101,8 +106,49 @@ public class OutboxProjectionSourceReader {
                 articleIds.addAll(payload.viewedArticleIds());
                 interestIds.addAll(payload.subscribedInterestIds());
             }
+            collectImpactIds(
+                    impactOf(event.payload()), userIds, interestIds, commentIds, articleIds);
         }
         return new SourceIds(userIds, interestIds, commentIds, articleIds);
+    }
+
+    private void collectImpactIds(
+            ProjectionImpact impact,
+            Set<UUID> userIds,
+            Set<UUID> interestIds,
+            Set<UUID> commentIds,
+            Set<UUID> articleIds
+    ) {
+        commentIds.addAll(impact.commentSnapshotIds());
+        impact.activityKeys().forEach(key -> {
+            userIds.add(key.userId());
+            switch (key.activityEventType()) {
+                case INTEREST_SUBSCRIBED -> interestIds.add(key.targetId());
+                case COMMENT_WRITTEN, COMMENT_LIKED -> commentIds.add(key.targetId());
+                case ARTICLE_VIEWED -> articleIds.add(key.targetId());
+                default -> throw new IllegalStateException(
+                        "지원하지 않는 activity key type: " + key.activityEventType());
+            }
+        });
+    }
+
+    private ProjectionImpact impactOf(OutboxEventPayload payload) {
+        if (payload instanceof ArticleOutboxPayload value) {
+            return value.impact();
+        }
+        if (payload instanceof CommentOutboxPayload value) {
+            return value.impact();
+        }
+        if (payload instanceof InterestOutboxPayload value) {
+            return value.impact();
+        }
+        if (payload instanceof UserOutboxPayload value) {
+            return value.impact();
+        }
+        if (payload instanceof UserHardDeleteOutboxPayload value) {
+            return value.impact();
+        }
+        return ProjectionImpact.EMPTY;
     }
 
     private Map<UUID, UserState> readUsers(Set<UUID> ids) {

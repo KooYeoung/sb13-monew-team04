@@ -11,9 +11,19 @@ import java.util.UUID;
  *
  * @param articleId 댓글이 속한 기사 식별자
  * @param action 댓글에 발생한 동작
+ * @param impact 삭제 전에 수집한 댓글 작성·좋아요 activity 영향 범위
  */
 public record CommentOutboxPayload(
         UUID articleId,
-        OutboxEventAction action
+        OutboxEventAction action,
+        ProjectionImpact impact
 ) implements OutboxEventPayload {
+
+    public CommentOutboxPayload {
+        impact = impact == null ? ProjectionImpact.EMPTY : impact;
+    }
+
+    public CommentOutboxPayload(UUID articleId, OutboxEventAction action) {
+        this(articleId, action, ProjectionImpact.EMPTY);
+    }
 }
