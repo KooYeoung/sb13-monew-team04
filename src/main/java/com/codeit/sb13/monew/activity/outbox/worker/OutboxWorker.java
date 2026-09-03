@@ -129,7 +129,6 @@ public class OutboxWorker {
             try {
                 decoded.add(eventDecoder.decode(event));
             } catch (RuntimeException e) {
-                failed++;
                 if (!recordFailure(
                         event.getId(),
                         claimId,
@@ -138,6 +137,7 @@ public class OutboxWorker {
                 )) {
                     return new DecodeResult(decoded, failed, true);
                 }
+                failed++;
             }
         }
         return new DecodeResult(decoded, failed, false);
@@ -150,7 +150,6 @@ public class OutboxWorker {
     ) {
         int failed = 0;
         for (DecodedOutboxEvent event : decoded) {
-            failed++;
             if (!recordFailure(
                     event.id(),
                     claimId,
@@ -159,6 +158,7 @@ public class OutboxWorker {
             )) {
                 break;
             }
+            failed++;
         }
         return failed;
     }
@@ -179,10 +179,10 @@ public class OutboxWorker {
             try {
                 projectionHandler.project(event, source, processedAt);
             } catch (RuntimeException e) {
-                failed++;
                 if (!recordFailure(event.id(), claimId, e, processedAt)) {
                     break;
                 }
+                failed++;
                 continue;
             }
 
@@ -251,7 +251,7 @@ public class OutboxWorker {
      * decode 단계에서 다음 단계로 전달할 이벤트와 처리 중단 상태를 보관한다.
      *
      * @param events decode에 성공한 이벤트
-     * @param failed decode 실패로 상태 전이를 시도한 이벤트 수
+     * @param failed decode 실패 상태 저장까지 완료한 이벤트 수
      * @param stopped lease 또는 실패 상태 저장 문제로 처리를 중단했으면 {@code true}
      */
     private record DecodeResult(
@@ -268,7 +268,7 @@ public class OutboxWorker {
      * MongoDB projection 단계의 처리 결과다.
      *
      * @param processed projection과 완료 상태 저장에 성공한 이벤트 수
-     * @param failed projection 실패로 상태 전이를 시도한 이벤트 수
+     * @param failed projection 실패 상태 저장까지 완료한 이벤트 수
      */
     private record ProjectionResult(int processed, int failed) {
     }

@@ -164,7 +164,8 @@ class OutboxWorkerTest {
 
         verify(decoder, never()).decode(remainingEvent);
         verifyNoInteractions(sourceReader, projectionHandler);
-        assertThat(result).isEqualTo(new OutboxWorkerResult(2, 0, 1));
+        assertThat(result).isEqualTo(new OutboxWorkerResult(2, 0, 0));
+        assertThat(result.unprocessed()).isEqualTo(2);
     }
 
     @Test
@@ -186,6 +187,58 @@ class OutboxWorkerTest {
         verify(stateService).markFailed(firstDecoded.id(), claimId, failure, fixedNow());
         verify(stateService).markFailed(secondDecoded.id(), claimId, failure, fixedNow());
         assertThat(result).isEqualTo(new OutboxWorkerResult(2, 0, 2));
+    }
+
+    @Test
+    @DisplayName("RDB batch 조회 실패 상태 저장이 중단되면 저장 완료된 건만 실패로 집계한다")
+    void sourceReadFailureCountsOnlyPersistedFailureStates() {
+        OutboxEvent first = mock(OutboxEvent.class);
+        OutboxEvent second = mock(OutboxEvent.class);
+        DecodedOutboxEvent firstDecoded = decoded(UUID.randomUUID());
+        DecodedOutboxEvent secondDecoded = decoded(UUID.randomUUID());
+        IllegalStateException readFailure = new IllegalStateException("rdb failed");
+        given(claimService.claim(100, Duration.ofMinutes(5)))
+                .willReturn(new OutboxClaimBatch(claimId, List.of(first, second)));
+        given(decoder.decode(first)).willReturn(firstDecoded);
+        given(decoder.decode(second)).willReturn(secondDecoded);
+        given(sourceReader.read(List.of(firstDecoded, secondDecoded))).willThrow(readFailure);
+        doThrow(new IllegalStateException("state save failed"))
+                .when(stateService)
+                .markFailed(firstDecoded.id(), claimId, readFailure, fixedNow());
+
+        OutboxWorkerResult result = worker.runOnce();
+
+        verify(stateService, never())
+                .markFailed(secondDecoded.id(), claimId, readFailure, fixedNow());
+        assertThat(result).isEqualTo(new OutboxWorkerResult(2, 0, 0));
+        assertThat(result.unprocessed()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("projection 실패 상태를 저장하지 못하면 실패로 집계하지 않고 처리를 중단한다")
+    void projectionFailureStateSaveFailureIsUnprocessed() {
+        OutboxEvent first = mock(OutboxEvent.class);
+        OutboxEvent second = mock(OutboxEvent.class);
+        DecodedOutboxEvent firstDecoded = decoded(UUID.randomUUID());
+        DecodedOutboxEvent secondDecoded = decoded(UUID.randomUUID());
+        ProjectionSourceBatch source = emptySource();
+        IllegalStateException projectionFailure = new IllegalStateException("mongo failed");
+        given(claimService.claim(100, Duration.ofMinutes(5)))
+                .willReturn(new OutboxClaimBatch(claimId, List.of(first, second)));
+        given(decoder.decode(first)).willReturn(firstDecoded);
+        given(decoder.decode(second)).willReturn(secondDecoded);
+        given(sourceReader.read(List.of(firstDecoded, secondDecoded))).willReturn(source);
+        doThrow(projectionFailure)
+                .when(projectionHandler).project(firstDecoded, source, fixedNow());
+        doThrow(new IllegalStateException("state save failed"))
+                .when(stateService)
+                .markFailed(firstDecoded.id(), claimId, projectionFailure, fixedNow());
+
+        OutboxWorkerResult result = worker.runOnce();
+
+        verify(projectionHandler, never()).project(secondDecoded, source, fixedNow());
+        assertThat(result).isEqualTo(new OutboxWorkerResult(2, 0, 0));
+        assertThat(result.unprocessed()).isEqualTo(2);
     }
 
     @Test
