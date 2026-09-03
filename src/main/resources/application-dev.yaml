@@ -39,6 +39,12 @@ monew:
   mongodb:
     enabled: ${MONEW_MONGODB_ENABLED:false}
     initialize-indexes: ${MONEW_MONGODB_INITIALIZE_INDEXES:true}
+    worker:
+      enabled: ${MONEW_MONGODB_WORKER_ENABLED:false}
+      fixed-delay-ms: ${MONEW_MONGODB_WORKER_FIXED_DELAY_MS:1000}
+      batch-size: ${MONEW_MONGODB_WORKER_BATCH_SIZE:100}
+      claim-lease: ${MONEW_MONGODB_WORKER_CLAIM_LEASE:5m}
+      heartbeat-interval: ${MONEW_MONGODB_WORKER_HEARTBEAT_INTERVAL:1m}
   openapi:
     server-url: http://localhost:${server.port:8080}
     server-description: 로컬 개발 서버

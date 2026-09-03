@@ -87,6 +87,15 @@ class FlywayMigrationIntegrationTest {
                   and table_name = 'outbox_events'
                   and column_name = 'retry_count'
                 """);
+        List<String> claimColumns = jdbcTemplate.queryForList("""
+                select column_name
+                from information_schema.columns
+                where table_schema = current_schema()
+                  and table_name = 'outbox_events'
+                  and column_name in ('claim_id', 'claimed_at', 'claim_until')
+                  and is_nullable = 'YES'
+                order by column_name
+                """, String.class);
         Long secondaryIndexCount = jdbcTemplate.queryForObject("""
                 select count(*)
                 from pg_indexes
@@ -101,6 +110,7 @@ class FlywayMigrationIntegrationTest {
         assertThat((String) statusColumn.get("column_default")).contains("PENDING");
         assertThat(retryCountColumn.get("is_nullable")).isEqualTo("NO");
         assertThat((String) retryCountColumn.get("column_default")).contains("0");
+        assertThat(claimColumns).containsExactly("claim_id", "claim_until", "claimed_at");
         assertThat(secondaryIndexCount).isZero();
     }
 }

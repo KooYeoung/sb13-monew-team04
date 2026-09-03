@@ -65,6 +65,9 @@ class OutboxEventRepositoryTest {
         assertThat(found.getNextRetryAt()).isNull();
         assertThat(found.getProcessedAt()).isNull();
         assertThat(found.getLastError()).isNull();
+        assertThat(found.getClaimId()).isNull();
+        assertThat(found.getClaimedAt()).isNull();
+        assertThat(found.getClaimUntil()).isNull();
         assertThat(found.getCreatedAt()).isNotNull();
         assertThat(found.getUpdatedAt()).isNotNull();
     }
