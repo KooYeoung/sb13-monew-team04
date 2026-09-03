@@ -68,6 +68,36 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, UUID> 
     );
 
     /**
+     * 현재 claim이 소유한 이벤트 그룹 전체를 같은 시각에 완료 처리한다.
+     *
+     * @param eventIds 완료할 count 이벤트 ID 집합
+     * @param claimId 현재 실행의 claim UUID
+     * @param processedAt MongoDB projection 완료 시각
+     * @return 실제 갱신된 행 수
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE OutboxEvent event
+            SET event.status = com.codeit.sb13.monew.activity.outbox.domain.OutboxEventStatus.PROCESSED,
+                event.processedAt = :processedAt,
+                event.nextRetryAt = null,
+                event.lastError = null,
+                event.claimId = null,
+                event.claimedAt = null,
+                event.claimUntil = null,
+                event.updatedAt = :processedAt
+            WHERE event.id IN :eventIds
+              AND event.claimId = :claimId
+              AND (event.status = com.codeit.sb13.monew.activity.outbox.domain.OutboxEventStatus.PENDING
+                   OR event.status = com.codeit.sb13.monew.activity.outbox.domain.OutboxEventStatus.FAILED)
+            """)
+    int markAllProcessedIfClaimed(
+            @Param("eventIds") List<UUID> eventIds,
+            @Param("claimId") UUID claimId,
+            @Param("processedAt") LocalDateTime processedAt
+    );
+
+    /**
      * 현재 claim과 예상 retry 횟수가 일치할 때 실패 상태를 원자적으로 기록한다.
      *
      * @param eventId 실패한 이벤트 식별자
@@ -99,6 +129,42 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, UUID> 
             """)
     int markFailedIfClaimed(
             @Param("eventId") UUID eventId,
+            @Param("claimId") UUID claimId,
+            @Param("expectedRetryCount") int expectedRetryCount,
+            @Param("targetStatus") OutboxEventStatus targetStatus,
+            @Param("nextRetryAt") LocalDateTime nextRetryAt,
+            @Param("lastError") String lastError,
+            @Param("failedAt") LocalDateTime failedAt
+    );
+
+    /**
+     * 같은 retry 횟수를 가진 count 이벤트들을 동일한 실패 결과로 갱신한다.
+     *
+     * <p>호출 서비스가 retry 횟수별로 이벤트를 나눠 호출하며, 그룹의 모든 호출은
+     * 하나의 transaction에 포함된다.</p>
+     *
+     * @return claim과 예상 retry 횟수가 모두 일치해 실제 갱신된 행 수
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE OutboxEvent event
+            SET event.status = :targetStatus,
+                event.retryCount = event.retryCount + 1,
+                event.nextRetryAt = :nextRetryAt,
+                event.processedAt = null,
+                event.lastError = :lastError,
+                event.claimId = null,
+                event.claimedAt = null,
+                event.claimUntil = null,
+                event.updatedAt = :failedAt
+            WHERE event.id IN :eventIds
+              AND event.claimId = :claimId
+              AND event.retryCount = :expectedRetryCount
+              AND (event.status = com.codeit.sb13.monew.activity.outbox.domain.OutboxEventStatus.PENDING
+                   OR event.status = com.codeit.sb13.monew.activity.outbox.domain.OutboxEventStatus.FAILED)
+            """)
+    int markAllFailedIfClaimed(
+            @Param("eventIds") List<UUID> eventIds,
             @Param("claimId") UUID claimId,
             @Param("expectedRetryCount") int expectedRetryCount,
             @Param("targetStatus") OutboxEventStatus targetStatus,

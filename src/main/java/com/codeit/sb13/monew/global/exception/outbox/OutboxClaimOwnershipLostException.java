@@ -2,6 +2,7 @@ package com.codeit.sb13.monew.global.exception.outbox;
 
 import com.codeit.sb13.monew.global.exception.ApiErrorCode;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -23,11 +24,42 @@ public class OutboxClaimOwnershipLostException extends OutboxException {
         super(ApiErrorCode.OUTBOX_CLAIM_OWNERSHIP_LOST, details(eventId, claimId));
     }
 
+    /**
+     * count 이벤트 그룹 중 하나 이상을 현재 claim이 소유하지 않을 때 예외를 생성한다.
+     *
+     * @param eventIds 상태 전이를 시도한 이벤트 식별자 목록
+     * @param claimId 소유권을 주장한 실행 UUID
+     */
+    private OutboxClaimOwnershipLostException(List<UUID> eventIds, UUID claimId) {
+        super(ApiErrorCode.OUTBOX_CLAIM_OWNERSHIP_LOST, groupDetails(eventIds, claimId));
+    }
+
+    /**
+     * count 이벤트 그룹의 claim 소유권 상실 예외를 생성한다.
+     *
+     * @param eventIds 상태 전이를 시도한 이벤트 식별자 목록
+     * @param claimId 소유권을 주장한 실행 UUID
+     * @return 그룹 식별자를 포함한 예외
+     */
+    public static OutboxClaimOwnershipLostException forGroup(
+            List<UUID> eventIds,
+            UUID claimId
+    ) {
+        return new OutboxClaimOwnershipLostException(eventIds, claimId);
+    }
+
     private static Map<String, Object> details(UUID eventId, UUID claimId) {
         Map<String, Object> details = new LinkedHashMap<>();
         if (eventId != null) {
             details.put("eventId", eventId);
         }
+        details.put("claimId", claimId);
+        return details;
+    }
+
+    private static Map<String, Object> groupDetails(List<UUID> eventIds, UUID claimId) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("eventIds", List.copyOf(eventIds));
         details.put("claimId", claimId);
         return details;
     }

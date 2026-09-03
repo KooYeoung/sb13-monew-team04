@@ -1,6 +1,7 @@
 package com.codeit.sb13.monew.activity.outbox.worker;
 
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEvent;
+import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
 import com.codeit.sb13.monew.activity.outbox.worker.claim.OutboxClaimBatch;
 import com.codeit.sb13.monew.activity.outbox.worker.claim.OutboxClaimHeartbeat;
 import com.codeit.sb13.monew.activity.outbox.worker.claim.OutboxClaimLease;
@@ -11,8 +12,12 @@ import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -21,8 +26,8 @@ import org.springframework.stereotype.Service;
  * 한 polling batch의 claim부터 MongoDB projection과 최종 상태 저장까지 조율한다.
  *
  * <p>claim 직후 heartbeat를 시작하고 payload decode, RDB 현재 상태 batch 조회,
- * 이벤트별 MongoDB 반영을 순서대로 수행한다. MongoDB 반영이 성공한 뒤에만
- * {@code PROCESSED}로 변경하며, 처리 실패는 retry 정책에 맡긴다.</p>
+ * MongoDB 반영을 순서대로 수행한다. 같은 count 대상은 polling batch 안에서
+ * 한 번만 반영하고, 성공한 뒤에만 그룹 전체를 {@code PROCESSED}로 변경한다.</p>
  *
  * <p>heartbeat 또는 상태 저장에 문제가 생기면 새 이벤트 처리를 시작하지 않고
  * 남은 claim이 만료되도록 둔다. RDB와 MongoDB를 하나의 트랜잭션으로 묶지 않으므로
@@ -90,11 +95,19 @@ public class OutboxWorker {
             return new OutboxWorkerResult(selected.size(), 0, decodeResult.failed());
         }
 
+        List<ProcessingGroup> processingGroups = groupForProcessing(decoded);
+
         ProjectionSourceBatch source;
         try {
-            source = sourceReader.read(decoded);
+            source = sourceReader.read(processingGroups.stream()
+                    .map(ProcessingGroup::projectionEvent)
+                    .toList());
         } catch (RuntimeException e) {
-            int sourceFailures = recordSourceReadFailures(decoded, batch.claimId(), e);
+            int sourceFailures = recordSourceReadFailures(
+                    processingGroups,
+                    batch.claimId(),
+                    e
+            );
             return new OutboxWorkerResult(
                     selected.size(),
                     0,
@@ -102,8 +115,8 @@ public class OutboxWorker {
             );
         }
 
-        ProjectionResult projectionResult = projectEvents(
-                decoded,
+        ProjectionResult projectionResult = projectGroups(
+                processingGroups,
                 source,
                 batch.claimId(),
                 lease
@@ -113,6 +126,25 @@ public class OutboxWorker {
                 projectionResult.processed(),
                 decodeResult.failed() + projectionResult.failed()
         );
+    }
+
+    /**
+     * count 변경 이벤트만 event type과 snapshot 대상 ID 기준으로 묶는다.
+     *
+     * <p>일반 이벤트는 각각 독립된 그룹을 유지하고, 그룹 자체는 첫 이벤트가 나타난
+     * 순서를 따른다. count 그룹의 projection에는 가장 높은 version의 이벤트를 사용해
+     * 해당 그룹보다 낮은 version의 지연 쓰기를 MongoDB CAS가 차단할 수 있게 한다.</p>
+     */
+    private List<ProcessingGroup> groupForProcessing(List<DecodedOutboxEvent> events) {
+        Map<ProcessingKey, List<DecodedOutboxEvent>> grouped = events.stream()
+                .collect(Collectors.groupingBy(
+                        ProcessingKey::from,
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+        return grouped.values().stream()
+                .map(ProcessingGroup::new)
+                .toList();
     }
 
     private DecodeResult decodeEvents(
@@ -144,45 +176,45 @@ public class OutboxWorker {
     }
 
     private int recordSourceReadFailures(
-            List<DecodedOutboxEvent> decoded,
+            List<ProcessingGroup> groups,
             UUID claimId,
             RuntimeException failure
     ) {
         int failed = 0;
-        for (DecodedOutboxEvent event : decoded) {
+        for (ProcessingGroup group : groups) {
             if (!recordFailure(
-                    event.id(),
+                    group,
                     claimId,
                     failure,
                     LocalDateTime.now(clock)
             )) {
                 break;
             }
-            failed++;
+            failed += group.size();
         }
         return failed;
     }
 
-    private ProjectionResult projectEvents(
-            List<DecodedOutboxEvent> decoded,
+    private ProjectionResult projectGroups(
+            List<ProcessingGroup> groups,
             ProjectionSourceBatch source,
             UUID claimId,
             OutboxClaimLease lease
     ) {
         int processed = 0;
         int failed = 0;
-        for (DecodedOutboxEvent event : decoded) {
+        for (ProcessingGroup group : groups) {
             if (!claimHealthy(claimId, lease)) {
                 break;
             }
             LocalDateTime processedAt = LocalDateTime.now(clock);
             try {
-                projectionHandler.project(event, source, processedAt);
+                projectionHandler.project(group.projectionEvent(), source, processedAt);
             } catch (RuntimeException e) {
-                if (!recordFailure(event.id(), claimId, e, processedAt)) {
+                if (!recordFailure(group, claimId, e, processedAt)) {
                     break;
                 }
-                failed++;
+                failed += group.size();
                 continue;
             }
 
@@ -190,12 +222,12 @@ public class OutboxWorker {
                 break;
             }
             try {
-                eventStateService.markProcessed(event.id(), claimId, processedAt);
-                processed++;
+                markProcessed(group, claimId, processedAt);
+                processed += group.size();
             } catch (RuntimeException e) {
                 log.error(
-                        "Outbox 처리 완료 상태를 저장하지 못했습니다. eventId={}, claimId={}",
-                        event.id(),
+                        "Outbox 처리 완료 상태를 저장하지 못했습니다. eventIds={}, claimId={}",
+                        group.eventIds(),
                         claimId,
                         e
                 );
@@ -203,6 +235,22 @@ public class OutboxWorker {
             }
         }
         return new ProjectionResult(processed, failed);
+    }
+
+    private void markProcessed(
+            ProcessingGroup group,
+            UUID claimId,
+            LocalDateTime processedAt
+    ) {
+        if (group.size() == 1) {
+            eventStateService.markProcessed(
+                    group.projectionEvent().id(),
+                    claimId,
+                    processedAt
+            );
+            return;
+        }
+        eventStateService.markProcessed(group.eventIds(), claimId, processedAt);
     }
 
     private boolean claimHealthy(UUID claimId, OutboxClaimLease lease) {
@@ -247,6 +295,34 @@ public class OutboxWorker {
         }
     }
 
+    private boolean recordFailure(
+            ProcessingGroup group,
+            UUID claimId,
+            RuntimeException failure,
+            LocalDateTime failedAt
+    ) {
+        if (group.size() == 1) {
+            return recordFailure(
+                    group.projectionEvent().id(),
+                    claimId,
+                    failure,
+                    failedAt
+            );
+        }
+        try {
+            eventStateService.markFailed(group.events(), claimId, failure, failedAt);
+            return true;
+        } catch (RuntimeException stateFailure) {
+            log.error(
+                    "Outbox 그룹 처리 실패 상태를 저장하지 못했습니다. eventIds={}, claimId={}",
+                    group.eventIds(),
+                    claimId,
+                    stateFailure
+            );
+            return false;
+        }
+    }
+
     /**
      * decode 단계에서 다음 단계로 전달할 이벤트와 처리 중단 상태를 보관한다.
      *
@@ -271,5 +347,44 @@ public class OutboxWorker {
      * @param failed projection 실패 상태 저장까지 완료한 이벤트 수
      */
     private record ProjectionResult(int processed, int failed) {
+    }
+
+    /** event type과 대상이 같은 count 신호 또는 독립된 일반 이벤트의 처리 단위다. */
+    private record ProcessingGroup(
+            DecodedOutboxEvent projectionEvent,
+            List<DecodedOutboxEvent> events
+    ) {
+        private ProcessingGroup(List<DecodedOutboxEvent> events) {
+            this(
+                    events.stream()
+                            .max(Comparator.comparingLong(
+                                    DecodedOutboxEvent::projectionVersion))
+                            .orElseThrow(),
+                    List.copyOf(events)
+            );
+        }
+
+        private int size() {
+            return events.size();
+        }
+
+        private List<UUID> eventIds() {
+            return events.stream().map(DecodedOutboxEvent::id).toList();
+        }
+    }
+
+    /** count 이벤트에는 공유 키를, 일반 이벤트에는 고유 event ID를 부여한다. */
+    private record ProcessingKey(
+            OutboxEventType eventType,
+            UUID aggregateId,
+            UUID individualEventId
+    ) {
+        private static ProcessingKey from(DecodedOutboxEvent event) {
+            return new ProcessingKey(
+                    event.eventType(),
+                    event.aggregateId(),
+                    event.eventType().isCountChanged() ? null : event.id()
+            );
+        }
     }
 }
