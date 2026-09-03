@@ -102,17 +102,20 @@ docker compose --env-file .env.dev ps mongodb
 
 `MONEW_MONGODB_ENABLED=true`이고 `MONEW_MONGODB_INITIALIZE_INDEXES=true`이면 애플리케이션 시작 시 `activity_histories`와 세 snapshot 컬렉션의 필수 인덱스를 멱등하게 확인하고 생성합니다. 테스트 profile에서는 MongoDB와 인덱스 초기화를 비활성화해 H2 기반 테스트를 유지합니다.
 
-Outbox worker는 `MONEW_MONGODB_ENABLED=true`와 `MONEW_MONGODB_WORKER_ENABLED=true`가 모두 설정된 경우에만 실행됩니다. 기본값은 비활성화입니다. 여러 애플리케이션 인스턴스에서 활성화하면 각 인스턴스가 PostgreSQL `FOR UPDATE SKIP LOCKED`로 서로 겹치지 않는 이벤트 row batch를 claim하고 병렬 처리합니다. 서로 다른 batch에 같은 target의 이벤트가 포함될 수 있으므로 target별 MongoDB projection까지 직렬화되는 것은 아닙니다.
+Outbox worker는 `MONEW_MONGODB_ENABLED=true`와 `MONEW_MONGODB_WORKER_ENABLED=true`가 모두 설정된 경우에만 실행됩니다. 기본값은 비활성화입니다. 여러 애플리케이션 인스턴스에서 활성화하면 각 인스턴스가 PostgreSQL `FOR UPDATE SKIP LOCKED`로 서로 겹치지 않는 이벤트 row batch를 claim하고 병렬 처리합니다. 서로 다른 batch에 같은 target의 이벤트가 포함될 수 있지만 MongoDB 쓰기는 전역 `projectionVersion` CAS로 순서를 보호합니다.
 
 `MONEW_MONGODB_WORKER_FIXED_DELAY_MS`는 앞선 polling 실행이 끝난 뒤 다음 실행까지 기다리는 fixed delay이고, `MONEW_MONGODB_WORKER_BATCH_SIZE`는 한 번에 claim할 최대 이벤트 수입니다. claim lease 기본값은 5분이며 1분 간격 heartbeat로 연장합니다. heartbeat 간격은 lease보다 짧아야 합니다. 처리 중단이나 인스턴스 종료로 heartbeat가 멈추면 lease 만료 후 다른 인스턴스가 이벤트를 회수합니다. worker는 요청과 분리되어 실행되지만 내부 RDB 조회와 MongoDB 쓰기는 blocking 방식으로 순차 처리합니다. 테스트 profile에서는 worker를 비활성화합니다.
 
 ```text
-인스턴스 A -> 이벤트 E1(target=C1) claim
-인스턴스 B -> 이벤트 E2(target=C1) claim
--> event row claim은 겹치지 않지만 C1 projection은 동시에 실행될 수 있음
+인스턴스 A -> E1(target=C1, projectionVersion=41) claim
+인스턴스 B -> E2(target=C1, projectionVersion=42) claim
+인스턴스 B -> V42를 먼저 MongoDB에 반영
+인스턴스 A -> 저장 version < 41 조건이 불일치해 stale 성공(no-op)
 ```
 
-현재 구현은 natural key로 중복 문서를 막고 `occurredAt`을 `$max`로 갱신하지만, 동일 target의 모든 `$set` 필드에 대한 순서 보호는 제공하지 않습니다. 다중 인스턴스 검증 시 이 제한을 고려하며 상세 내용은 [Outbox worker 동시성 설명](./mid4-96-mongodb-decision-record/04-outbox-design.md#다중-worker-실행과-동일-target-제한)을 따릅니다.
+`projectionVersion`은 요청 트랜잭션이 singleton `outbox_projection_clock` row를 `PESSIMISTIC_WRITE`로 잠근 뒤 증가시킵니다. 잠금은 원본 변경과 Outbox 저장이 commit될 때까지 유지되므로 발급 순서와 commit 순서가 일치하며, 요청 쓰기가 이 전역 잠금에서 잠시 대기할 수 있다는 비용이 있습니다. MongoDB는 natural key로 계산한 SHA-256 `_id`와 저장 버전이 없거나 더 작은 경우만 갱신합니다. 물리삭제도 식별 필드를 지운 tombstone을 남겨 과거 이벤트의 재생성을 차단합니다. 상세 내용은 [Outbox worker 동시성 설명](./mid4-96-mongodb-decision-record/04-outbox-design.md#다중-worker-실행과-projection-version-cas)을 따릅니다.
+
+이 스키마를 적용하면 기존 MongoDB 문서는 결정적 `_id`, `projectionVersion`, `tombstone` 계약과 호환되지 않습니다. 현재 Read Model은 기본 비활성화이고 운영 조회 경로에 사용하지 않으므로 온라인 변환은 제공하지 않습니다. 로컬에서는 아래 절차로 `mongodb-data` 볼륨을 재생성해 Read Model을 다시 투영합니다.
 
 ### MongoDB 계정 변경과 개발 볼륨 재생성
 

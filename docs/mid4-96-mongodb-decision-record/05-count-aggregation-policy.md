@@ -92,7 +92,7 @@ worker 중단
 
 병합 그룹의 대표 row만 `PROCESSED`로 바꾸지 않는다. 선택된 그룹 row 전체가 완료 처리되어야 같은 batch에서 이미 반영한 신호가 반복 선택되지 않는다. 또한 MongoDB 반영 전에 그룹 row를 먼저 완료 처리하지 않는다. 반영 실패 시 count 변경 신호가 유실될 수 있기 때문이다.
 
-물리삭제 cleanup 이후 삭제 전 count 이벤트가 재처리될 수 있으므로, count snapshot upsert도 activity와 동일하게 RDB source row 존재 확인을 먼저 수행한다. source row가 없으면 payload만으로 snapshot을 재생성하지 않고, 선택된 병합 그룹 row 전체를 no-op 및 `PROCESSED`로 정리한다.
+물리삭제 cleanup 이후 삭제 전 count 이벤트가 재처리될 수 있으므로, count snapshot upsert도 activity와 동일하게 RDB source row 존재 확인을 먼저 수행한다. source row가 없으면 결정적 `_id`에 해당 이벤트 버전의 tombstone을 시도한다. 더 높은 삭제 tombstone이 이미 있으면 CAS no-op이며 선택된 row를 `PROCESSED`로 정리한다.
 
 성공 상태 전이는 그룹 전체에 동일하게 적용하지만, 실패 시 retry 이력은 row별로 보존한다. 같은 그룹 안에 `retry_count=4`인 row와 `retry_count=1`인 row가 있고 `max_retry_count=5`에서 다시 실패하면, 첫 번째 row는 `DEAD_LETTER`로 전환하고 두 번째 row는 `retry_count=2`, `FAILED`, 2회차 기준 `next_retry_at`으로 전환한다.
 
@@ -144,10 +144,6 @@ worker 중단
 - 별도 counter version이 없는 집계값에는 기본 적용하지 않는다.
 ```
 
-정리하면 `source_version`은 댓글 내용, 기사 제목, 관심사 키워드처럼 원본 엔티티 자체가 변경되는 필드의 순서 판단에 사용할 수 있다.
+원본 엔티티별 `source_version`은 댓글, 기사, 관심사처럼 서로 다른 aggregate의 변경과 `likeCount` 같은 관계 집계를 하나의 순서로 비교할 수 없다. 따라서 엔티티 `@Version`을 추가하지 않고 모든 Outbox 이벤트에 commit 순서의 전역 `projection_version`을 발급한다.
 
-다만 현재는 엔티티 version 필드 추가가 먼저 필요하므로 별도 검토 대상으로 둔다.
-
-`likeCount`처럼 다른 테이블을 기준으로 집계하는 값에는 엔티티 `source_version`을 억지로 붙이지 않는다.
-
-초기 구현에는 `event_sequence`나 producer 측 직렬화 락을 추가하지 않는다. 집계값과 mutable activity 상태는 대상 ID별 RDB 현재 상태 batch 재조회와 멱등 upsert로 중복·재시도·순서 역전 뒤에도 최종 상태로 수렴시킨다.
+집계값과 mutable activity 상태는 대상 ID별 RDB 현재 상태 batch 재조회로 최종 값을 계산하고, MongoDB의 결정적 `_id + projectionVersion` CAS로 중복·재시도·다중 worker 순서 역전 뒤에도 더 낮은 버전이 최신 문서를 덮지 못하게 한다. 전역 버전 발급을 위해 producer 요청 transaction은 singleton clock row 잠금을 commit까지 유지한다.

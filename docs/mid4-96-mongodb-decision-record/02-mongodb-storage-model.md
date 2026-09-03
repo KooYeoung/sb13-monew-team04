@@ -48,6 +48,7 @@ comment_activity_snapshots = 1개
 
 ```json
 {
+  "_id": "sha256(activity|userId|type|targetType|targetId)",
   "sourceActivityId": "rdb-relation-uuid",
   "userId": "user-uuid",
   "type": "ARTICLE_VIEWED",
@@ -59,7 +60,9 @@ comment_activity_snapshots = 1개
   "visible": true,
   "status": "ACTIVE",
   "createdAt": "2026-08-15T10:30:00",
-  "updatedAt": "2026-08-15T10:30:00"
+  "updatedAt": "2026-08-15T10:30:00",
+  "projectionVersion": 42,
+  "tombstone": false
 }
 ```
 
@@ -117,13 +120,21 @@ hiddenByTargetType
 hiddenByTargetId
 -> status=TARGET_DELETED일 때 visible=true였던 activity를 숨김 처리한 직접 대상 ID
 -> ACTIVE, CANCELED, UNSUBSCRIBED, USER_DELETED 상태에서는 null 또는 필드 미저장
+
+projectionVersion
+-> 원본 변경 transaction의 commit 순서를 나타내는 전역 단조 증가 버전
+-> 저장 버전이 없거나 incoming version보다 작을 때만 문서를 갱신하는 CAS 조건
+
+tombstone
+-> 일반 문서와 논리삭제 hidden guard는 false
+-> 물리삭제된 논리 키를 차단하는 scrubbed tombstone은 true
 ```
 
 한 activity가 이미 `visible=false`이면 다른 논리삭제 또는 비노출 이벤트가 `hiddenByTargetType`, `hiddenByTargetId`를 덮어쓰지 않을 수 있다. 따라서 이 한 쌍만으로 복구 가능 여부를 판단하지 않고, 복구 시 `targetType`, `targetId`, `parentTargetType`, `parentTargetId`로 후보를 찾은 뒤 RDB 현재 상태를 다시 계산한다.
 
 MID4-135에서는 아래 컬렉션 이름과 인덱스 정의만 후속 구현 계약으로 코드에 반영했다. MID4-138에서 document와 `MongoTemplate` 기반 projection writer를 구현했다. `monew.mongodb.enabled=true`이고 인덱스 초기화가 활성화된 경우에만 애플리케이션 시작 시 인덱스를 멱등하게 생성한다.
 
-Spring Data MongoDB의 repository 방식도 사용할 수 있지만 MID4-138 쓰기 경로는 `MongoTemplate`을 선택했다. activity 생성과 갱신을 나누기 위한 선행 조회 없이 natural key 조건에 `$setOnInsert`, `$set`, `$max`, `$unset`을 조합하고, 대상 또는 부모 ID 조건으로 여러 문서를 한 번에 숨기거나 제거해야 하기 때문이다. 이 쓰기 호출은 reactive/non-blocking API가 아니며 worker thread가 각 MongoDB 명령의 완료를 기다린다.
+Spring Data MongoDB의 repository 방식도 사용할 수 있지만 MID4-138 쓰기 경로는 `MongoTemplate`을 선택했다. 선행 조회 없이 결정적 `_id`와 `projectionVersion` 조건에 `$setOnInsert`, `$set`, `$max`, `$unset`을 조합한 원자적 CAS upsert가 필요하기 때문이다. 이 쓰기 호출은 reactive/non-blocking API가 아니며 worker thread가 각 MongoDB 명령의 완료를 기다린다.
 
 ```text
 MongoRepository save 방식
@@ -132,18 +143,19 @@ MongoRepository save 방식
 -> 저장 사이에 경쟁 조건이 생길 수 있음
 
 MongoTemplate 방식
--> natural key 조건의 단일 atomic upsert
+-> 결정적 _id + 저장 projectionVersion < incoming version 조건의 단일 atomic upsert
 -> 최초 생성 필드는 $setOnInsert
 -> 변경 필드는 $set, occurredAt은 $max
--> 숨김 원인은 $unset 또는 조건부 updateMulti로 처리
+-> 취소/논리삭제는 문서가 없어도 versioned hidden guard 생성
+-> 물리삭제는 식별·표시 필드를 $unset한 scrubbed tombstone 생성
 ```
 
-RDB UUID는 MongoDB 문서에서 canonical 문자열로 저장한다. MongoDB `_id`는 문서 자체의 식별자이고, 기존 활동내역 API의 id는 `sourceActivityId`에서 복원한다.
+RDB UUID는 MongoDB 문서에서 canonical 문자열로 저장한다. MongoDB `_id`는 activity의 `userId|type|targetType|targetId`, snapshot의 `종류|대상 UUID`를 canonical key로 만들어 SHA-256으로 계산한다. 따라서 tombstone이 원본 식별 필드를 지워도 같은 논리 키의 과거 쓰기는 동일 `_id`에서 차단된다. 기존 활동내역 API의 id는 `sourceActivityId`에서 복원한다.
 
 `activity_histories`의 필수 및 권장 인덱스는 다음과 같다.
 
 ```js
-{ userId: 1, type: 1, targetType: 1, targetId: 1 } // unique, ux_activity_histories_natural_key
+{ userId: 1, type: 1, targetType: 1, targetId: 1 } // unique partial(tombstone=false), ux_activity_histories_natural_key
 { userId: 1, type: 1, visible: 1, occurredAt: -1, _id: -1 } // idx_activity_histories_user_type_visible_cursor
 { userId: 1, visible: 1 } // idx_activity_histories_user_visible
 { targetType: 1, targetId: 1 } // idx_activity_histories_target
@@ -170,9 +182,9 @@ MongoDB 인덱스에서 숫자는 저장값이 아니라 인덱스 정렬 방향
 예: U1 + COMMENT_LIKED + COMMENT + C1
 ```
 
-MID4-135의 인덱스 초기화가 이 조합을 unique index로 생성한다. MID4-138 worker는 같은 outbox 이벤트를 재처리하거나 동일 활동 이벤트가 중복 발행되어도 이 natural key를 기준으로 하나의 activity만 유지한다.
+MID4-135의 인덱스 초기화가 이 조합을 `tombstone=false`인 문서에만 적용되는 partial unique index로 생성한다. MID4-138 worker는 같은 outbox 이벤트를 재처리하거나 동일 활동 이벤트가 중복 발행되어도 결정적 `_id`와 이 natural key를 기준으로 하나의 activity만 유지한다. 이는 새 조회용 인덱스를 추가한 것이 아니라 기존 고유 인덱스가 scrubbed tombstone을 제외하도록 조건을 조정한 것이다.
 
-이 인덱스와 atomic upsert는 중복 문서 생성을 막기 위한 장치다. 단일 worker의 순차 처리와 재시도에서는 event payload의 과거 상태가 아니라 worker가 조회한 RDB 현재 상태를 반영해 activity 상태를 수렴시킨다. 여러 worker의 동일 target 동시 쓰기는 아래 별도 제한을 따른다.
+이 인덱스와 versioned atomic upsert는 중복 문서와 stale overwrite를 함께 막는다. event payload의 과거 표시값이 아니라 worker가 조회한 RDB 현재 상태를 반영하고, 같은 문서에는 더 큰 `projectionVersion`만 저장한다.
 
 ```js
 { userId: 1, type: 1, visible: 1, occurredAt: -1, _id: -1 }
@@ -243,24 +255,24 @@ activity 상태 변경은 이벤트 종류만 보고 payload의 과거 상태를
 
 따라서 중복 이벤트, 실패 후 재시도, RDB transaction commit 순서와 worker 처리 순서의 역전이 발생해도 각 처리는 당시의 RDB 현재 상태를 반영한다. 두 transaction 사이에 worker가 실행되어 일시적인 중간 상태가 반영되더라도 나중에 commit된 transaction의 Outbox 이벤트가 다시 현재 상태를 조회하므로 최종 MongoDB Read Model은 RDB에 수렴한다.
 
-이 수렴 설명은 동일 대상의 두 RDB 조회 결과가 MongoDB에 동시에 적용되지 않는 조건에서 완전하다. MID4-138은 한 worker의 claim batch 내부에서는 이벤트를 순차 처리하고 각 MongoDB 쓰기의 완료를 기다리지만, 여러 worker instance가 서로 다른 이벤트 row를 claim할 수 있다. claim은 이벤트 row의 소유권만 분리하므로 서로 다른 batch에 같은 target의 이벤트가 있으면 동일 target의 projection이 동시에 실행될 수 있다.
+한 worker의 claim batch 내부에서는 이벤트를 순차 처리하지만, 여러 worker instance는 서로 다른 batch의 같은 target을 동시에 처리할 수 있다. 이때 claim UUID는 이벤트 row 소유권만 보호하고 projection 순서는 전역 `projectionVersion`과 MongoDB CAS가 보호한다.
 
-natural key unique index는 중복 문서 생성을 막고 `$max`는 `occurredAt`의 역행을 막지만, `visible`, `status`, snapshot 표시값처럼 `$set`으로 쓰는 필드에는 source version 또는 fencing 조건이 없다. 따라서 다중 instance에서 동일 target을 동시에 처리하는 경우 stale RDB 조회 결과가 나중에 저장되어 일부 mutable 필드가 일시적이거나 최종적으로 회귀할 수 있다.
+producer는 원본 변경 transaction 안에서 singleton `outbox_projection_clock` row를 `PESSIMISTIC_WRITE`로 잠그고 다음 버전을 발급한다. 잠금은 commit 또는 rollback까지 유지되므로 단순 DB sequence와 달리 버전 순서가 commit 순서와 일치한다. MongoDB query는 `_id`가 같고 저장 `projectionVersion`이 없거나 incoming보다 작은 경우에만 upsert한다. 조건에서 탈락한 upsert가 `_id` 중복으로 실패하면 같은 `_id`의 저장 버전이 incoming 이상인지 재확인한 경우에만 stale 성공으로 처리한다.
 
 ```text
-W1: target=C1 이벤트 E1 claim -> RDB 상태 V1 조회
-W2: target=C1 이벤트 E2 claim -> RDB 상태 V2 조회
-W2: MongoDB에 V2 반영
-W1: MongoDB에 V1을 나중에 $set
+W1: target=C1, projectionVersion=41 이벤트 claim -> RDB 상태 조회
+W2: target=C1, projectionVersion=42 이벤트 claim -> RDB 상태 조회
+W2: MongoDB에 V42 반영
+W1: 저장 version < 41 조건 불일치 -> stale 성공(no-op)
 
 결과
--> activity 중복은 생기지 않고 occurredAt도 낮아지지 않음
--> 그러나 content, visible, status 같은 $set 필드는 V1으로 회귀할 수 있음
+-> content, visible, status, snapshot 표시값이 V41로 회귀하지 않음
+-> occurredAt은 live write 안에서 기존대로 $max 적용
 ```
 
-이 제한을 제거하려면 target별 직렬화, source version 조건부 갱신, fencing token 또는 동등한 순서 보호가 필요하다. 해당 장치는 MID4-138에 포함하지 않았으므로 여러 instance 활성화는 가능하지만 동일 target 동시 projection까지 정합성이 보장된다는 의미는 아니다.
+이 설계는 target별 worker 직렬화 없이 다중 instance의 동일 target 쓰기를 허용한다. 대신 모든 Outbox producer가 요청 중 하나의 clock row를 잠그므로 쓰기 transaction 사이에 전역 대기가 생길 수 있다. 현재는 성능 측정 없이 polling 인덱스를 추가하지 않으며, 이 잠금 비용은 MongoDB Read Model 운영 전 별도로 관찰한다.
 
-worker는 `actor_user_id` 집합으로 사용자 존재 여부와 `deleted_at`도 batch 조회한다. actor가 논리삭제 또는 물리삭제된 활동 이벤트는 새 activity를 upsert하지 않으며, 단일 worker의 순차 처리에서는 기존 activity가 `USER_DELETED`인 상태를 지연 이벤트가 `ACTIVE`로 되돌리지 않도록 현재 사용자 상태를 다시 확인한다. 동일 target 또는 동일 사용자를 서로 다른 worker가 동시에 처리하는 interleaving과 사용자 삭제 후 stale write 차단은 아직 심화 검증 및 순서 보호가 필요한 후속 범위다.
+worker는 `actor_user_id` 집합으로 사용자 존재 여부와 `deleted_at`도 batch 조회한다. actor가 논리삭제 또는 물리삭제된 활동 이벤트는 새 activity를 활성화하지 않는다. 삭제 전에 payload로 수집한 활동 natural key마다 versioned hidden guard 또는 tombstone을 만들므로, 문서가 없던 경우에도 사용자 삭제 후 stale write가 차단된다.
 
 `occurredAt`은 최신 활동 정렬 기준이므로 역행하지 않게 처리한다. 좋아요, 구독, 기사 조회처럼 활동 시각을 갱신하는 이벤트는 `$max` 또는 동등한 단조성 조건으로만 `occurredAt`을 갱신한다. 취소, 삭제와 비노출은 기존 `occurredAt`을 변경하지 않으며, 후속 복구 이벤트도 과거 시각으로 낮추지 않아야 한다.
 
@@ -422,7 +434,7 @@ TARGET_DELETED는 hiddenByTargetType, hiddenByTargetId로 직접 숨김 원인�
 복구는 RDB 대상/부모 상태 재계산 후 snapshot visible=true 복구와 activity ACTIVE 복구를 함께 처리
 activity 상태 전이는 대상 ID별 RDB 현재 상태 batch 재조회 결과로 수렴
 occurredAt은 $max 또는 동등한 단조 조건으로 갱신
-물리삭제는 MongoDB Read Model에서도 제거
+물리삭제는 MongoDB Read Model의 식별·표시 필드를 제거한 scrubbed tombstone으로 차단
 수정은 activity가 아니라 snapshot 갱신
 ```
 
@@ -434,6 +446,7 @@ snapshot 컬렉션은 활동 대상이 화면에 표시될 때 필요한 최소 
 
 ```json
 {
+  "_id": "sha256(comment|comment-uuid)",
   "commentId": "comment-uuid",
   "articleId": "article-uuid",
   "articleTitle": "뉴스 제목",
@@ -443,7 +456,9 @@ snapshot 컬렉션은 활동 대상이 화면에 표시될 때 필요한 최소 
   "likeCount": 3,
   "visible": true,
   "createdAt": "2026-08-15T10:30:00",
-  "updatedAt": "2026-08-15T10:30:00"
+  "updatedAt": "2026-08-15T10:30:00",
+  "projectionVersion": 42,
+  "tombstone": false
 }
 ```
 
@@ -493,10 +508,10 @@ interest_activity_snapshots
 MID4-135에서 준비한 snapshot 인덱스는 다음과 같다. MID4-138 worker는 대상 ID 기준 atomic upsert로 snapshot을 저장하고 갱신한다.
 
 ```js
-{ commentId: 1 } // unique, ux_comment_activity_snapshots_comment_id
+{ commentId: 1 } // unique partial(tombstone=false), ux_comment_activity_snapshots_comment_id
 { articleId: 1, visible: 1 } // idx_comment_activity_snapshots_article_visible
-{ articleId: 1 } // unique, ux_article_activity_snapshots_article_id
-{ interestId: 1 } // unique, ux_interest_activity_snapshots_interest_id
+{ articleId: 1 } // unique partial(tombstone=false), ux_article_activity_snapshots_article_id
+{ interestId: 1 } // unique partial(tombstone=false), ux_interest_activity_snapshots_interest_id
 ```
 
 ### 조회 흐름
@@ -658,25 +673,27 @@ INTEREST_SUBSCRIBED + 관심사 비노출
 
 ## 물리삭제 처리
 
-물리삭제는 RDB에서 복구 대상이 아니게 최종 제거되는 단계다. 이 경우 MongoDB는 조회 최적화용 사본이므로 관련 Read Model 문서를 제거한다.
+물리삭제는 RDB에서 복구 대상이 아니게 최종 제거되는 단계다. MongoDB에서는 문서를 실제 remove하지 않고 결정적 `_id`, `projectionVersion`, `tombstone=true`, `visible=false`, `updatedAt`만 남기는 scrubbed tombstone으로 바꾼다. 사용자 ID, target ID, 제목, 내용 같은 식별·표시 필드는 `$unset`해 조회 모델에서는 제거된 것과 같게 취급하면서, 같은 논리 키의 과거 이벤트는 버전 CAS로 차단한다.
 
 ```text
 사용자 U1 물리삭제
--> activity_histories에서 userId=U1인 문서 제거
+-> 삭제 전에 수집한 U1 관련 activity natural key마다 scrubbed tombstone upsert
+-> U1이 작성한 댓글 snapshot도 scrubbed tombstone upsert
 
 댓글 C1 물리삭제
--> comment_activity_snapshots에서 commentId=C1인 문서 제거
--> activity_histories에서 targetType=COMMENT, targetId=C1인 문서 제거
+-> commentId=C1의 결정적 snapshot _id에 scrubbed tombstone upsert
+-> 댓글 작성/좋아요 activity key마다 scrubbed tombstone upsert
 
 기사 A1 물리삭제
--> article_activity_snapshots에서 articleId=A1인 문서 제거
--> activity_histories에서 targetType=ARTICLE, targetId=A1인 문서 제거
--> activity_histories에서 targetType=COMMENT, parentTargetType=ARTICLE, parentTargetId=A1인 문서 제거
+-> articleId=A1 및 자식 comment snapshot의 결정적 _id에 scrubbed tombstone upsert
+-> 조회, 댓글 작성, 댓글 좋아요 activity key마다 scrubbed tombstone upsert
 ```
 
 물리삭제 이후에는 복구를 고려하지 않는다. 복구 가능성은 논리삭제 상태에서만 유지한다.
 
-물리삭제 이후 지연 이벤트나 재처리 이벤트가 도착했을 때의 재생성 차단 기준은 RDB source row 존재 여부다. worker는 upsert 전에 원본 사용자, 기사, 댓글, 관심사 등 필요한 source row가 존재하고 노출 가능한지 확인한다. source row가 없으면 payload만으로 MongoDB 문서를 다시 만들지 않고 이벤트 종류에 맞는 기존 문서 cleanup을 시도하며, 이미 제거된 상태라면 MongoDB 작업은 no-op이 된다.
+producer는 댓글·기사·관심사·사용자 삭제 전에 영향받는 activity natural key와 comment snapshot ID를 RDB에서 수집해 payload에 넣는다. worker는 source row 존재 여부를 재확인하고 각 키에 삭제 이벤트의 버전으로 tombstone을 물질화한다. 물리삭제 이후 더 낮은 버전의 지연 이벤트가 도착하면 동일 `_id`의 더 높은 tombstone 버전 때문에 no-op이 된다. 같은 버전 재시도도 이미 반영된 문서는 건너뛰면서 아직 빠진 fan-out 문서는 이어서 만들 수 있다.
+
+현재 Read Model은 기본 비활성화이고 운영 조회 경로에 연결되지 않았으므로 기존 무버전 문서의 온라인 변환은 하지 않는다. 이 계약을 적용한 로컬 환경은 MongoDB 볼륨/컬렉션을 비우고 초기 projection을 다시 수행해야 한다.
 
 추천 인덱스 예시는 다음과 같다.
 
@@ -688,4 +705,4 @@ INTEREST_SUBSCRIBED + 관심사 비노출
 { hiddenByTargetType: 1, hiddenByTargetId: 1, status: 1 }
 ```
 
-첫 번째 인덱스는 사용자별 최신 활동 조회와 커서 페이지네이션에 사용한다. 두 번째 인덱스는 사용자 논리삭제 또는 사용자 물리삭제 시 해당 사용자의 activity를 찾는 데 사용한다. 세 번째 인덱스는 특정 대상의 삭제 또는 상태 변경 반영에 사용한다. 네 번째 인덱스는 기사 삭제 또는 비공개 처리 시 해당 기사에 속한 댓글 activity를 숨김 처리하거나 제거하는 데 사용한다. 다섯 번째 인덱스는 직접 숨김 원인을 기준으로 상태를 확인하거나 단순 후보를 좁힐 때 사용한다. 복구 최종 판단은 대상 및 부모 식별자와 RDB 현재 상태 재계산으로 수행한다.
+첫 번째 인덱스는 사용자별 최신 활동 조회와 커서 페이지네이션에 사용한다. 두 번째 인덱스는 사용자 논리삭제 또는 사용자 물리삭제 시 해당 사용자의 activity를 찾는 데 사용한다. 세 번째 인덱스는 특정 대상의 삭제 또는 상태 변경 반영에 사용한다. 네 번째 인덱스는 기사 삭제 또는 비공개 처리 시 해당 기사에 속한 댓글 activity를 숨김 또는 tombstone 처리하는 데 사용한다. 다섯 번째 인덱스는 직접 숨김 원인을 기준으로 상태를 확인하거나 단순 후보를 좁힐 때 사용한다. 복구 최종 판단은 대상 및 부모 식별자와 RDB 현재 상태 재계산으로 수행한다.

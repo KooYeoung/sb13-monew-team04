@@ -36,15 +36,15 @@ MID4-135부터 MID4-138까지의 작업은 MongoDB 적용 결론을 변경하지
 | Outbox 기본 저장 | PostgreSQL JSONB payload, 처리 상태와 retry 필드를 가진 `outbox_events`, JPA 엔티티와 repository 준비 |
 | Outbox producer | 20개 `OutboxEventType`, 도메인별 payload record와 writer를 추가하고 사용자·관심사·기사·댓글 변경 트랜잭션에 이벤트 저장 연동 |
 | 저장 계약 | 공통 envelope는 개별 컬럼, payload body는 JSONB로 저장하며 writer는 기존 트랜잭션에 필수 참여 |
-| MongoDB 문서 | activity와 댓글·기사·관심사 snapshot 문서, 기존 활동내역 DTO 재구성에 필요한 원본 관계 ID와 표시값 정의 |
-| Outbox worker | `PENDING`과 재시도 시각이 지난 `FAILED`를 `SKIP LOCKED`와 lease로 batch claim하고 RDB 현재 상태를 조회해 atomic upsert, 숨김, cleanup 또는 no-op 처리 |
+| MongoDB 문서 | activity와 댓글·기사·관심사 snapshot 문서, 결정적 SHA-256 `_id`, `projectionVersion`, hidden guard와 scrubbed tombstone 정의 |
+| Outbox worker | `PENDING`과 재시도 시각이 지난 `FAILED`를 `SKIP LOCKED`와 lease로 batch claim하고 RDB 현재 상태를 조회해 version CAS upsert, 숨김 또는 tombstone 처리 |
 | 실패 처리 | 1분, 5분, 15분, 1시간 retry 후 5회 실패 시 `DEAD_LETTER`; 이벤트별 상태 저장은 독립 트랜잭션으로 처리 |
-| 다중 인스턴스 제한 | event row claim과 상태 갱신 소유권은 보호하지만 서로 다른 batch의 동일 target projection은 직렬화하지 않음 |
-| 아직 구현하지 않은 범위 | 동일 target 순서 보호, count 이벤트 polling batch 병합, 복구·재노출 및 stale replay 심화 검증, 초기 투영, MongoDB 조회 경로 전환, 운영 재처리 |
+| 다중 인스턴스 순서 보호 | commit 순서와 일치하는 전역 projection version 및 MongoDB CAS로 서로 다른 batch의 동일 target stale write 차단 |
+| 아직 구현하지 않은 범위 | count 이벤트 polling batch 병합, 복구·재노출, 초기 투영, MongoDB 조회 경로 전환, 운영 재처리 |
 
-따라서 현재 API는 계속 RDB를 조회하지만, MID4-137에서 연동한 쓰기 요청은 원본 변경과 같은 RDB 트랜잭션에 Outbox row를 생성한다. 이 저장은 요청 처리 중 동기 수행되고, MID4-138 worker의 MongoDB 반영은 response 반환 이후 별도 thread에서 blocking 방식으로 수행된다. 여러 인스턴스에서 worker를 활성화할 수 있으며, 각 실행은 batch UUID와 lease를 원자적으로 기록해 서로 다른 이벤트 row를 병렬 처리한다.
+따라서 현재 API는 계속 RDB를 조회하지만, MID4-137에서 연동한 쓰기 요청은 원본 변경과 같은 RDB 트랜잭션에 Outbox row를 생성한다. payload 직렬화 뒤 전역 clock row를 잠그는 버전 발급도 요청 처리 중 동기 수행되므로 서로 무관한 쓰기 요청 사이에 잠깐의 대기가 생길 수 있다. MID4-138 worker의 RDB 재조회와 MongoDB 반영은 response 반환 이후 별도 thread에서 blocking 방식으로 수행된다. 여러 인스턴스에서 worker를 활성화할 수 있으며, 각 실행은 batch UUID와 lease를 원자적으로 기록해 서로 다른 이벤트 row를 병렬 처리한다. worker polling 인덱스는 성능 측정 없이 추가하지 않는다.
 
-MongoDB와 RDB 상태 변경은 하나의 트랜잭션이 아니므로 전달 보장은 at-least-once다. natural key와 atomic upsert는 중복 문서를 막고 단일 worker의 재처리를 멱등하게 만들지만, 서로 다른 worker가 같은 target을 동시에 처리할 때 `$set` 필드의 stale overwrite까지 막지는 않는다. 이 제한은 [저장 모델의 동일 target 동시 처리 예시](./02-mongodb-storage-model.md#activity-생성-및-수정-기준)와 [Outbox worker 동시성 설명](./04-outbox-design.md#다중-worker-실행과-동일-target-제한)에 기록한다.
+MongoDB와 RDB 상태 변경은 하나의 트랜잭션이 아니므로 전달 보장은 at-least-once다. producer는 singleton clock row를 요청 트랜잭션 종료까지 잠가 commit 순서의 `projection_version`을 발급한다. MongoDB writer는 natural key의 결정적 `_id`와 저장 version이 incoming보다 작은 경우만 반영해 서로 다른 worker의 동일 target stale overwrite를 막는다. 취소/해제는 hidden guard를, 물리삭제는 식별·표시 필드를 지운 tombstone을 문서가 없어도 남긴다. 상세 계약은 [MongoDB 저장 모델](./02-mongodb-storage-model.md#activity-생성-및-수정-기준)과 [Outbox worker 동시성 설명](./04-outbox-design.md#다중-worker-실행과-projection-version-cas)에 기록한다.
 
 ## k6 측정 해석 범위
 

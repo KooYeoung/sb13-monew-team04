@@ -185,7 +185,7 @@ natural key와 atomic upsert는 중복 문서 방지 계약이다. activity의 `
 
 각 worker는 claim한 batch 내부의 MongoDB 쓰기를 순차 실행하고 완료를 기다리며, 여러 인스턴스는 서로 겹치지 않는 이벤트 row batch를 병렬 처리한다. 상태 갱신은 claim UUID 소유권 조건으로 보호하고 lease 만료 경계의 MongoDB 중복 쓰기는 natural key와 atomic upsert로 중복 생성을 막는다.
 
-다만 서로 다른 batch가 같은 target의 이벤트를 포함할 수 있으므로 claim은 target별 projection을 직렬화하지 않는다. `$max`가 보호하는 `occurredAt`과 달리 `visible`, `status`, snapshot 표시값은 순서 guard 없는 `$set`이므로, 두 worker가 서로 다른 시점의 RDB 결과를 조회하고 역순으로 저장하면 stale 값이 마지막에 남을 수 있다. MID4-138의 다중 인스턴스 지원은 이벤트 소유권과 재처리 안전성을 의미하며 동일 target concurrent write의 완전한 수렴 보장을 의미하지 않는다.
+서로 다른 batch가 같은 target의 이벤트를 포함할 수 있으므로 claim 자체는 target별 projection을 직렬화하지 않는다. producer가 singleton clock row 잠금을 원본 transaction commit까지 유지해 `projection_version`을 commit 순서와 맞추고, MongoDB는 결정적 `_id`의 저장 version이 incoming보다 작은 경우만 갱신한다. 따라서 두 worker가 RDB 결과를 역순으로 저장해도 `visible`, `status`, snapshot 표시값은 더 낮은 버전으로 회귀하지 않는다. `occurredAt`은 live write에서 `$max`도 함께 유지한다.
 
 ```text
 W1: 댓글 C1의 이전 상태 조회
@@ -196,13 +196,13 @@ W1: 이전 상태를 나중에 MongoDB 반영
 -> content, visible, status는 이전 값으로 회귀할 수 있음
 ```
 
-초기 구현에는 `event_sequence`, projection key, advisory lock, 낙관적 락, target별 직렬화와 fencing token을 추가하지 않는다. worker의 짧은 claim transaction에만 `FOR UPDATE SKIP LOCKED`를 사용하고 MongoDB 반영 중에는 RDB row lock을 유지하지 않는다. 기존 Outbox row 저장은 원본 변경과 같은 request transaction에서 동기 수행하지만, MongoDB 반영과 RDB 현재 상태 batch 재조회는 response 반환 이후 worker가 별도 thread에서 blocking 방식으로 수행한다.
+원본 엔티티별 `@Version`, advisory lock과 target별 worker 직렬화는 추가하지 않는다. Outbox projection fencing token은 `outbox_projection_clock` singleton row의 비관적 잠금으로 발급한다. worker의 짧은 claim transaction에는 별도로 `FOR UPDATE SKIP LOCKED`를 사용하고 MongoDB 반영 중에는 RDB row lock을 유지하지 않는다. Outbox row와 version 저장은 원본 변경과 같은 request transaction에서 동기 수행하지만, MongoDB 반영과 RDB 현재 상태 batch 재조회는 response 반환 이후 worker가 별도 thread에서 blocking 방식으로 수행한다.
 
-따라서 사용자 물리삭제 payload의 영향 ID는 수집 transaction이 관찰한 snapshot이며, 수집과 연관 row 삭제 사이에 commit된 관계까지 포함하는 전체 목록을 보장하지 않는다. worker는 이 목록을 유일한 cleanup 근거로 사용하지 않고 `aggregate_id`의 사용자 활동 제거, actor와 source row 존재 여부 재확인과 함께 cleanup 후보로 사용한다. 이 경쟁 조건은 producer 락 없이 운영하는 초기 정책의 제한이며 후속 stale replay 동시성 검증 범위로 남긴다.
+삭제와 닉네임 변경 payload는 원본 변경 전에 activity natural key와 comment snapshot ID를 수집한다. 이 목록은 수집 transaction이 관찰한 snapshot이므로 worker는 목록만 유일한 cleanup 근거로 삼지 않는다. 삭제 버전보다 오래된 기존 문서는 사용자/대상/부모 조건의 versioned bulk cleanup으로 잡고, payload key는 문서가 없어도 hidden guard 또는 tombstone으로 물질화하며, 아직 처리되지 않은 과거 이벤트는 actor/source row 재확인과 CAS로 활성화를 막는다.
 
 댓글 내용, 기사 제목/요약/게시일, 관심사 키워드, count 집계값처럼 나중 이벤트로 바뀔 수 있는 snapshot 필드는 오래된 payload로 덮어쓰지 않고, worker 처리 시점의 RDB 현재값을 조회해 반영한다.
 
-`source_version`은 원본 엔티티 snapshot 필드의 순서 보호가 별도로 필요하다고 확인될 때 재검토할 대안으로만 남긴다. 현재 기본안은 엔티티 version이나 producer 락을 추가하지 않는 RDB 현재 상태 수렴 방식이다.
+원본 엔티티별 `source_version`은 사용하지 않는다. 서로 다른 aggregate의 fan-out을 하나의 순서로 비교할 수 있는 전역 `projection_version`과 MongoDB CAS를 기본안으로 사용한다.
 
 댓글 작성 또는 댓글 좋아요처럼 기사에 종속된 activity는 `parentTargetType=ARTICLE`, `parentTargetId=articleId`를 함께 저장한다. 기사 삭제 또는 비공개 처리 시 이 부모 식별자로 해당 기사에 속한 댓글 activity를 숨김 처리한다.
 
@@ -216,18 +216,18 @@ W1: 이전 상태를 나중에 MongoDB 반영
 
 대상 복구 시에는 activity만 `ACTIVE`로 되돌리지 않는다. 복구 대상과 관련될 수 있는 `status=TARGET_DELETED` activity 후보를 `targetType`, `targetId`, `parentTargetType`, `parentTargetId`로 찾고, 각 activity의 대상과 필요한 부모 대상이 RDB 기준으로 현재 노출 가능한 상태인지 다시 계산한다. 남은 차단 원인이 없으면 대상 snapshot을 RDB 현재 값으로 갱신해 `visible=true`로 복구한 뒤 activity를 `visible=true`, `status=ACTIVE`로 복구한다. `CANCELED`, `UNSUBSCRIBED`, `USER_DELETED` 상태는 대상 복구 이벤트로 자동 복구하지 않는다.
 
-사용자, 기사, 댓글이 RDB에서 최종 물리삭제되면 MongoDB Read Model에서도 관련 `activity_histories`와 snapshot 문서를 제거한다. 물리삭제 이후에는 복구를 고려하지 않고, 복구 가능성은 논리삭제 상태에서만 유지한다.
+사용자, 기사, 댓글, 관심사가 RDB에서 최종 물리삭제되면 MongoDB Read Model의 관련 문서는 실제 remove하지 않고 scrubbed tombstone으로 바꾼다. `_id`, `projectionVersion`, `tombstone=true`, `visible=false`, `updatedAt`만 남기고 사용자·대상 ID와 표시 필드를 제거한다. 물리삭제 이후에는 복구를 고려하지 않고, 복구 가능성은 논리삭제 상태에서만 유지한다.
 
-물리삭제 이후 삭제 전 지연 이벤트가 도착하더라도 worker는 activity 또는 snapshot upsert 전에 RDB source row 존재 여부를 확인한다. source row가 없으면 payload만으로 문서를 재생성하지 않고, 필요한 삭제가 이미 반영됐다면 no-op 후 outbox row를 `PROCESSED`로 전환할 수 있다.
+물리삭제 이후 삭제 전 지연 이벤트가 도착하면 worker는 RDB source row 부재를 확인하고 같은 논리 `_id`의 더 높은 tombstone version 때문에 stale no-op으로 끝낸다. 동일 버전 재시도도 이미 반영된 문서는 건너뛰고 빠진 fan-out 문서만 이어서 반영한 뒤 outbox row를 `PROCESSED`로 전환할 수 있다.
 
 최종 구조는 다음과 같다.
 
 ```text
 RDB 원본 데이터
 -> 활동 이벤트 발생
--> 같은 RDB transaction에 event facts와 식별자를 담은 outbox_events 저장
+-> 같은 RDB transaction에서 global projection version 발급 후 outbox_events 저장
 -> outbox worker가 대상 ID별 RDB 현재 상태를 batch 조회
--> activity_histories와 snapshot을 natural key 또는 대상 ID 기준으로 멱등 갱신
+-> activity_histories와 snapshot을 결정적 _id + projectionVersion CAS로 멱등 갱신
 -> 활동내역 API 조회
 -> activity_histories 조회
 -> 대상 snapshot 조회 및 매핑
