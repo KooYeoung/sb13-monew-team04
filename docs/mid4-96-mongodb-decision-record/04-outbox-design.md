@@ -287,8 +287,9 @@ PENDING 이벤트 또는 next_retry_at이 지난 FAILED 이벤트 후보를 crea
 -> MongoDB 성공 후 같은 그룹의 Outbox row 전체 상태 전이
 -> 현재 상태를 이미 반영한 중복·지연 이벤트도 멱등 처리 후 PROCESSED
 -> MongoDB Read Model 반영 성공 시 PROCESSED
--> 개별 이벤트 실패 시 FAILED, retry_count 증가, next_retry_at 설정, last_error 기록
--> 개별 이벤트가 최대 재시도 횟수를 초과하면 DEAD_LETTER로 전환
+-> 일반 이벤트 실패 시 해당 row를 FAILED 처리하고 retry_count 증가, next_retry_at 설정, last_error 기록
+-> count 그룹 처리 실패 시 그룹 row 전체에 같은 원인을 기록하고 row별 retry 이력으로 FAILED 또는 DEAD_LETTER 결정
+-> 각 row가 최대 재시도 횟수를 초과하면 DEAD_LETTER로 전환
 ```
 
 UUID는 순서 기준으로 사용하지 않는다. worker 조회와 처리 시도 순서는 `created_at` 기준으로 두지만 이는 polling 편의를 위한 정렬일 뿐 projection 정확성 보장 기준이 아니다. `occurred_at`도 활동 발생 시각과 조회 정렬 정보이며 stale event 판정에 사용하지 않는다. 순서 정확성은 commit 순서의 `projection_version`과 MongoDB CAS가, 표시값 정확성은 처리 시점의 RDB 현재 상태 재조회가 함께 보장한다.
@@ -308,6 +309,18 @@ MID4-247
 -> E1과 E2를 같은 그룹으로 병합
 -> 두 이벤트 중 가장 높은 projection_version으로 MongoDB projection 1회
 -> E1과 E2를 동일 processed_at의 PROCESSED로 bulk update
+```
+
+같은 snapshot 대상을 변경하더라도 `event_type`이 다르면 한 그룹으로 합치지 않는다. source batch는 모든 그룹의 대표 이벤트를 함께 받아 대상 ID를 중복 제거하므로, 그룹 경계와 RDB batch 조회의 중복 제거는 서로 독립적이다.
+
+```text
+E3: ARTICLE_VIEW_COUNT_CHANGED + articleId=A1
+E4: ARTICLE_COMMENT_COUNT_CHANGED + articleId=A1
+
+MID4-247
+-> event_type이 다르므로 E3와 E4를 서로 다른 처리 그룹으로 유지
+-> source reader의 articleId 집합에서는 A1을 한 번만 유지해 현재 article snapshot과 count를 batch 조회
+-> 각 그룹의 대표 이벤트로 MongoDB projection과 Outbox 상태 전이를 각각 수행
 ```
 
 count 집계 이벤트의 상태 전이는 outbox row 단위가 아니라 선택된 그룹 row 전체에 적용한다. 그룹 기준은 현재 polling batch에서 선택된 row 중 같은 `event_type`과 같은 snapshot 대상 ID를 가진 row다. 그룹 자체는 첫 이벤트가 선택된 순서를 유지하고, 대표 이벤트는 가장 높은 `projection_version`을 가진 row로 정한다.
@@ -357,17 +370,17 @@ max_retry_count = 5
 
 `DEAD_LETTER` 이벤트는 worker가 자동 재처리하지 않는다. 운영자가 `last_error`와 원본 데이터를 확인한 뒤 수동으로 상태를 `PENDING`으로 되돌리거나 별도 보정 작업으로 처리한다.
 
-### MID4-138 실패 경계와 오류 코드
+### Outbox worker 실패 경계와 오류 코드
 
-worker는 모든 실패를 같은 방식으로 처리하지 않는다. MongoDB projection을 시작하지 못한 batch와 개별 이벤트 처리 실패, 상태 저장 실패를 구분한다.
+worker는 모든 실패를 같은 방식으로 처리하지 않는다. MongoDB projection을 시작하지 못한 batch, 일반 이벤트의 개별 실패, count 그룹 실패와 상태 저장 실패를 구분한다.
 
-| 실패 단계 | MID4-138 동작 | claim 처리 |
+| 실패 단계 | 동작 | claim 처리 |
 | --- | --- | --- |
 | claim transaction | 예외를 호출자에게 전파하며 transaction을 롤백한다. | 새 claim이 남지 않는다. |
 | heartbeat scheduler 등록 | 오류를 기록하고 batch 처리를 시작하지 않는다. | 즉시 release하며, release도 실패하면 lease 만료를 기다린다. |
 | payload decode | 해당 이벤트를 실패 처리하고 다음 이벤트 decode를 계속한다. | 실패 상태 저장 시 해당 row의 claim을 해제한다. |
-| RDB source batch 조회 | decode된 이벤트를 각각 실패 처리한다. | 상태 저장에 실패한 지점부터 처리를 중단하고 남은 claim은 만료시킨다. |
-| MongoDB projection | 해당 이벤트를 실패 처리하고 다음 이벤트를 계속한다. | 실패 상태 저장 시 해당 row의 claim을 해제한다. |
+| RDB source batch 조회 | 일반 이벤트는 해당 row를, count 이벤트는 선택된 그룹 row 전체를 실패 처리한다. | 처리 단위별 상태 저장을 진행하고 실패한 지점부터 중단해 남은 claim은 만료시킨다. |
+| MongoDB projection | 일반 이벤트는 해당 row를, count 이벤트는 선택된 그룹 row 전체를 실패 처리하고 다음 처리 단위로 진행한다. | 실패 상태 저장 시 일반 이벤트 또는 그룹 row의 claim을 해제한다. |
 | `PROCESSED` 또는 실패 상태 저장 | 새 이벤트 처리를 중단한다. | 종결하지 못한 row는 lease 만료 후 재선점될 수 있다. |
 | heartbeat 갱신 또는 소유권 확인 | 다음 처리 경계에서 batch 처리를 중단한다. | 남은 claim을 명시적으로 해제하지 않고 만료시킨다. |
 

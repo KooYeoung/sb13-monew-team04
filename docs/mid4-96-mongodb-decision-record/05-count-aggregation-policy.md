@@ -72,6 +72,11 @@ count 이벤트 병합 그룹
 -> MongoDB snapshot 대상 ID 기준 upsert 및 현재 count $set 성공
 -> 선택된 그룹 row 전체를 PROCESSED, 동일 processed_at으로 변경
 
+source row가 존재하지만 미노출
+-> 기사 자체가 soft-delete되었거나 댓글·부모 기사·댓글 작성자의 삭제 상태로 visible=false 확인
+-> 대표 이벤트의 projection_version으로 결정적 ID의 댓글·기사 snapshot을 visible=false로 CAS upsert
+-> 선택된 그룹 row 전체를 PROCESSED, 동일 processed_at으로 변경
+
 cleanup 이후 stale event
 -> snapshot 대상 RDB source row가 물리삭제되어 없음
 -> 해당 projection version으로 결정적 snapshot ID의 tombstone을 시도
@@ -105,6 +110,28 @@ E2: ARTICLE_VIEW_COUNT_CHANGED(A1), projection_version=43
 -> RDB에서 A1의 현재 viewCount를 한 번 조회
 -> MongoDB A1 snapshot을 version=43으로 한 번 갱신
 -> E1과 E2를 같은 processed_at의 PROCESSED로 변경
+```
+
+같은 article snapshot을 갱신하더라도 조회수와 댓글 수 변경은 서로 다른 의미의 신호이므로 `event_type`이 다르면 병합하지 않는다.
+
+```text
+E3: ARTICLE_VIEW_COUNT_CHANGED(A1), projection_version=44
+E4: ARTICLE_COMMENT_COUNT_CHANGED(A1), projection_version=45
+
+-> E3와 E4를 서로 다른 그룹으로 유지
+-> source reader의 articleId 집합에서는 A1을 중복 제거해 현재 snapshot과 count를 batch 조회
+-> 각 그룹의 대표 이벤트로 projection과 상태 전이를 각각 수행
+```
+
+원본이 남아 있지만 노출할 수 없는 경우와 물리삭제되어 원본이 없는 경우도 구분한다.
+
+```text
+E5: COMMENT_LIKE_CHANGED(C1), projection_version=46
+RDB comment C1: 존재하지만 soft-delete 또는 부모·작성자 삭제로 visible=false
+
+-> C1의 결정적 ID를 가진 comment snapshot을 version=46으로 visible=false CAS upsert
+-> E5가 속한 그룹 전체를 PROCESSED 처리
+-> source row가 없는 경우에만 결정적 snapshot ID에 tombstone 시도
 ```
 
 조회수 이벤트가 worker 처리량을 지속적으로 초과하면 기사 조회 이벤트와 count 갱신 이벤트를 분리하거나, 일정 주기 batch/coalescing publisher로 전환한다. 이 경우 viewCount snapshot은 실시간 정확값이 아니라 짧은 지연을 허용하는 표시값으로 취급한다.

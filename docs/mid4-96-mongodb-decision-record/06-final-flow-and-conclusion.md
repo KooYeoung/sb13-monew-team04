@@ -47,7 +47,7 @@ MongoDB 후속 적용 시 요청 처리 흐름은 다음과 같이 둔다.
 -> *_activity_snapshots 저장 또는 갱신
 ```
 
-### MID4-138 현재 구현 경계
+### Outbox worker 현재 구현 경계
 
 MID4-137에서는 위 흐름 중 원본 변경과 `outbox_events` 저장까지 구현했다. 별도 도메인 이벤트 버스에 발행한 뒤 수집하는 구조가 아니라, 각 도메인 서비스가 타입이 지정된 payload record를 만들고 `OutboxEventWriter`를 호출한다. MID4-138에서는 commit된 Outbox를 batch UUID와 lease로 claim해 MongoDB Read Model에 반영하는 다중 인스턴스 worker를 추가했다.
 

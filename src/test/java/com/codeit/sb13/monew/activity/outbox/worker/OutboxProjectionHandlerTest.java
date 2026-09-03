@@ -176,7 +176,7 @@ class OutboxProjectionHandlerTest {
     }
 
     @Test
-    @DisplayName("카운트 이벤트는 현재 RDB 기사 count가 포함된 snapshot을 개별 반영한다")
+    @DisplayName("카운트 이벤트는 현재 RDB 기사 count가 포함된 snapshot으로 갱신한다")
     void countEventRefreshesCurrentArticleSnapshot() {
         UUID articleId = UUID.randomUUID();
         ArticleState article = new ArticleState(
