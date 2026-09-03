@@ -115,7 +115,9 @@ Outbox worker는 `MONEW_MONGODB_ENABLED=true`와 `MONEW_MONGODB_WORKER_ENABLED=t
 
 `projectionVersion`은 요청 트랜잭션이 singleton `outbox_projection_clock` row를 `PESSIMISTIC_WRITE`로 잠근 뒤 증가시킵니다. 잠금은 원본 변경과 Outbox 저장이 commit될 때까지 유지되므로 발급 순서와 commit 순서가 일치하며, 요청 쓰기가 이 전역 잠금에서 잠시 대기할 수 있다는 비용이 있습니다. MongoDB는 natural key로 계산한 SHA-256 `_id`와 저장 버전이 없거나 더 작은 경우만 갱신합니다. 물리삭제도 식별 필드를 지운 tombstone을 남겨 과거 이벤트의 재생성을 차단합니다. 상세 내용은 [Outbox worker 동시성 설명](./mid4-96-mongodb-decision-record/04-outbox-design.md#다중-worker-실행과-projection-version-cas)을 따릅니다.
 
-이 스키마를 적용하면 기존 MongoDB 문서는 결정적 `_id`, `projectionVersion`, `tombstone` 계약과 호환되지 않습니다. 현재 Read Model은 기본 비활성화이고 운영 조회 경로에 사용하지 않으므로 온라인 변환은 제공하지 않습니다. 로컬에서는 아래 절차로 `mongodb-data` 볼륨을 재생성해 Read Model을 다시 투영합니다.
+이 스키마를 적용하면 기존 MongoDB 문서는 결정적 `_id`, `projectionVersion`, `tombstone` 계약과 호환되지 않습니다. 기존의 같은 이름인 non-partial natural-key 인덱스도 partial unique 인덱스로 제자리 변경할 수 없어, 그대로 두면 시작 시 `IndexOptionsConflict`가 발생합니다. 현재 Read Model은 기본 비활성화이고 운영 조회 경로에 사용하지 않으므로 온라인 변환이나 애플리케이션 시작 시 자동 인덱스 삭제는 제공하지 않습니다. 로컬에서는 아래 절차로 `mongodb-data` 볼륨을 재생성해 문서와 인덱스를 함께 초기화한 뒤 Read Model을 다시 투영합니다.
+
+구형 Outbox 삭제 payload에는 삭제 전에만 알 수 있는 activity key와 자식 snapshot 영향 범위가 없을 수 있습니다. 물리 삭제가 끝난 뒤에는 이 범위를 RDB에서 복원할 수 없으므로, CAS worker를 활성화하기 전에 구형 worker로 기존 Outbox를 모두 처리하거나 명시적인 데이터 마이그레이션을 완료해야 합니다. 그다음 MongoDB Read Model을 초기화하고 새 worker로 재투영합니다. 이 전환이 끝나기 전에는 `MONEW_MONGODB_WORKER_ENABLED`를 `false`로 유지합니다.
 
 ### MongoDB 계정 변경과 개발 볼륨 재생성
 

@@ -466,6 +466,7 @@ snapshot 컬렉션은 활동 대상이 화면에 표시될 때 필요한 최소 
 
 ```json
 {
+  "_id": "sha256(article|article-uuid)",
   "articleId": "article-uuid",
   "title": "뉴스 제목",
   "summary": "뉴스 요약",
@@ -475,7 +476,9 @@ snapshot 컬렉션은 활동 대상이 화면에 표시될 때 필요한 최소 
   "viewCount": 10,
   "commentCount": 2,
   "visible": true,
-  "updatedAt": "2026-08-15T10:30:00"
+  "updatedAt": "2026-08-15T10:30:00",
+  "projectionVersion": 42,
+  "tombstone": false
 }
 ```
 
@@ -483,12 +486,15 @@ snapshot 컬렉션은 활동 대상이 화면에 표시될 때 필요한 최소 
 
 ```json
 {
+  "_id": "sha256(interest|interest-uuid)",
   "interestId": "interest-uuid",
   "name": "AI",
   "keywords": ["인공지능", "머신러닝"],
   "subscriberCount": 15,
   "visible": true,
-  "updatedAt": "2026-08-15T10:30:00"
+  "updatedAt": "2026-08-15T10:30:00",
+  "projectionVersion": 42,
+  "tombstone": false
 }
 ```
 
