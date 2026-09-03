@@ -44,9 +44,9 @@ MongoDB 후속 적용 시 요청 처리 흐름은 다음과 같이 둔다.
 -> *_activity_snapshots 저장 또는 갱신
 ```
 
-### MID4-137 현재 구현 경계
+### MID4-138 현재 구현 경계
 
-MID4-137에서는 위 흐름 중 원본 변경과 `outbox_events` 저장까지 구현했다. 별도 도메인 이벤트 버스에 발행한 뒤 수집하는 구조가 아니라, 각 도메인 서비스가 타입이 지정된 payload record를 만들고 `OutboxEventWriter`를 호출한다.
+MID4-137에서는 위 흐름 중 원본 변경과 `outbox_events` 저장까지 구현했다. 별도 도메인 이벤트 버스에 발행한 뒤 수집하는 구조가 아니라, 각 도메인 서비스가 타입이 지정된 payload record를 만들고 `OutboxEventWriter`를 호출한다. MID4-138에서는 commit된 Outbox를 batch UUID와 lease로 claim해 MongoDB Read Model에 반영하는 다중 인스턴스 worker를 추가했다.
 
 ```text
 현재 쓰기 요청
@@ -61,7 +61,17 @@ MID4-137에서는 위 흐름 중 원본 변경과 `outbox_events` 저장까지 �
 
 writer는 기존 트랜잭션이 없으면 실행을 거부하며 별도 커밋하지 않는다. payload 직렬화 실패 시 `OutboxPayloadSerializationException`이 발생하고 원본 변경도 함께 롤백된다. 따라서 Outbox row 저장은 논블로킹 작업이 아니라 요청 트랜잭션에 포함된 동기 작업이다.
 
-MongoDB document/repository, RDB 현재 상태 batch 재조회, projection writer와 Outbox worker는 아직 구현하지 않았다. 현재 조회 API는 계속 RDB를 사용한다.
+```text
+response 반환 이후
+-> worker가 PENDING 또는 재시도 가능한 FAILED를 FOR UPDATE SKIP LOCKED로 batch claim
+-> PostgreSQL 시각으로 claim lease를 기록하고 heartbeat로 연장
+-> 대상 ID별 RDB 현재 상태, 관계와 count를 batch 조회
+-> MongoDB snapshot을 먼저 갱신
+-> activity를 natural key 기준으로 순차 atomic upsert 또는 숨김
+-> 성공 시 PROCESSED, 실패 시 retry 또는 DEAD_LETTER
+```
+
+MongoDB 문서, RDB 현재 상태 batch 재조회, projection writer와 Outbox worker는 구현됐지만 기본 비활성화 상태다. 현재 조회 API는 계속 RDB를 사용하며 MongoDB 조회 전환은 MID4-139 범위다. MID4-138의 네 가지 count 이벤트는 row별로 현재값을 반영하고, 같은 polling batch의 중복 신호 병합은 MID4-247에서 구현한다.
 
 Outbox 적용에 따른 쓰기 API response 영향은 추정하지 않고 테스트로 확인한다.
 
@@ -163,9 +173,9 @@ natural key와 atomic upsert는 중복 문서 방지 계약이다. activity의 `
 
 같은 polling batch의 RDB 조회는 commentId, articleId, interestId, userId 같은 대상 ID 집합으로 묶는다. 중복 이벤트나 실패 후 재시도, transaction commit 순서와 worker 처리 순서의 역전이 발생해도 각 처리는 당시의 RDB 현재 상태를 반영하며, 나중에 commit된 transaction의 이벤트가 최종 상태를 다시 반영한다. `occurredAt`은 현재 관계 row의 시각 또는 검증된 불변 이벤트 시각을 사용하고 `$max` 또는 동등한 단조 조건을 적용한다.
 
-초기 worker는 instance 하나만 운영하며 batch의 대상별 MongoDB 쓰기를 순차 실행하고 완료를 기다린다. 동일 대상의 서로 다른 RDB 조회 결과가 MongoDB 쓰기 단계에서 interleaving되지 않게 한다. 다중 worker나 병렬 writer를 도입할 때는 대상별 직렬화 또는 RDB revision 기반 조건부 쓰기를 선행한다.
+각 worker는 claim한 batch 내부의 MongoDB 쓰기를 순차 실행하고 완료를 기다리며, 여러 인스턴스는 서로 겹치지 않는 batch를 병렬 처리한다. 상태 갱신은 claim UUID 소유권 조건으로 보호한다. lease 만료 경계의 MongoDB 중복 쓰기는 가능한 at-least-once 모델이며 현재 RDB 상태 재조회와 멱등 projection으로 수렴시킨다.
 
-초기 구현에는 `event_sequence`, projection key, advisory lock, 낙관적 락, 비관적 락을 추가하지 않는다. 기존 Outbox row 저장은 원본 변경과 같은 request transaction에서 동기 수행하지만, MongoDB 반영과 RDB 현재 상태 batch 재조회는 response 반환 이후 worker가 비동기로 수행한다.
+초기 구현에는 `event_sequence`, projection key, advisory lock, 낙관적 락을 추가하지 않는다. worker의 짧은 claim transaction에만 `FOR UPDATE SKIP LOCKED`를 사용하고 MongoDB 반영 중에는 RDB row lock을 유지하지 않는다. 기존 Outbox row 저장은 원본 변경과 같은 request transaction에서 동기 수행하지만, MongoDB 반영과 RDB 현재 상태 batch 재조회는 response 반환 이후 worker가 비동기로 수행한다.
 
 따라서 사용자 물리삭제 payload의 영향 ID는 수집 transaction이 관찰한 snapshot이며, 수집과 연관 row 삭제 사이에 commit된 관계까지 포함하는 전체 목록을 보장하지 않는다. worker는 이 목록을 유일한 cleanup 근거로 사용하지 않고 `aggregate_id`의 사용자 활동 제거, actor와 source row 존재 여부 재확인과 함께 cleanup 후보로 사용한다. 이 경쟁 조건은 producer 락 없이 운영하는 초기 정책의 제한이며 후속 worker 동시성 검증에 포함한다.
 

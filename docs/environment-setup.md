@@ -77,6 +77,11 @@ MongoDB 컨테이너는 관리 전용 root 계정과 애플리케이션 전용 �
 ```properties
 MONEW_MONGODB_ENABLED=true
 MONEW_MONGODB_INITIALIZE_INDEXES=true
+MONEW_MONGODB_WORKER_ENABLED=false
+MONEW_MONGODB_WORKER_FIXED_DELAY_MS=1000
+MONEW_MONGODB_WORKER_BATCH_SIZE=100
+MONEW_MONGODB_WORKER_CLAIM_LEASE=5m
+MONEW_MONGODB_WORKER_HEARTBEAT_INTERVAL=1m
 MONEW_MONGODB_PORT=27017
 MONEW_MONGODB_DATABASE=monew
 MONEW_MONGODB_ROOT_USERNAME=<관리자-계정>
@@ -96,6 +101,10 @@ docker compose --env-file .env.dev ps mongodb
 ```
 
 `MONEW_MONGODB_ENABLED=true`이고 `MONEW_MONGODB_INITIALIZE_INDEXES=true`이면 애플리케이션 시작 시 `activity_histories`와 세 snapshot 컬렉션의 필수 인덱스를 멱등하게 확인하고 생성합니다. 테스트 profile에서는 MongoDB와 인덱스 초기화를 비활성화해 H2 기반 테스트를 유지합니다.
+
+Outbox worker는 `MONEW_MONGODB_ENABLED=true`와 `MONEW_MONGODB_WORKER_ENABLED=true`가 모두 설정된 경우에만 실행됩니다. 기본값은 비활성화입니다. 여러 애플리케이션 인스턴스에서 활성화하면 각 인스턴스가 PostgreSQL `FOR UPDATE SKIP LOCKED`로 서로 겹치지 않는 batch를 claim하고 병렬 처리합니다.
+
+`MONEW_MONGODB_WORKER_FIXED_DELAY_MS`는 polling 주기, `MONEW_MONGODB_WORKER_BATCH_SIZE`는 한 번에 claim할 최대 이벤트 수입니다. claim lease 기본값은 5분이며 1분 간격 heartbeat로 연장합니다. heartbeat 간격은 lease보다 짧아야 합니다. 처리 중단이나 인스턴스 종료로 heartbeat가 멈추면 lease 만료 후 다른 인스턴스가 이벤트를 회수합니다. 전달 보장은 at-least-once이므로 MongoDB projection은 멱등하게 유지합니다. 테스트 profile에서는 worker를 비활성화합니다.
 
 ### MongoDB 계정 변경과 개발 볼륨 재생성
 

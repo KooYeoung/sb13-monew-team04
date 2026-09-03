@@ -8,7 +8,7 @@
 
 MID4-125와 MID4-179 측정 결과 기준으로 RDB 인덱스 최적화 후 `GET /api/user-activities/{userId}`는 10m seed에서 `200 rps`까지 안정적으로 처리됐다. 당시에는 MongoDB 환경 구성부터 Outbox, projection 동기화, 삭제 전파, 장애 재처리 정책까지 배포 전에 추가할 만큼의 성능 병목이 확인되지 않았다.
 
-이후 MID4-135에서 후속 구현과 비교 검증을 위한 MongoDB 연결 설정, 로컬 Compose, 컬렉션 이름과 인덱스 초기화 기반을 준비했다. MID4-136에서는 RDB `outbox_events` 기본 테이블과 JPA 저장 모델을 추가했고, MID4-246에서 payload와 RDB 재조회 책임을 구분하는 수렴 정책을 확정했다. MID4-137에서는 사용자·관심사·기사·댓글 도메인의 변경 트랜잭션이 Outbox 이벤트를 함께 저장하도록 producer를 연동했다. MongoDB worker와 projection은 아직 없으므로 운영 조회 경로는 계속 RDB를 사용한다.
+이후 MID4-135에서 후속 구현과 비교 검증을 위한 MongoDB 연결 설정, 로컬 Compose, 컬렉션 이름과 인덱스 초기화 기반을 준비했다. MID4-136에서는 RDB `outbox_events` 기본 테이블과 JPA 저장 모델을 추가했고, MID4-246에서 payload와 RDB 재조회 책임을 구분하는 수렴 정책을 확정했다. MID4-137에서는 사용자·관심사·기사·댓글 도메인의 변경 트랜잭션이 Outbox 이벤트를 함께 저장하도록 producer를 연동했다. MID4-138에서는 Outbox worker와 RDB 현재 상태 batch 재조회, MongoDB projection writer를 추가했다. worker는 기본 비활성화 상태이며 운영 조회 경로는 계속 RDB를 사용한다.
 
 따라서 현재 판단은 MongoDB Read Model을 배포 범위에 포함하지 않고, RDB를 활동내역 조회의 기준 구현이자 Source of Truth로 유지하는 것이다. Redis도 활동내역 Read Model 저장소나 캐시로 적용하지 않는다.
 
@@ -23,9 +23,9 @@ MID4-125와 MID4-179 측정 결과 기준으로 RDB 인덱스 최적화 후 `GET
 | RDB | Source of Truth로 유지 |
 | 배포 조회 경로 | RDB 최적화 상태 유지 |
 
-## MID4-137 이후 현재 구현 상태
+## MID4-138 이후 현재 구현 상태
 
-MID4-135부터 MID4-137까지의 작업은 MongoDB 적용 결론을 변경하지 않고, 후속 구현과 비교 검증에 필요한 환경, Outbox 저장 구조와 producer 연동을 단계적으로 추가했다.
+MID4-135부터 MID4-138까지의 작업은 MongoDB 적용 결론을 변경하지 않고, 후속 구현과 비교 검증에 필요한 환경, Outbox 저장 구조, producer와 비동기 projection을 단계적으로 추가했다.
 
 | 구분 | 현재 상태 |
 | --- | --- |
@@ -36,9 +36,12 @@ MID4-135부터 MID4-137까지의 작업은 MongoDB 적용 결론을 변경하지
 | Outbox 기본 저장 | PostgreSQL JSONB payload, 처리 상태와 retry 필드를 가진 `outbox_events`, JPA 엔티티와 repository 준비 |
 | Outbox producer | 20개 `OutboxEventType`, 도메인별 payload record와 writer를 추가하고 사용자·관심사·기사·댓글 변경 트랜잭션에 이벤트 저장 연동 |
 | 저장 계약 | 공통 envelope는 개별 컬럼, payload body는 JSONB로 저장하며 writer는 기존 트랜잭션에 필수 참여 |
-| 아직 구현하지 않은 범위 | MongoDB document/repository, RDB 현재 상태 batch 재조회 기반 projection writer와 Outbox worker, 삭제 전파, 조회 경로 전환, RDB/MongoDB 성능 비교 |
+| MongoDB 문서 | activity와 댓글·기사·관심사 snapshot 문서, 기존 활동내역 DTO 재구성에 필요한 원본 관계 ID와 표시값 정의 |
+| Outbox worker | `PENDING`과 재시도 시각이 지난 `FAILED`를 `SKIP LOCKED`와 lease로 batch claim하고 RDB 현재 상태를 조회해 atomic upsert, 숨김, cleanup 또는 no-op 처리 |
+| 실패 처리 | 1분, 5분, 15분, 1시간 retry 후 5회 실패 시 `DEAD_LETTER`; 이벤트별 상태 저장은 독립 트랜잭션으로 처리 |
+| 아직 구현하지 않은 범위 | count 이벤트 polling batch 병합, 복구·재노출 및 stale replay 심화 검증, 초기 투영, MongoDB 조회 경로 전환, 운영 재처리 |
 
-따라서 현재 API는 계속 RDB를 조회하지만, MID4-137에서 연동한 쓰기 요청은 원본 변경과 같은 RDB 트랜잭션에 Outbox row를 생성한다. 이 저장은 요청 처리 중 동기 수행되고, 향후 worker가 담당할 MongoDB 반영만 비동기 범위다. MongoDB 인덱스 기반은 `MONEW_MONGODB_ENABLED=true`로 명시적으로 활성화한 환경에서만 초기화한다.
+따라서 현재 API는 계속 RDB를 조회하지만, MID4-137에서 연동한 쓰기 요청은 원본 변경과 같은 RDB 트랜잭션에 Outbox row를 생성한다. 이 저장은 요청 처리 중 동기 수행되고, MID4-138 worker의 MongoDB 반영은 response 반환 이후 비동기로 수행된다. 여러 인스턴스에서 worker를 활성화할 수 있으며, 각 실행은 batch UUID와 lease를 원자적으로 기록해 서로 다른 이벤트를 병렬 처리한다. MongoDB와 RDB 상태 변경은 하나의 트랜잭션이 아니므로 전달 보장은 at-least-once이고 projection은 멱등하게 유지한다.
 
 ## k6 측정 해석 범위
 

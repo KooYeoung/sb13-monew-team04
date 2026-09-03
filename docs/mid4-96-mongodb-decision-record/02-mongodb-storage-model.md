@@ -48,6 +48,7 @@ comment_activity_snapshots = 1개
 
 ```json
 {
+  "sourceActivityId": "rdb-relation-uuid",
   "userId": "user-uuid",
   "type": "ARTICLE_VIEWED",
   "targetType": "ARTICLE",
@@ -65,6 +66,10 @@ comment_activity_snapshots = 1개
 필드 의미는 다음과 같다.
 
 ```text
+sourceActivityId
+-> 기존 RDB 활동내역 응답의 id 계약을 유지하기 위한 구독, 댓글, 좋아요 또는 조회 row ID
+-> MongoDB 문서의 `_id`와 별도로 저장하고 현재 관계 row가 바뀌면 갱신한다.
+
 userId
 -> 활동을 한 사용자
 
@@ -116,7 +121,9 @@ hiddenByTargetId
 
 한 activity가 이미 `visible=false`이면 다른 논리삭제 또는 비노출 이벤트가 `hiddenByTargetType`, `hiddenByTargetId`를 덮어쓰지 않을 수 있다. 따라서 이 한 쌍만으로 복구 가능 여부를 판단하지 않고, 복구 시 `targetType`, `targetId`, `parentTargetType`, `parentTargetId`로 후보를 찾은 뒤 RDB 현재 상태를 다시 계산한다.
 
-MID4-135에서는 document와 repository를 구현하지 않고, 아래 컬렉션 이름과 인덱스 정의만 후속 구현 계약으로 코드에 반영했다. `monew.mongodb.enabled=true`이고 인덱스 초기화가 활성화된 경우에만 애플리케이션 시작 시 멱등하게 생성한다.
+MID4-135에서는 아래 컬렉션 이름과 인덱스 정의만 후속 구현 계약으로 코드에 반영했다. MID4-138에서 document와 `MongoTemplate` 기반 projection writer를 구현했다. `monew.mongodb.enabled=true`이고 인덱스 초기화가 활성화된 경우에만 애플리케이션 시작 시 인덱스를 멱등하게 생성한다.
+
+RDB UUID는 MongoDB 문서에서 canonical 문자열로 저장한다. MongoDB `_id`는 문서 자체의 식별자이고, 기존 활동내역 API의 id는 `sourceActivityId`에서 복원한다.
 
 `activity_histories`의 필수 및 권장 인덱스는 다음과 같다.
 
@@ -399,6 +406,9 @@ snapshot 컬렉션은 활동 대상이 화면에 표시될 때 필요한 최소 
 {
   "commentId": "comment-uuid",
   "articleId": "article-uuid",
+  "articleTitle": "뉴스 제목",
+  "authorUserId": "comment-author-uuid",
+  "authorNickname": "작성자",
   "content": "댓글 내용",
   "likeCount": 3,
   "visible": true,
@@ -415,6 +425,7 @@ snapshot 컬렉션은 활동 대상이 화면에 표시될 때 필요한 최소 
   "title": "뉴스 제목",
   "summary": "뉴스 요약",
   "source": "NAVER",
+  "sourceUrl": "https://example.com/article",
   "publishedAt": "2026-08-15T09:00:00",
   "viewCount": 10,
   "commentCount": 2,
@@ -449,7 +460,7 @@ interest_activity_snapshots
 -> interestId 기준 1개
 ```
 
-MID4-135에서 준비한 snapshot 인덱스는 다음과 같다. snapshot document 저장과 갱신은 아직 구현하지 않았다.
+MID4-135에서 준비한 snapshot 인덱스는 다음과 같다. MID4-138 worker는 대상 ID 기준 atomic upsert로 snapshot을 저장하고 갱신한다.
 
 ```js
 { commentId: 1 } // unique, ux_comment_activity_snapshots_comment_id

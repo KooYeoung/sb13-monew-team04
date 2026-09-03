@@ -1,5 +1,12 @@
 package com.codeit.sb13.monew.activity.outbox.domain;
 
+/**
+ * worker가 역직렬화와 projection 처리 방식을 선택할 때 사용하는 이벤트 종류다.
+ *
+ * <p>값은 PostgreSQL {@code event_type}에 문자열로 저장되며,
+ * {@link com.codeit.sb13.monew.activity.outbox.worker.OutboxEventDecoder}가 각 값에
+ * 대응하는 payload record를 결정한다.</p>
+ */
 public enum OutboxEventType {
     INTEREST_SUBSCRIBED,
     INTEREST_UNSUBSCRIBED,
