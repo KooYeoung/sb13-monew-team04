@@ -73,6 +73,8 @@ response 반환 이후
 
 MongoDB 문서, RDB 현재 상태 batch 재조회, projection writer와 Outbox worker는 구현됐지만 기본 비활성화 상태다. 현재 조회 API는 계속 RDB를 사용하며 MongoDB 조회 전환은 MID4-139 범위다. MID4-138의 네 가지 count 이벤트는 row별로 현재값을 반영하고, 같은 polling batch의 중복 신호 병합은 MID4-247에서 구현한다.
 
+여기서 비동기는 사용자 request transaction과 worker 실행 시점이 분리된다는 의미다. worker 내부에서는 RDB 조회와 `MongoTemplate` 명령을 blocking 방식으로 순차 실행하고 각 결과를 확인한 뒤 Outbox 상태를 저장한다.
+
 Outbox 적용에 따른 쓰기 API response 영향은 추정하지 않고 테스트로 확인한다.
 
 기존 쓰기 흐름과 Outbox 적용 후 쓰기 흐름의 차이는 다음과 같다.
@@ -163,21 +165,40 @@ MongoDB 반영은 response 반환 이후 worker가 비동기로 수행하므로,
 
 카운트 집계값은 MongoDB 반영만을 위해 RDB counter를 바로 만들지 않고, 기본적으로 worker가 RDB에서 현재 집계값을 다시 조회해 MongoDB snapshot에 반영한다.
 
-같은 polling batch 안에서 count 집계 이벤트를 병합하면 `event_type + snapshot 대상 ID` 기준으로 그룹화한다. MongoDB snapshot 대상 ID 기준 upsert와 현재 집계값 `$set`이 성공한 뒤에만 선택된 그룹 row 전체를 `PROCESSED`로 변경한다. 반영 실패 시에는 선택된 row 각각의 `retry_count`를 1 증가시키고, 증가 후 `max_retry_count`에 도달한 row는 `DEAD_LETTER`, 아직 한도 미만인 row는 `FAILED`로 전환한다. 상태 저장 전 중단되면 기존 상태가 남아 그룹 전체가 재시도된다. 재시도는 대상 ID 기준 upsert와 `$set`으로 멱등하게 처리한다.
+MID4-138에서는 같은 polling batch의 count 대상 ID를 집합으로 모아 RDB 현재 집계값을 한 번에 조회하지만, MongoDB upsert와 Outbox 상태 전이는 이벤트 row별로 수행한다. `event_type + snapshot 대상 ID` 기준 병합, projection 1회 실행과 그룹 row 전체 상태 전이는 MID4-247의 후속 범위다.
+
+```text
+동일 batch에 ARTICLE_VIEW_COUNT_CHANGED(A1) 두 건 선택
+-> A1의 현재 viewCount를 batch query로 조회
+-> 첫 번째 row projection 및 PROCESSED
+-> 두 번째 row projection 및 PROCESSED
+-> 현재 구현에서는 두 row를 하나의 상태 전이 그룹으로 합치지 않음
+```
 
 사용자가 같은 대상에 대해 같은 종류의 활동을 반복하면 activity를 계속 추가하지 않고 `userId + type + targetType + targetId` 기준으로 기존 activity를 upsert한다.
 
-MID4-135에서 이 natural key의 unique index는 준비했다. 후속 worker는 atomic upsert를 구현해 같은 outbox 이벤트가 재처리되거나 동일 활동 이벤트가 중복 발행되어도 activity가 중복 생성되지 않도록 보장한다.
+MID4-135에서 이 natural key의 unique index를 준비했고 MID4-138 worker가 atomic upsert를 구현했다. 같은 outbox 이벤트가 재처리되거나 동일 활동 이벤트가 중복 발행되어도 activity가 중복 생성되지 않도록 보장한다.
 
 natural key와 atomic upsert는 중복 문서 방지 계약이다. activity의 `visible`, `status`, `occurredAt` 같은 mutable 상태는 payload의 과거 상태를 그대로 반영하지 않고 worker가 좋아요·구독 관계, actor 사용자의 존재·논리삭제 상태, 원본과 부모 대상의 존재 및 노출 여부를 RDB에서 다시 조회해 계산한다. 삭제된 actor의 지연 이벤트는 새 activity를 만들지 않고 기존 `USER_DELETED` 상태를 유지한다.
 
 같은 polling batch의 RDB 조회는 commentId, articleId, interestId, userId 같은 대상 ID 집합으로 묶는다. 중복 이벤트나 실패 후 재시도, transaction commit 순서와 worker 처리 순서의 역전이 발생해도 각 처리는 당시의 RDB 현재 상태를 반영하며, 나중에 commit된 transaction의 이벤트가 최종 상태를 다시 반영한다. `occurredAt`은 현재 관계 row의 시각 또는 검증된 불변 이벤트 시각을 사용하고 `$max` 또는 동등한 단조 조건을 적용한다.
 
-각 worker는 claim한 batch 내부의 MongoDB 쓰기를 순차 실행하고 완료를 기다리며, 여러 인스턴스는 서로 겹치지 않는 batch를 병렬 처리한다. 상태 갱신은 claim UUID 소유권 조건으로 보호한다. lease 만료 경계의 MongoDB 중복 쓰기는 가능한 at-least-once 모델이며 현재 RDB 상태 재조회와 멱등 projection으로 수렴시킨다.
+각 worker는 claim한 batch 내부의 MongoDB 쓰기를 순차 실행하고 완료를 기다리며, 여러 인스턴스는 서로 겹치지 않는 이벤트 row batch를 병렬 처리한다. 상태 갱신은 claim UUID 소유권 조건으로 보호하고 lease 만료 경계의 MongoDB 중복 쓰기는 natural key와 atomic upsert로 중복 생성을 막는다.
 
-초기 구현에는 `event_sequence`, projection key, advisory lock, 낙관적 락을 추가하지 않는다. worker의 짧은 claim transaction에만 `FOR UPDATE SKIP LOCKED`를 사용하고 MongoDB 반영 중에는 RDB row lock을 유지하지 않는다. 기존 Outbox row 저장은 원본 변경과 같은 request transaction에서 동기 수행하지만, MongoDB 반영과 RDB 현재 상태 batch 재조회는 response 반환 이후 worker가 비동기로 수행한다.
+다만 서로 다른 batch가 같은 target의 이벤트를 포함할 수 있으므로 claim은 target별 projection을 직렬화하지 않는다. `$max`가 보호하는 `occurredAt`과 달리 `visible`, `status`, snapshot 표시값은 순서 guard 없는 `$set`이므로, 두 worker가 서로 다른 시점의 RDB 결과를 조회하고 역순으로 저장하면 stale 값이 마지막에 남을 수 있다. MID4-138의 다중 인스턴스 지원은 이벤트 소유권과 재처리 안전성을 의미하며 동일 target concurrent write의 완전한 수렴 보장을 의미하지 않는다.
 
-따라서 사용자 물리삭제 payload의 영향 ID는 수집 transaction이 관찰한 snapshot이며, 수집과 연관 row 삭제 사이에 commit된 관계까지 포함하는 전체 목록을 보장하지 않는다. worker는 이 목록을 유일한 cleanup 근거로 사용하지 않고 `aggregate_id`의 사용자 활동 제거, actor와 source row 존재 여부 재확인과 함께 cleanup 후보로 사용한다. 이 경쟁 조건은 producer 락 없이 운영하는 초기 정책의 제한이며 후속 worker 동시성 검증에 포함한다.
+```text
+W1: 댓글 C1의 이전 상태 조회
+W2: 댓글 C1의 최신 상태 조회 및 MongoDB 반영
+W1: 이전 상태를 나중에 MongoDB 반영
+-> natural key 중복은 없음
+-> occurredAt은 역행하지 않음
+-> content, visible, status는 이전 값으로 회귀할 수 있음
+```
+
+초기 구현에는 `event_sequence`, projection key, advisory lock, 낙관적 락, target별 직렬화와 fencing token을 추가하지 않는다. worker의 짧은 claim transaction에만 `FOR UPDATE SKIP LOCKED`를 사용하고 MongoDB 반영 중에는 RDB row lock을 유지하지 않는다. 기존 Outbox row 저장은 원본 변경과 같은 request transaction에서 동기 수행하지만, MongoDB 반영과 RDB 현재 상태 batch 재조회는 response 반환 이후 worker가 별도 thread에서 blocking 방식으로 수행한다.
+
+따라서 사용자 물리삭제 payload의 영향 ID는 수집 transaction이 관찰한 snapshot이며, 수집과 연관 row 삭제 사이에 commit된 관계까지 포함하는 전체 목록을 보장하지 않는다. worker는 이 목록을 유일한 cleanup 근거로 사용하지 않고 `aggregate_id`의 사용자 활동 제거, actor와 source row 존재 여부 재확인과 함께 cleanup 후보로 사용한다. 이 경쟁 조건은 producer 락 없이 운영하는 초기 정책의 제한이며 후속 stale replay 동시성 검증 범위로 남긴다.
 
 댓글 내용, 기사 제목/요약/게시일, 관심사 키워드, count 집계값처럼 나중 이벤트로 바뀔 수 있는 snapshot 필드는 오래된 payload로 덮어쓰지 않고, worker 처리 시점의 RDB 현재값을 조회해 반영한다.
 

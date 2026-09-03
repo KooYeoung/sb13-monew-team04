@@ -39,9 +39,12 @@ MID4-135부터 MID4-138까지의 작업은 MongoDB 적용 결론을 변경하지
 | MongoDB 문서 | activity와 댓글·기사·관심사 snapshot 문서, 기존 활동내역 DTO 재구성에 필요한 원본 관계 ID와 표시값 정의 |
 | Outbox worker | `PENDING`과 재시도 시각이 지난 `FAILED`를 `SKIP LOCKED`와 lease로 batch claim하고 RDB 현재 상태를 조회해 atomic upsert, 숨김, cleanup 또는 no-op 처리 |
 | 실패 처리 | 1분, 5분, 15분, 1시간 retry 후 5회 실패 시 `DEAD_LETTER`; 이벤트별 상태 저장은 독립 트랜잭션으로 처리 |
-| 아직 구현하지 않은 범위 | count 이벤트 polling batch 병합, 복구·재노출 및 stale replay 심화 검증, 초기 투영, MongoDB 조회 경로 전환, 운영 재처리 |
+| 다중 인스턴스 제한 | event row claim과 상태 갱신 소유권은 보호하지만 서로 다른 batch의 동일 target projection은 직렬화하지 않음 |
+| 아직 구현하지 않은 범위 | 동일 target 순서 보호, count 이벤트 polling batch 병합, 복구·재노출 및 stale replay 심화 검증, 초기 투영, MongoDB 조회 경로 전환, 운영 재처리 |
 
-따라서 현재 API는 계속 RDB를 조회하지만, MID4-137에서 연동한 쓰기 요청은 원본 변경과 같은 RDB 트랜잭션에 Outbox row를 생성한다. 이 저장은 요청 처리 중 동기 수행되고, MID4-138 worker의 MongoDB 반영은 response 반환 이후 비동기로 수행된다. 여러 인스턴스에서 worker를 활성화할 수 있으며, 각 실행은 batch UUID와 lease를 원자적으로 기록해 서로 다른 이벤트를 병렬 처리한다. MongoDB와 RDB 상태 변경은 하나의 트랜잭션이 아니므로 전달 보장은 at-least-once이고 projection은 멱등하게 유지한다.
+따라서 현재 API는 계속 RDB를 조회하지만, MID4-137에서 연동한 쓰기 요청은 원본 변경과 같은 RDB 트랜잭션에 Outbox row를 생성한다. 이 저장은 요청 처리 중 동기 수행되고, MID4-138 worker의 MongoDB 반영은 response 반환 이후 별도 thread에서 blocking 방식으로 수행된다. 여러 인스턴스에서 worker를 활성화할 수 있으며, 각 실행은 batch UUID와 lease를 원자적으로 기록해 서로 다른 이벤트 row를 병렬 처리한다.
+
+MongoDB와 RDB 상태 변경은 하나의 트랜잭션이 아니므로 전달 보장은 at-least-once다. natural key와 atomic upsert는 중복 문서를 막고 단일 worker의 재처리를 멱등하게 만들지만, 서로 다른 worker가 같은 target을 동시에 처리할 때 `$set` 필드의 stale overwrite까지 막지는 않는다. 이 제한은 [저장 모델의 동일 target 동시 처리 예시](./02-mongodb-storage-model.md#activity-생성-및-수정-기준)와 [Outbox worker 동시성 설명](./04-outbox-design.md#다중-worker-실행과-동일-target-제한)에 기록한다.
 
 ## k6 측정 해석 범위
 

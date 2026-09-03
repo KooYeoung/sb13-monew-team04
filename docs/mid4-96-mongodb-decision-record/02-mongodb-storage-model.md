@@ -123,6 +123,21 @@ hiddenByTargetId
 
 MID4-135에서는 아래 컬렉션 이름과 인덱스 정의만 후속 구현 계약으로 코드에 반영했다. MID4-138에서 document와 `MongoTemplate` 기반 projection writer를 구현했다. `monew.mongodb.enabled=true`이고 인덱스 초기화가 활성화된 경우에만 애플리케이션 시작 시 인덱스를 멱등하게 생성한다.
 
+Spring Data MongoDB의 repository 방식도 사용할 수 있지만 MID4-138 쓰기 경로는 `MongoTemplate`을 선택했다. activity 생성과 갱신을 나누기 위한 선행 조회 없이 natural key 조건에 `$setOnInsert`, `$set`, `$max`, `$unset`을 조합하고, 대상 또는 부모 ID 조건으로 여러 문서를 한 번에 숨기거나 제거해야 하기 때문이다. 이 쓰기 호출은 reactive/non-blocking API가 아니며 worker thread가 각 MongoDB 명령의 완료를 기다린다.
+
+```text
+MongoRepository save 방식
+-> 기존 문서 조회
+-> 애플리케이션에서 insert/update 판단
+-> 저장 사이에 경쟁 조건이 생길 수 있음
+
+MongoTemplate 방식
+-> natural key 조건의 단일 atomic upsert
+-> 최초 생성 필드는 $setOnInsert
+-> 변경 필드는 $set, occurredAt은 $max
+-> 숨김 원인은 $unset 또는 조건부 updateMulti로 처리
+```
+
 RDB UUID는 MongoDB 문서에서 canonical 문자열로 저장한다. MongoDB `_id`는 문서 자체의 식별자이고, 기존 활동내역 API의 id는 `sourceActivityId`에서 복원한다.
 
 `activity_histories`의 필수 및 권장 인덱스는 다음과 같다.
@@ -155,9 +170,9 @@ MongoDB 인덱스에서 숫자는 저장값이 아니라 인덱스 정렬 방향
 예: U1 + COMMENT_LIKED + COMMENT + C1
 ```
 
-MID4-135의 인덱스 초기화가 이 조합을 unique index로 생성한다. 후속 worker는 같은 outbox 이벤트를 재처리하거나 동일 활동 이벤트가 중복 발행되어도 이 natural key를 기준으로 하나의 activity만 유지해야 한다.
+MID4-135의 인덱스 초기화가 이 조합을 unique index로 생성한다. MID4-138 worker는 같은 outbox 이벤트를 재처리하거나 동일 활동 이벤트가 중복 발행되어도 이 natural key를 기준으로 하나의 activity만 유지한다.
 
-이 인덱스와 atomic upsert는 중복 문서 생성을 막기 위한 장치다. activity 상태의 정확성은 event payload의 과거 상태가 아니라 worker가 조회한 RDB 현재 상태를 반영해 보장한다.
+이 인덱스와 atomic upsert는 중복 문서 생성을 막기 위한 장치다. 단일 worker의 순차 처리와 재시도에서는 event payload의 과거 상태가 아니라 worker가 조회한 RDB 현재 상태를 반영해 activity 상태를 수렴시킨다. 여러 worker의 동일 target 동시 쓰기는 아래 별도 제한을 따른다.
 
 ```js
 { userId: 1, type: 1, visible: 1, occurredAt: -1, _id: -1 }
@@ -228,11 +243,26 @@ activity 상태 변경은 이벤트 종류만 보고 payload의 과거 상태를
 
 따라서 중복 이벤트, 실패 후 재시도, RDB transaction commit 순서와 worker 처리 순서의 역전이 발생해도 각 처리는 당시의 RDB 현재 상태를 반영한다. 두 transaction 사이에 worker가 실행되어 일시적인 중간 상태가 반영되더라도 나중에 commit된 transaction의 Outbox 이벤트가 다시 현재 상태를 조회하므로 최종 MongoDB Read Model은 RDB에 수렴한다.
 
-이 수렴 보장은 동일 대상의 두 RDB 조회 결과를 MongoDB에 동시에 쓰지 않는다는 조건을 포함한다. 초기 구현은 worker instance를 하나만 두고 polling batch의 대상별 MongoDB 쓰기를 순차 실행하며, 한 쓰기의 완료를 기다린 뒤 다음 대상을 처리한다. batch 내부 parallel stream, 비동기 fire-and-forget, 동일 대상 concurrent bulk write는 사용하지 않는다. 다중 worker 또는 병렬 writer를 도입하려면 대상별 직렬화나 RDB revision 기반 조건부 쓰기를 먼저 정의한다.
+이 수렴 설명은 동일 대상의 두 RDB 조회 결과가 MongoDB에 동시에 적용되지 않는 조건에서 완전하다. MID4-138은 한 worker의 claim batch 내부에서는 이벤트를 순차 처리하고 각 MongoDB 쓰기의 완료를 기다리지만, 여러 worker instance가 서로 다른 이벤트 row를 claim할 수 있다. claim은 이벤트 row의 소유권만 분리하므로 서로 다른 batch에 같은 target의 이벤트가 있으면 동일 target의 projection이 동시에 실행될 수 있다.
 
-worker는 `actor_user_id` 집합으로 사용자 존재 여부와 `deleted_at`도 batch 조회한다. actor가 논리삭제 또는 물리삭제된 활동 이벤트는 새 activity를 upsert하지 않으며, 기존 activity가 `USER_DELETED`이면 좋아요·구독·조회 관계가 남아 있어도 `ACTIVE`로 되돌리지 않는다. 후속 worker 테스트는 같은 대상을 서로 다른 시점에 조회한 두 결과가 MongoDB 쓰기 단계에서 interleaving되지 않는지와 사용자 삭제 후 지연 활동 이벤트가 `USER_DELETED`를 덮어쓰지 않는지를 포함한다.
+natural key unique index는 중복 문서 생성을 막고 `$max`는 `occurredAt`의 역행을 막지만, `visible`, `status`, snapshot 표시값처럼 `$set`으로 쓰는 필드에는 source version 또는 fencing 조건이 없다. 따라서 다중 instance에서 동일 target을 동시에 처리하는 경우 stale RDB 조회 결과가 나중에 저장되어 일부 mutable 필드가 일시적이거나 최종적으로 회귀할 수 있다.
 
-`occurredAt`은 최신 활동 정렬 기준이므로 역행하지 않게 처리한다. 좋아요, 구독, 기사 조회처럼 활동 시각을 갱신하는 이벤트는 `$max` 또는 동등한 단조성 조건으로만 `occurredAt`을 갱신한다. 취소, 삭제, 비노출, 복구 이벤트도 과거 이벤트가 최신 `occurredAt`을 낮추지 못하게 한다.
+```text
+W1: target=C1 이벤트 E1 claim -> RDB 상태 V1 조회
+W2: target=C1 이벤트 E2 claim -> RDB 상태 V2 조회
+W2: MongoDB에 V2 반영
+W1: MongoDB에 V1을 나중에 $set
+
+결과
+-> activity 중복은 생기지 않고 occurredAt도 낮아지지 않음
+-> 그러나 content, visible, status 같은 $set 필드는 V1으로 회귀할 수 있음
+```
+
+이 제한을 제거하려면 target별 직렬화, source version 조건부 갱신, fencing token 또는 동등한 순서 보호가 필요하다. 해당 장치는 MID4-138에 포함하지 않았으므로 여러 instance 활성화는 가능하지만 동일 target 동시 projection까지 정합성이 보장된다는 의미는 아니다.
+
+worker는 `actor_user_id` 집합으로 사용자 존재 여부와 `deleted_at`도 batch 조회한다. actor가 논리삭제 또는 물리삭제된 활동 이벤트는 새 activity를 upsert하지 않으며, 단일 worker의 순차 처리에서는 기존 activity가 `USER_DELETED`인 상태를 지연 이벤트가 `ACTIVE`로 되돌리지 않도록 현재 사용자 상태를 다시 확인한다. 동일 target 또는 동일 사용자를 서로 다른 worker가 동시에 처리하는 interleaving과 사용자 삭제 후 stale write 차단은 아직 심화 검증 및 순서 보호가 필요한 후속 범위다.
+
+`occurredAt`은 최신 활동 정렬 기준이므로 역행하지 않게 처리한다. 좋아요, 구독, 기사 조회처럼 활동 시각을 갱신하는 이벤트는 `$max` 또는 동등한 단조성 조건으로만 `occurredAt`을 갱신한다. 취소, 삭제와 비노출은 기존 `occurredAt`을 변경하지 않으며, 후속 복구 이벤트도 과거 시각으로 낮추지 않아야 한다.
 
 예시는 다음과 같다.
 
@@ -266,7 +296,7 @@ U1 + INTEREST_SUBSCRIBED + INTEREST + I1
 
 이미 같은 activity가 있으면 새로 만들지 않고 기존 문서를 갱신한다.
 
-기존 activity를 다시 노출하거나 대상 복구 이벤트를 처리할 때는 activity만 `ACTIVE`로 바꾸지 않는다. 먼저 RDB 기준 대상과 필요한 부모 대상이 현재 노출 가능한 상태인지 확인하고, 대상 snapshot을 RDB 현재 값으로 갱신해 `visible=true`를 보장한 뒤 activity를 복구한다. 대상이 아직 RDB에서 삭제 또는 비노출 상태이면 activity를 재활성화하지 않는다. `hiddenByTargetType`, `hiddenByTargetId`는 복구 성공 시에만 제거한다.
+아래 복구·재노출 흐름은 후속 설계다. MID4-138 이벤트 목록과 projection handler에는 별도 복구 이벤트 및 기존 `TARGET_DELETED` activity의 재활성화 처리가 포함되지 않는다. 후속 구현에서는 activity만 `ACTIVE`로 바꾸지 않고, 먼저 RDB 기준 대상과 필요한 부모 대상이 현재 노출 가능한 상태인지 확인한 뒤 snapshot과 activity를 함께 복구해야 한다. 대상이 아직 RDB에서 삭제 또는 비노출 상태이면 activity를 재활성화하지 않고 `hiddenByTargetType`, `hiddenByTargetId`는 복구 성공 시에만 제거한다.
 
 ```text
 댓글 C1 좋아요 취소
@@ -555,7 +585,10 @@ DTO 변경이 곧바로 MongoDB 스키마 변경을 강제하지 않도록, Mong
 ```json
 {
   "visible": false,
-  "deletedAt": "2026-08-15T12:00:00"
+  "status": "TARGET_DELETED",
+  "hiddenByTargetType": "ARTICLE",
+  "hiddenByTargetId": "article-uuid",
+  "updatedAt": "2026-08-15T12:00:00"
 }
 ```
 
@@ -621,7 +654,7 @@ INTEREST_SUBSCRIBED + 관심사 비노출
 -> status=USER_DELETED
 ```
 
-대상 복구 이벤트는 `hiddenByTargetType`, `hiddenByTargetId` 일치만으로 복구 후보를 제한하지 않는다. 복구 대상과 관련될 수 있는 `status=TARGET_DELETED` activity를 `targetType`, `targetId`, `parentTargetType`, `parentTargetId`로 찾고, RDB 기준 대상과 필요한 부모 대상에 남은 삭제, 비공개, 비노출 차단 원인이 없는 경우에만 복구한다. `CANCELED`, `UNSUBSCRIBED`, `USER_DELETED` 상태는 대상 복구 이벤트로 자동 복구하지 않는다.
+후속 복구 이벤트를 구현할 때는 `hiddenByTargetType`, `hiddenByTargetId` 일치만으로 복구 후보를 제한하지 않는다. 복구 대상과 관련될 수 있는 `status=TARGET_DELETED` activity를 `targetType`, `targetId`, `parentTargetType`, `parentTargetId`로 찾고, RDB 기준 대상과 필요한 부모 대상에 남은 삭제, 비공개, 비노출 차단 원인이 없는 경우에만 복구한다. `CANCELED`, `UNSUBSCRIBED`, `USER_DELETED` 상태는 대상 복구 이벤트로 자동 복구하지 않는다.
 
 ## 물리삭제 처리
 
@@ -643,7 +676,7 @@ INTEREST_SUBSCRIBED + 관심사 비노출
 
 물리삭제 이후에는 복구를 고려하지 않는다. 복구 가능성은 논리삭제 상태에서만 유지한다.
 
-물리삭제 이후 지연 이벤트나 재처리 이벤트가 도착했을 때의 재생성 차단 기준은 RDB source row 존재 여부다. worker는 upsert 전에 원본 사용자, 기사, 댓글, 관심사 등 필요한 source row가 존재하고 노출 가능한지 확인하며, source row가 없으면 payload만으로 MongoDB 문서를 다시 만들지 않고 no-op 처리한다.
+물리삭제 이후 지연 이벤트나 재처리 이벤트가 도착했을 때의 재생성 차단 기준은 RDB source row 존재 여부다. worker는 upsert 전에 원본 사용자, 기사, 댓글, 관심사 등 필요한 source row가 존재하고 노출 가능한지 확인한다. source row가 없으면 payload만으로 MongoDB 문서를 다시 만들지 않고 이벤트 종류에 맞는 기존 문서 cleanup을 시도하며, 이미 제거된 상태라면 MongoDB 작업은 no-op이 된다.
 
 추천 인덱스 예시는 다음과 같다.
 

@@ -68,6 +68,9 @@ next_retry_at   TIMESTAMP NULL
 occurred_at     TIMESTAMP
 processed_at    TIMESTAMP NULL
 last_error      TEXT NULL
+claim_id        UUID NULL
+claimed_at      TIMESTAMP NULL
+claim_until     TIMESTAMP NULL
 created_at      TIMESTAMP
 updated_at      TIMESTAMP
 ```
@@ -100,7 +103,7 @@ MID4-246은 Outbox 테이블 컬럼이나 애플리케이션 코드를 추가하
 
 초기 구현에는 `event_sequence`, projection key, advisory lock, 낙관적 락을 추가하지 않는다. DB sequence는 값 할당 순서와 transaction commit 순서가 일치하지 않으므로, 정확한 순서 guard로 쓰려면 producer 쓰기 경로를 직렬화해야 한다. 이 추가 락은 request transaction의 대기 시간과 DB connection 점유에 영향을 줄 수 있어 현재 범위에서 선택하지 않는다. 다중 consumer가 이벤트를 선점하는 짧은 transaction에만 PostgreSQL row lock인 `FOR UPDATE SKIP LOCKED`를 사용하고, MongoDB 처리 동안 RDB lock이나 transaction을 유지하지 않는다.
 
-대신 Outbox 이벤트를 MongoDB에 적용할 상태 snapshot이 아니라 현재 상태 재계산 신호로 취급한다. worker가 같은 batch의 대상 ID를 모아 RDB 현재 상태를 조회하고 이를 MongoDB에 멱등 반영하면, 이벤트 처리 순서가 바뀌어도 최종 상태는 RDB에 수렴한다.
+대신 Outbox 이벤트를 MongoDB에 적용할 상태 snapshot이 아니라 현재 상태 재계산 신호로 취급한다. 단일 worker의 순차 처리와 재시도에서는 같은 batch의 대상 ID를 모아 RDB 현재 상태를 조회하고 이를 MongoDB에 멱등 반영해, 이벤트 처리 순서가 바뀌어도 최종 상태를 RDB에 수렴시킨다. 여러 worker의 동일 target 동시 쓰기는 별도 순서 보호가 없으므로 아래 제한을 따른다.
 
 `source_version`은 바로 확정하지 않고 보류 컬럼으로 둔다.
 
@@ -226,7 +229,7 @@ MID4-137에서 저장하는 이벤트 계약은 다음과 같다. `aggregate_id`
 
 사용자 물리삭제 payload의 영향 ID 목록은 연관 row를 삭제하기 전에 수집하고 중복을 제거한, 해당 transaction이 수집 시점에 관찰한 불변 snapshot이다. 초기 구현은 producer 락을 사용하지 않으므로 수집 이후 연관 row 삭제 전에 다른 transaction이 commit한 관계까지 포함하는 선형화 가능한 전체 목록은 아니다. 이는 worker의 cleanup 후보 탐색에 사용하기 위한 정보이며, 삭제된 원본이나 MongoDB 문서를 복원하는 근거나 유일한 cleanup 대상 목록으로 사용하지 않는다.
 
-후속 worker는 `USER_HARD_DELETED`의 `aggregate_id`로 해당 사용자의 `activity_histories`를 제거하고, payload 영향 ID를 snapshot 제거와 count 재계산 후보로 사용한다. 사용자 물리삭제 이후 처리되는 활동 이벤트는 actor 사용자와 source row의 RDB 존재 여부를 다시 확인해 새 activity 또는 snapshot을 만들지 않는다. 수집과 삭제 사이의 동시 관계 쓰기로 payload에서 누락될 수 있는 대상은 worker 구현 시 동시성 시나리오로 검증하며, producer 락을 추가하지 않는 현재 정책의 제한으로 관리한다.
+MID4-138 worker는 `USER_HARD_DELETED`의 `aggregate_id`로 해당 사용자의 `activity_histories`를 제거하고, payload 영향 ID를 snapshot 제거와 count 재계산 후보로 사용한다. 사용자 물리삭제 이후 처리되는 활동 이벤트는 actor 사용자와 source row의 RDB 존재 여부를 다시 확인해 새 activity 또는 snapshot을 만들지 않는다. 수집과 삭제 사이의 동시 관계 쓰기로 payload에서 누락될 수 있는 대상은 producer 락을 추가하지 않은 현재 정책의 제한이며, 후속 stale replay 동시성 검증 범위로 남긴다.
 
 상태 전이는 애플리케이션 도메인 모델에서 검증한다. `PENDING`과 `FAILED`에서만 처리 성공, 처리 실패, `DEAD_LETTER` 전환을 허용하고, `PROCESSED`와 `DEAD_LETTER`는 일반 worker 처리에서 변경할 수 없는 종결 상태로 취급한다. 허용되지 않은 전이는 Outbox 전용 커스텀 예외로 거부하며 상태와 재시도 메타데이터를 변경하지 않는다. 이 규칙은 애플리케이션 계층에서 관리하고 DB `CHECK` 제약은 추가하지 않는다.
 
@@ -261,7 +264,23 @@ UUID는 순서 기준으로 사용하지 않는다. worker 조회와 처리 시�
 
 후속 구현 검증에는 cleanup 이후 삭제 전 `PENDING` 또는 `FAILED` 이벤트를 재처리해도 해당 activity와 snapshot 문서가 다시 생성되지 않는 시나리오를 포함한다.
 
-count 집계 이벤트를 batch 안에서 병합 처리하는 경우 상태 전이는 outbox row 단위가 아니라 선택된 그룹 row 전체에 적용한다. 그룹 기준은 현재 polling batch에서 선택된 row 중 같은 `event_type`과 같은 snapshot 대상 ID를 가진 row다.
+MID4-138에서는 count 이벤트도 다른 이벤트와 동일하게 row별 projection과 상태 전이를 수행한다. 같은 batch에서 같은 대상 ID가 반복되면 RDB count query는 ID 집합으로 묶이지만, MongoDB upsert와 `PROCESSED` 또는 실패 상태 저장은 이벤트 row마다 실행한다.
+
+```text
+E1: ARTICLE_VIEW_COUNT_CHANGED + articleId=A1
+E2: ARTICLE_VIEW_COUNT_CHANGED + articleId=A1
+
+MID4-138
+-> RDB article A1의 현재 count를 batch query로 조회
+-> E1 projection 후 E1을 PROCESSED
+-> E2 projection 후 E2를 PROCESSED
+
+MID4-247 후속 범위
+-> E1과 E2를 같은 그룹으로 병합
+-> MongoDB projection 1회 후 그룹 row 전체 상태 전이
+```
+
+count 집계 이벤트를 batch 안에서 병합 처리하는 후속 구현에서는 상태 전이를 outbox row 단위가 아니라 선택된 그룹 row 전체에 적용한다. 그룹 기준은 현재 polling batch에서 선택된 row 중 같은 `event_type`과 같은 snapshot 대상 ID를 가진 row다.
 
 ```text
 count 집계 이벤트 그룹 처리
@@ -293,7 +312,62 @@ max_retry_count = 5
 
 `DEAD_LETTER` 이벤트는 worker가 자동 재처리하지 않는다. 운영자가 `last_error`와 원본 데이터를 확인한 뒤 수동으로 상태를 `PENDING`으로 되돌리거나 별도 보정 작업으로 처리한다.
 
-MID4-136에서는 worker 조회 인덱스를 미리 추가하지 않는다. worker 구현 후 실제 polling query와 데이터 분포로 실행계획을 측정하고, 순차 조회나 retry 대상 조회가 병목으로 확인될 때 별도 티켓에서 인덱스를 결정한다.
+### MID4-138 실패 경계와 오류 코드
+
+worker는 모든 실패를 같은 방식으로 처리하지 않는다. MongoDB projection을 시작하지 못한 batch와 개별 이벤트 처리 실패, 상태 저장 실패를 구분한다.
+
+| 실패 단계 | MID4-138 동작 | claim 처리 |
+| --- | --- | --- |
+| claim transaction | 예외를 호출자에게 전파하며 transaction을 롤백한다. | 새 claim이 남지 않는다. |
+| heartbeat scheduler 등록 | 오류를 기록하고 batch 처리를 시작하지 않는다. | 즉시 release하며, release도 실패하면 lease 만료를 기다린다. |
+| payload decode | 해당 이벤트를 실패 처리하고 다음 이벤트 decode를 계속한다. | 실패 상태 저장 시 해당 row의 claim을 해제한다. |
+| RDB source batch 조회 | decode된 이벤트를 각각 실패 처리한다. | 상태 저장에 실패한 지점부터 처리를 중단하고 남은 claim은 만료시킨다. |
+| MongoDB projection | 해당 이벤트를 실패 처리하고 다음 이벤트를 계속한다. | 실패 상태 저장 시 해당 row의 claim을 해제한다. |
+| `PROCESSED` 또는 실패 상태 저장 | 새 이벤트 처리를 중단한다. | 종결하지 못한 row는 lease 만료 후 재선점될 수 있다. |
+| heartbeat 갱신 또는 소유권 확인 | 다음 처리 경계에서 batch 처리를 중단한다. | 남은 claim을 명시적으로 해제하지 않고 만료시킨다. |
+
+```text
+heartbeat 시작 실패
+-> OutboxHeartbeatStartException(OBX_007) 로그
+-> claim_id 기준 즉시 release 시도
+-> MongoDB projection 시작 안 함
+
+heartbeat DB 갱신 실패
+-> lease handle에 OBX_008 기록
+-> worker가 다음 decode/projection 경계에서 감지
+-> 새 이벤트 처리 중단
+-> 아직 종결하지 않은 row는 claim_until 만료 후 다른 worker가 회수
+
+MongoDB 반영 성공 후 PROCESSED 저장 실패
+-> MongoDB에는 변경이 반영됐지만 Outbox row는 미종결
+-> lease 만료 후 재처리될 수 있으므로 projection 멱등성 필요
+```
+
+`last_error`는 실패 예외의 단순 클래스 이름과 메시지를 저장하며 최대 4,000자로 자른다. 실패 상태 저장이 성공하면 `retry_count`를 증가시키고 claim 필드를 정리한다.
+
+| 코드 | 예외 | 발생 조건 | details |
+| --- | --- | --- | --- |
+| `OBX_003` | `OutboxPayloadDeserializationException` | JSON payload를 event type의 record로 복원하지 못함 | `payloadType` |
+| `OBX_004` | `OutboxClaimOwnershipLostException` | 상태 갱신 또는 heartbeat 대상 claim이 더 이상 없음 | `eventId`(선택), `claimId` |
+| `OBX_005` | `OutboxWorkerConfigurationException` | polling, batch, lease, heartbeat 설정이 유효하지 않음 | `property`, `rejectedValue`, `reason` |
+| `OBX_006` | `OutboxRetryPolicyException` | 한도를 소진한 retry count에 다음 지연시간을 요청함 | `currentRetryCount`, `maxRetryCount` |
+| `OBX_007` | `OutboxHeartbeatStartException` | heartbeat scheduler 등록 실패 | `claimId` |
+| `OBX_008` | `OutboxHeartbeatRenewException` | heartbeat DB 갱신 실패 | `claimId` |
+
+이 예외들은 worker 내부 상태 전이, 로그와 `last_error` 진단을 위한 계약이며 별도 Outbox HTTP endpoint의 응답 계약을 의미하지 않는다.
+
+```text
+payload decode 첫 실패 예시
+status=PENDING, retry_count=0
+-> status=FAILED, retry_count=1
+-> next_retry_at=failed_at+1분
+-> last_error="OutboxPayloadDeserializationException: Outbox 이벤트 payload 역직렬화에 실패했습니다."
+-> claim_id, claimed_at, claim_until=NULL
+```
+
+### Worker 조회 인덱스 정책
+
+MID4-138에서는 worker polling query용 인덱스를 추가하지 않고 실행계획이나 성능 측정도 수행하지 않는다. 운영과 유사한 상태별 row 분포에서 polling이 실제 병목으로 확인되는 경우에만 별도 티켓에서 인덱스를 검토한다.
 
 ```text
 인덱스 후보
@@ -307,7 +381,21 @@ MID4-136에서는 worker 조회 인덱스를 미리 추가하지 않는다. work
 
 worker 조회 조건은 상태와 처리 가능 시각을 기준으로 두되, 측정 전에는 해당 컬럼 인덱스도 만들지 않는다. payload 내부 필드를 조회 조건으로 사용하지 않는 한 JSON path/index 역시 만들지 않는다.
 
-각 worker instance는 자신이 claim한 polling batch의 대상별 RDB 조회와 MongoDB 쓰기를 순차 실행하고, 각 MongoDB 쓰기 완료를 기다린 뒤 다음 대상을 처리한다. 서로 다른 인스턴스의 batch는 병렬 처리될 수 있다. 모든 성공·실패 상태 갱신은 `event_id + claim_id`가 일치할 때만 수행해 lease 만료 후 이전 worker가 새 소유자의 상태를 덮어쓰지 못하게 한다. lease 만료 경계의 MongoDB 중복 쓰기는 허용하는 at-least-once 모델이며, natural key와 현재 RDB 상태 기반 멱등 projection으로 수렴시킨다. fencing token과 삭제 tombstone은 현재 범위에 포함하지 않는다.
+### 다중 worker 실행과 동일 target 제한
+
+각 worker instance는 자신이 claim한 polling batch의 이벤트를 순차 실행하고, blocking 방식의 RDB 조회와 MongoDB 쓰기가 완료된 뒤 다음 이벤트를 처리한다. 요청 처리와는 분리된 비동기 worker지만 worker 내부 I/O가 reactive/non-blocking이라는 의미는 아니다. 서로 다른 인스턴스의 batch는 병렬 처리될 수 있다.
+
+모든 성공·실패 상태 갱신은 `event_id + claim_id`가 일치할 때만 수행해 lease 만료 후 이전 worker가 새 소유자의 Outbox 상태를 덮어쓰지 못하게 한다. 다만 서로 다른 이벤트 row가 같은 target을 참조할 수 있으므로 claim UUID는 target별 MongoDB 쓰기를 직렬화하지 않는다. natural key는 중복 문서를 막고 `$max`는 `occurredAt` 역행을 막지만, snapshot과 activity의 `$set` 필드에는 순서 guard가 없다.
+
+```text
+W1 batch: COMMENT_UPDATED C1 -> RDB에서 content="old" 조회
+W2 batch: COMMENT_UPDATED C1 -> RDB에서 content="new" 조회
+W2가 "new"를 먼저 $set
+W1이 "old"를 나중에 $set
+-> 문서 중복은 없지만 content는 old로 회귀할 수 있음
+```
+
+따라서 MID4-138은 이벤트 row 소유권과 at-least-once 재처리는 보호하지만, 다중 instance의 동일 target concurrent projection까지 완전한 수렴을 보장하지 않는다. target별 직렬화, source version, fencing token과 삭제 tombstone은 현재 범위에 포함하지 않는다.
 
 MID4-138 worker는 기본 비활성화한다. `MONEW_MONGODB_ENABLED=true`와 `MONEW_MONGODB_WORKER_ENABLED=true`를 설정한 여러 인스턴스에서 실행할 수 있다. polling 간격과 batch 크기는 각각 `MONEW_MONGODB_WORKER_FIXED_DELAY_MS`, `MONEW_MONGODB_WORKER_BATCH_SIZE`로 조정하고 초기 기본값은 1초와 100건이다. `MONEW_MONGODB_WORKER_CLAIM_LEASE` 기본값은 5분, `MONEW_MONGODB_WORKER_HEARTBEAT_INTERVAL` 기본값은 1분이며 heartbeat 간격은 lease보다 짧아야 한다.
 
@@ -343,7 +431,7 @@ actor 사용자 논리삭제 또는 물리삭제
 -> 기존 activity가 있으면 visible=false, status=USER_DELETED 유지
 ```
 
-구독도 같은 방식으로 현재 구독 row와 관심사 노출 상태를 조회한다. 댓글 작성, 기사 조회, 대상 수정·삭제·복구 이벤트도 source row와 부모 대상의 현재 상태를 조회해 activity와 snapshot을 계산한다.
+구독도 같은 방식으로 현재 구독 row와 관심사 노출 상태를 조회한다. 댓글 작성, 기사 조회와 대상 수정·삭제 이벤트도 source row와 부모 대상의 현재 상태를 조회해 activity와 snapshot을 계산한다. 복구·재노출 이벤트는 아직 구현하지 않았으며 후속 구현에서도 같은 현재 상태 재계산 원칙을 적용한다.
 
 같은 polling batch에서는 이벤트 row마다 같은 source를 반복 조회하지 않는다. event type을 처리 규칙으로 매핑한 뒤 실제 RDB 조회는 commentId, articleId, interestId, userId 같은 target ID 집합으로 묶는다. MongoDB 반영 성공 여부와 Outbox 상태 전이 규칙은 기존 batch 정책을 그대로 따른다.
 
@@ -361,7 +449,7 @@ T1 나중 commit
 
 worker가 두 commit 사이에 실행되면 일시적으로 먼저 commit된 상태가 반영될 수 있다. 하지만 나중 commit된 transaction에도 Outbox row가 있으므로 후속 처리에서 RDB 현재 상태를 다시 읽어 최종 상태로 수렴한다. 중복 처리와 재시도 역시 같은 계산을 반복하므로 멱등하다.
 
-후속 구현 검증에는 좋아요/취소, 구독/해제, 삭제/복구의 중복·재시도·commit 순서 역전과 삭제/재생성 시나리오를 포함한다. 서로 다른 worker의 claim batch가 겹치지 않는지, 만료된 claim이 회수되는지와 사용자 삭제 후 지연된 활동 이벤트가 `USER_DELETED` 상태를 덮어쓰지 않는지도 검증한다. 최종 MongoDB activity와 snapshot은 처리 이벤트의 순서가 아니라 RDB 기준 최종 상태와 일치해야 한다.
+MID4-138 테스트는 서로 다른 worker의 claim batch가 겹치지 않는지, 만료 claim 회수, 이전 claim UUID의 상태 갱신 차단, row별 retry와 heartbeat 갱신을 검증한다. 단일 worker 흐름에서는 지연된 좋아요 이벤트가 현재 관계 상태를 반영하는지와 삭제된 actor의 activity를 숨기는지도 검증한다. 서로 다른 worker가 같은 target을 동시에 projection하는 interleaving, 사용자 삭제와 stale activity upsert 경쟁, cleanup 이후 삭제 전 이벤트 재생성 차단은 아직 후속 심화 검증 범위다.
 
 ### Source Version 검토 기준
 
@@ -377,7 +465,7 @@ worker가 두 commit 사이에 실행되면 일시적으로 먼저 commit된 상
 - 낙관적 락 예외 처리를 프로젝트 범위에서 감당할 수 있는지
 ```
 
-초기 구현에서는 `source_version` 없이 Outbox 이벤트를 저장하고, 여러 worker가 `created_at, id` 기준으로 claim한 batch를 처리한다. activity와 snapshot의 mutable 상태는 대상 ID별 RDB 현재 상태 재조회로 보호한다.
+초기 구현에서는 `source_version` 없이 Outbox 이벤트를 저장하고, 여러 worker가 `created_at, id` 기준으로 claim한 batch를 처리한다. 대상 ID별 RDB 현재 상태 재조회는 payload의 오래된 표시값을 그대로 쓰는 문제를 줄이지만, 조회 이후 동일 target에 대한 다른 worker의 쓰기와 interleaving되는 경우까지 보호하지 않는다.
 
 다만 `source_version`이 없는 동안에도 재시도 중인 이전 이벤트가 최신 snapshot을 덮어쓰면 안 된다. 따라서 댓글 내용, 기사 제목/요약/게시일, 관심사 키워드, count 집계값처럼 나중 이벤트로 변경될 수 있는 snapshot 필드는 event payload의 표시값을 그대로 최종값으로 쓰지 않는다.
 
@@ -387,7 +475,7 @@ E1 처리 실패
 -> E1 재시도
 ```
 
-위 순서가 발생해도 worker는 E1 payload의 오래된 표시값을 덮어쓰지 않고, 처리 시점의 RDB 현재값을 다시 조회해 snapshot에 `$set`한다. 같은 aggregate의 후속 이벤트 보류나 `source_version` guard는 원본 엔티티 snapshot 필드 보호가 필요하고 엔티티 version 도입이 확정될 때 선택할 수 있는 대안으로 둔다.
+위 순서가 한 worker에서 순차 처리되면 E1 payload의 오래된 표시값을 덮어쓰지 않고, 처리 시점의 RDB 현재값을 다시 조회해 snapshot에 `$set`한다. 여러 worker가 같은 aggregate를 동시에 처리하면 앞서 설명한 stale write 경쟁이 남는다. 같은 aggregate의 후속 이벤트 보류나 `source_version` guard는 원본 엔티티 snapshot 필드 보호가 필요하고 엔티티 version 도입이 확정될 때 선택할 수 있는 대안으로 둔다.
 
 `DEAD_LETTER`로 전환된 이벤트를 수동 재처리할 때도 같은 기준을 적용한다. 즉, 재처리 이벤트는 payload에 있던 과거 표시값을 복원하지 않고, RDB 현재값 기준으로 MongoDB Read Model을 수렴시킨다.
 
