@@ -77,7 +77,9 @@ response 반환 이후
 -> 성공 시 PROCESSED, 실패 시 retry 또는 DEAD_LETTER
 ```
 
-MongoDB 문서, RDB 현재 상태 batch 재조회, projection writer와 Outbox worker는 구현됐지만 기본 비활성화 상태다. 현재 조회 API는 계속 RDB를 사용하며 MongoDB 조회 전환은 MID4-139 범위다. MID4-247은 네 가지 count 이벤트를 같은 polling batch의 `event_type + 대상 ID`로 묶어 최고 projection version으로 한 번 반영하고 그룹 전체 상태를 전이한다.
+MongoDB 문서, RDB 현재 상태 batch 재조회, projection writer와 Outbox worker는 구현됐지만 기본 비활성화 상태다. 현재 조회 API는 계속 RDB를 사용하며 MongoDB 조회 전환은 MID4-139 범위다. MID4-247은 네 가지 count 이벤트를 같은 polling batch의 `event_type + 대상 ID`로 묶어 최고 projection version으로 한 번 반영하고 그룹 전체 상태를 전이한다. MID4-248은 도메인별 물리삭제 cleanup과 낮은 버전의 `PENDING`·`FAILED`·in-flight stale replay가 높은 버전 tombstone을 덮지 못하는 경계를 실제 MongoDB 통합 테스트로 검증한다.
+
+동일 ID 복구·재노출은 아직 구현 범위가 아니다. 현재 RDB에는 이를 발생시키는 명령이 없으며, S3 기사 복원은 새 UUID로 기사를 생성한다. 향후 같은 ID 복구 동작이 추가되면 그 transaction에서 event type과 producer를 함께 추가하고, 대상과 부모의 RDB 현재 상태를 다시 확인한 뒤 snapshot과 activity를 복구해야 한다.
 
 여기서 비동기는 사용자 request transaction과 worker 실행 시점이 분리된다는 의미다. worker 내부에서는 RDB 조회와 `MongoTemplate` 명령을 blocking 방식으로 순차 실행하고 각 결과를 확인한 뒤 Outbox 상태를 저장한다.
 
@@ -212,11 +214,11 @@ W1: 이전 상태를 나중에 MongoDB 반영
 
 댓글 작성 또는 댓글 좋아요처럼 기사에 종속된 activity는 `parentTargetType=ARTICLE`, `parentTargetId=articleId`를 함께 저장한다. 기사 삭제 또는 비공개 처리 시 이 부모 식별자로 해당 기사에 속한 댓글 activity를 숨김 처리한다.
 
-좋아요 취소, 구독 해제, 사용자/기사/댓글 논리삭제, 관심사 비노출처럼 기존 활동내역에서 더 이상 노출되면 안 되는 이벤트가 발생하면 기존 activity를 삭제하지 않고 `visible=false`로 변경한다.
+좋아요 취소, 구독 해제와 사용자/기사/댓글 논리삭제처럼 기존 활동내역에서 더 이상 노출되면 안 되는 현재 이벤트는 기존 activity를 삭제하지 않고 `visible=false`로 변경한다. 현재 관심사는 별도 비노출 이벤트가 없고 제거 시 물리삭제 tombstone을 남긴다. 관심사 비노출은 후속 이벤트 후보에만 해당한다.
 
 논리삭제 이벤트는 기존에 `visible=true`인 activity만 숨김 처리한다. 이미 취소, 구독 해제, 다른 삭제 사유로 숨겨진 activity의 `status`는 덮어쓰지 않는다.
 
-`status`는 activity가 노출되는지와 별개로 현재 상태 또는 숨김 사유를 표현한다. 기본 상태는 `ACTIVE`이며, 좋아요 취소는 `CANCELED`, 구독 해제는 `UNSUBSCRIBED`, 기사/댓글 삭제, 기사 비공개, 관심사 비노출 처리는 `TARGET_DELETED`, 사용자 삭제 또는 탈퇴는 `USER_DELETED`로 둔다.
+`status`는 activity가 노출되는지와 별개로 현재 상태 또는 숨김 사유를 표현한다. 기본 상태는 `ACTIVE`이며, 좋아요 취소는 `CANCELED`, 구독 해제는 `UNSUBSCRIBED`, 기사/댓글 논리삭제와 기사 비공개 처리는 `TARGET_DELETED`, 사용자 삭제 또는 탈퇴는 `USER_DELETED`로 둔다. 후속 관심사 비노출 이벤트를 추가한다면 `TARGET_DELETED`를 적용한다.
 
 `TARGET_DELETED`로 숨긴 activity에는 `hiddenByTargetType`, `hiddenByTargetId`를 함께 저장해 어떤 대상의 삭제 또는 비노출 전파로 visible=true activity가 숨겨졌는지 기록한다. 이미 숨겨진 activity는 다른 삭제 사유로 이 값이 갱신되지 않을 수 있으므로, 대상 복구 이벤트는 `hiddenByTargetType`, `hiddenByTargetId` 일치만으로 복구 후보를 제한하지 않는다.
 

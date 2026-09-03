@@ -308,7 +308,7 @@ U1 + INTEREST_SUBSCRIBED + INTEREST + I1
 
 이미 같은 activity가 있으면 새로 만들지 않고 기존 문서를 갱신한다.
 
-아래 복구·재노출 흐름은 후속 설계다. MID4-138 이벤트 목록과 projection handler에는 별도 복구 이벤트 및 기존 `TARGET_DELETED` activity의 재활성화 처리가 포함되지 않는다. 후속 구현에서는 activity만 `ACTIVE`로 바꾸지 않고, 먼저 RDB 기준 대상과 필요한 부모 대상이 현재 노출 가능한 상태인지 확인한 뒤 snapshot과 activity를 함께 복구해야 한다. 대상이 아직 RDB에서 삭제 또는 비노출 상태이면 activity를 재활성화하지 않고 `hiddenByTargetType`, `hiddenByTargetId`는 복구 성공 시에만 제거한다.
+아래 복구·재노출 흐름은 후속 설계다. MID4-248 시점의 RDB에는 같은 ID 복구·재노출 동작이 없고, 이벤트 목록과 projection handler에도 별도 복구 이벤트 및 기존 `TARGET_DELETED` activity의 재활성화 처리가 포함되지 않는다. S3 기사 복원은 새 UUID를 발급하는 신규 기사 생성으로 처리한다. 후속 구현에서는 실제 RDB 복구 명령과 같은 transaction에 이벤트를 저장하고, activity만 `ACTIVE`로 바꾸지 않고 먼저 RDB 기준 대상과 필요한 부모 대상이 현재 노출 가능한 상태인지 확인한 뒤 snapshot과 activity를 함께 복구해야 한다. 대상이 아직 RDB에서 삭제 또는 비노출 상태이면 activity를 재활성화하지 않고 `hiddenByTargetType`, `hiddenByTargetId`는 복구 성공 시에만 제거한다.
 
 ```text
 댓글 C1 좋아요 취소
@@ -667,11 +667,6 @@ ARTICLE_VIEWED + 기사 삭제 또는 비공개
 -> status=TARGET_DELETED
 -> hiddenByTargetType=ARTICLE, hiddenByTargetId=articleId
 
-INTEREST_SUBSCRIBED + 관심사 비노출
--> visible=false
--> status=TARGET_DELETED
--> hiddenByTargetType=INTEREST, hiddenByTargetId=interestId
-
 사용자 U1 삭제 또는 탈퇴
 -> userId=U1, visible=true인 activity만 visible=false
 -> status=USER_DELETED
@@ -707,6 +702,10 @@ INTEREST_SUBSCRIBED + 관심사 비노출
 기사 A1 물리삭제
 -> articleId=A1 및 자식 comment snapshot의 결정적 _id에 scrubbed tombstone upsert
 -> 조회, 댓글 작성, 댓글 좋아요 activity key마다 scrubbed tombstone upsert
+
+관심사 I1 물리삭제
+-> interestId=I1의 결정적 snapshot _id에 scrubbed tombstone upsert
+-> 기존 구독 activity와 삭제 전에 수집한 구독 activity key마다 scrubbed tombstone upsert
 ```
 
 물리삭제 이후에는 복구를 고려하지 않는다. 복구 가능성은 논리삭제 상태에서만 유지한다.

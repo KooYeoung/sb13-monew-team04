@@ -119,6 +119,41 @@ class OutboxProjectionSourceReaderTest {
                 .isEqualTo(subscribe.getId());
     }
 
+    @Test
+    @DisplayName("부모 기사가 논리삭제되면 남아 있는 댓글 source를 비노출 상태로 읽는다")
+    void marksCommentInvisibleWhenParentArticleIsDeleted() {
+        User user = entityManager.persist(User.builder()
+                .email("deleted-parent@example.com")
+                .nickname("작성자")
+                .password("password")
+                .build());
+        Article article = entityManager.persist(Article.create(
+                "삭제된 기사",
+                "기사 요약",
+                "https://example.com/deleted-parent",
+                LocalDateTime.of(2026, 9, 3, 8, 0),
+                ArticleSource.NAVER
+        ));
+        Comment comment = entityManager.persist(Comment.builder()
+                .article(article)
+                .user(user)
+                .content("남아 있는 댓글")
+                .build());
+        article.softDelete();
+        entityManager.flush();
+
+        ProjectionSourceBatch source = sourceReader.read(List.of(event(
+                OutboxEventType.COMMENT_LIKED,
+                OutboxAggregateType.COMMENT,
+                comment.getId(),
+                user.getId(),
+                new CommentLikeOutboxPayload(article.getId(), OutboxEventAction.LIKED)
+        )));
+
+        assertThat(source.comments()).containsKey(comment.getId());
+        assertThat(source.comments().get(comment.getId()).visible()).isFalse();
+    }
+
     private DecodedOutboxEvent event(
             OutboxEventType eventType,
             OutboxAggregateType aggregateType,
