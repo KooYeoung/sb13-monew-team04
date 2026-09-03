@@ -35,6 +35,12 @@ monew:
   mongodb:
     enabled: false
     initialize-indexes: false
+    worker:
+      enabled: false
+      fixed-delay-ms: 1000
+      batch-size: 100
+      claim-lease: 5m
+      heartbeat-interval: 1m
   s3:
     bucket: monew-test-backup
     region: ap-northeast-2

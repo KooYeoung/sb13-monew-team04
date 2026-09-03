@@ -17,6 +17,8 @@ import org.springframework.data.domain.Sort.Direction;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.index.Index;
 import org.springframework.data.mongodb.core.index.IndexDefinition;
+import org.springframework.data.mongodb.core.index.PartialIndexFilter;
+import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -47,6 +49,7 @@ public class MongoReadModelIndexInitializer implements ApplicationRunner {
                         .on("targetType", Direction.ASC)
                         .on("targetId", Direction.ASC)
                         .unique()
+                        .partial(PartialIndexFilter.of(Criteria.where("tombstone").is(false)))
                         .named("ux_activity_histories_natural_key"),
                 new Index()
                         .on("userId", Direction.ASC)
@@ -76,16 +79,19 @@ public class MongoReadModelIndexInitializer implements ApplicationRunner {
         ));
         definitions.put(COMMENT_SNAPSHOTS, List.of(
                 new Index().on("commentId", Direction.ASC).unique()
+                        .partial(PartialIndexFilter.of(Criteria.where("tombstone").is(false)))
                         .named("ux_comment_activity_snapshots_comment_id"),
                 new Index().on("articleId", Direction.ASC).on("visible", Direction.ASC)
                         .named("idx_comment_activity_snapshots_article_visible")
         ));
         definitions.put(ARTICLE_SNAPSHOTS, List.of(
                 new Index().on("articleId", Direction.ASC).unique()
+                        .partial(PartialIndexFilter.of(Criteria.where("tombstone").is(false)))
                         .named("ux_article_activity_snapshots_article_id")
         ));
         definitions.put(INTEREST_SNAPSHOTS, List.of(
                 new Index().on("interestId", Direction.ASC).unique()
+                        .partial(PartialIndexFilter.of(Criteria.where("tombstone").is(false)))
                         .named("ux_interest_activity_snapshots_interest_id")
         ));
         return definitions;

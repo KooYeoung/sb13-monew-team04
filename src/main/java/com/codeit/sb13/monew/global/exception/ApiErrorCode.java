@@ -60,6 +60,41 @@ public enum ApiErrorCode {
             HttpStatus.INTERNAL_SERVER_ERROR,
             "Outbox 이벤트 payload 직렬화에 실패했습니다."
     ),
+    OUTBOX_PAYLOAD_DESERIALIZATION_FAILED(
+            "OBX_003",
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Outbox 이벤트 payload 역직렬화에 실패했습니다."
+    ),
+    OUTBOX_CLAIM_OWNERSHIP_LOST(
+            "OBX_004",
+            HttpStatus.CONFLICT,
+            "Outbox 이벤트 claim 소유권을 잃었습니다."
+    ),
+    OUTBOX_WORKER_CONFIGURATION_INVALID(
+            "OBX_005",
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Outbox worker 설정이 올바르지 않습니다."
+    ),
+    OUTBOX_RETRY_POLICY_INVALID(
+            "OBX_006",
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Outbox 재시도 정책을 적용할 수 없습니다."
+    ),
+    OUTBOX_HEARTBEAT_START_FAILED(
+            "OBX_007",
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Outbox claim heartbeat 시작에 실패했습니다."
+    ),
+    OUTBOX_HEARTBEAT_RENEW_FAILED(
+            "OBX_008",
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Outbox claim heartbeat 갱신에 실패했습니다."
+    ),
+    OUTBOX_PROJECTION_VERSION_ALLOCATION_FAILED(
+            "OBX_009",
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Outbox projection 버전을 발급하지 못했습니다."
+    ),
 
     // GLOBAL/COMMON GLB
     INVALID_REQUEST("GLB_001", HttpStatus.BAD_REQUEST, "요청 데이터가 올바르지 않습니다."),

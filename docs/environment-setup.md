@@ -77,6 +77,11 @@ MongoDB 컨테이너는 관리 전용 root 계정과 애플리케이션 전용 �
 ```properties
 MONEW_MONGODB_ENABLED=true
 MONEW_MONGODB_INITIALIZE_INDEXES=true
+MONEW_MONGODB_WORKER_ENABLED=false
+MONEW_MONGODB_WORKER_FIXED_DELAY_MS=1000
+MONEW_MONGODB_WORKER_BATCH_SIZE=100
+MONEW_MONGODB_WORKER_CLAIM_LEASE=5m
+MONEW_MONGODB_WORKER_HEARTBEAT_INTERVAL=1m
 MONEW_MONGODB_PORT=27017
 MONEW_MONGODB_DATABASE=monew
 MONEW_MONGODB_ROOT_USERNAME=<관리자-계정>
@@ -96,6 +101,29 @@ docker compose --env-file .env.dev ps mongodb
 ```
 
 `MONEW_MONGODB_ENABLED=true`이고 `MONEW_MONGODB_INITIALIZE_INDEXES=true`이면 애플리케이션 시작 시 `activity_histories`와 세 snapshot 컬렉션의 필수 인덱스를 멱등하게 확인하고 생성합니다. 테스트 profile에서는 MongoDB와 인덱스 초기화를 비활성화해 H2 기반 테스트를 유지합니다.
+
+Outbox worker는 `MONEW_MONGODB_ENABLED=true`와 `MONEW_MONGODB_WORKER_ENABLED=true`가 모두 설정된 경우에만 실행됩니다. 기본값은 비활성화입니다. 여러 애플리케이션 인스턴스에서 활성화하면 각 인스턴스가 PostgreSQL `FOR UPDATE SKIP LOCKED`로 서로 겹치지 않는 이벤트 row batch를 claim하고 병렬 처리합니다. 서로 다른 batch에 같은 target의 이벤트가 포함될 수 있지만 MongoDB 쓰기는 전역 `projectionVersion` CAS로 순서를 보호합니다.
+
+`MONEW_MONGODB_WORKER_FIXED_DELAY_MS`는 앞선 polling 실행이 끝난 뒤 다음 실행까지 기다리는 fixed delay이고, `MONEW_MONGODB_WORKER_BATCH_SIZE`는 한 번에 claim할 최대 이벤트 수입니다. claim lease 기본값은 5분이며 1분 간격 heartbeat로 연장합니다. heartbeat 간격은 lease보다 짧아야 합니다. 처리 중단이나 인스턴스 종료로 heartbeat가 멈추면 lease 만료 후 다른 인스턴스가 이벤트를 회수합니다. worker는 요청과 분리되어 실행되지만 내부 RDB 조회와 MongoDB 쓰기는 blocking 방식으로 순차 처리합니다. 테스트 profile에서는 worker를 비활성화합니다.
+
+```text
+인스턴스 A -> E1(target=C1, projectionVersion=41) claim
+인스턴스 B -> E2(target=C1, projectionVersion=42) claim
+인스턴스 B -> V42를 먼저 MongoDB에 반영
+인스턴스 A -> 저장 version < 41 조건이 불일치해 stale 성공(no-op)
+```
+
+`projectionVersion`은 요청 트랜잭션이 singleton `outbox_projection_clock` row를 `PESSIMISTIC_WRITE`로 잠근 뒤 증가시킵니다. 잠금은 원본 변경과 Outbox 저장이 commit될 때까지 유지되므로 발급 순서와 commit 순서가 일치하며, 요청 쓰기가 이 전역 잠금에서 잠시 대기할 수 있다는 비용이 있습니다. MongoDB는 natural key로 계산한 SHA-256 `_id`와 저장 버전이 없거나 더 작은 경우만 갱신합니다. 물리삭제도 식별 필드를 지운 tombstone을 남겨 과거 이벤트의 재생성을 차단합니다. 상세 내용은 [Outbox worker 동시성 설명](./mid4-96-mongodb-decision-record/04-outbox-design.md#다중-worker-실행과-projection-version-cas)을 따릅니다.
+
+이 스키마를 적용하면 기존 MongoDB 문서는 결정적 `_id`, `projectionVersion`, `tombstone` 계약과 호환되지 않습니다. 기존의 같은 이름인 non-partial natural-key 인덱스도 partial unique 인덱스로 제자리 변경할 수 없어, 그대로 두면 시작 시 `IndexOptionsConflict`가 발생합니다. 현재 Read Model은 기본 비활성화이고 운영 조회 경로에 사용하지 않으므로 온라인 변환이나 애플리케이션 시작 시 자동 인덱스 삭제는 제공하지 않습니다. 로컬에서는 아래 절차로 `mongodb-data` 볼륨을 재생성해 문서와 인덱스를 함께 초기화한 뒤 Read Model을 다시 투영합니다.
+
+CAS 도입 전에 생성된 Outbox 삭제 payload에는 삭제 전에만 알 수 있는 activity key와 자식 snapshot 영향 범위가 없습니다. 현재 저장소에는 pre-CAS Outbox를 안전하게 projection하는 처리 경로가 없고, 물리 삭제 후에는 RDB에서 영향 범위를 복원할 수도 없습니다. 따라서 local/dev에서는 CAS worker를 활성화하기 전에 `projection_version=0`인 pre-CAS Outbox row와 MongoDB Read Model을 함께 초기화합니다. 이 데이터는 복구할 수 없으므로 필요한 기록을 먼저 백업해야 합니다.
+
+```sql
+DELETE FROM outbox_events WHERE projection_version = 0;
+```
+
+운영 환경에서는 별도 데이터 마이그레이션과 초기 투영 절차가 마련되기 전까지 worker와 MongoDB 조회 경로를 활성화하지 않습니다. 전환이 끝나기 전에는 `MONEW_MONGODB_WORKER_ENABLED=false`를 유지합니다.
 
 ### MongoDB 계정 변경과 개발 볼륨 재생성
 

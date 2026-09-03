@@ -147,9 +147,9 @@ MongoDB Read Model용 데이터를 먼저 만들지 않는다. MongoDB 적용 �
 
 | 도메인 | 데이터 구성 | 기대 결과 |
 | --- | --- | --- |
-| 사용자 물리삭제 | 물리삭제 후보 사용자가 구독, 댓글 작성, 댓글 좋아요, 기사 조회 이력을 가짐 | 물리삭제 후 해당 userId의 MongoDB activity 문서 제거 |
-| 댓글 물리삭제 | 물리삭제 후보 댓글이 작성 댓글과 좋아요 댓글 이력에 포함됨 | 물리삭제 후 댓글 snapshot과 해당 commentId activity 제거 |
-| 기사 물리삭제 | 물리삭제 후보 기사가 조회 이력과 댓글 활동의 부모 기사로 사용됨 | 물리삭제 후 기사 snapshot, 기사 조회 activity, 해당 기사 하위 댓글 activity 제거 |
+| 사용자 물리삭제 | 물리삭제 후보 사용자가 구독, 댓글 작성, 댓글 좋아요, 기사 조회 이력을 가짐 | 물리삭제 후 해당 사용자 activity와 작성 댓글 snapshot이 scrubbed tombstone인지 확인 |
+| 댓글 물리삭제 | 물리삭제 후보 댓글이 작성 댓글과 좋아요 댓글 이력에 포함됨 | 물리삭제 후 댓글 snapshot과 해당 commentId activity가 scrubbed tombstone인지 확인 |
+| 기사 물리삭제 | 물리삭제 후보 기사가 조회 이력과 댓글 활동의 부모 기사로 사용됨 | 물리삭제 후 기사/자식 댓글 snapshot과 관련 activity가 scrubbed tombstone인지 확인 |
 
 ## 성능 검증용 데이터
 

@@ -10,6 +10,7 @@ import com.codeit.sb13.monew.activity.outbox.payload.CommentOutboxPayload;
 import com.codeit.sb13.monew.activity.outbox.payload.UserHardDeleteOutboxPayload;
 import com.codeit.sb13.monew.global.exception.ApiErrorCode;
 import com.codeit.sb13.monew.global.exception.outbox.OutboxPayloadSerializationException;
+import com.codeit.sb13.monew.global.exception.outbox.OutboxPayloadDeserializationException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -32,7 +33,7 @@ class OutboxPayloadSerializerTest {
         );
 
         JsonNode json = serializer.serialize(payload);
-        CommentOutboxPayload restored = objectMapper.treeToValue(json, CommentOutboxPayload.class);
+        CommentOutboxPayload restored = serializer.deserialize(json, CommentOutboxPayload.class);
 
         assertThat(restored).isEqualTo(payload);
         assertThat(json.has("eventId")).isFalse();
@@ -40,6 +41,25 @@ class OutboxPayloadSerializerTest {
         assertThat(json.has("aggregateId")).isFalse();
         assertThat(json.has("actorUserId")).isFalse();
         assertThat(json.has("occurredAt")).isFalse();
+    }
+
+    @Test
+    @DisplayName("payload 역직렬화 실패는 OBX_003 커스텀 예외로 변환한다")
+    void deserializationFailureUsesCustomException() throws Exception {
+        ObjectMapper objectMapper = mock(ObjectMapper.class);
+        OutboxPayloadSerializer serializer = new OutboxPayloadSerializer(objectMapper);
+        JsonNode payload = mock(JsonNode.class);
+        JacksonException cause = mock(JacksonException.class);
+        given(objectMapper.treeToValue(payload, CommentOutboxPayload.class)).willThrow(cause);
+
+        assertThatThrownBy(() -> serializer.deserialize(payload, CommentOutboxPayload.class))
+                .isInstanceOfSatisfying(OutboxPayloadDeserializationException.class, exception -> {
+                    assertThat(exception.getApiErrorCode())
+                            .isEqualTo(ApiErrorCode.OUTBOX_PAYLOAD_DESERIALIZATION_FAILED);
+                    assertThat(exception.getDetails())
+                            .isEqualTo(Map.of("payloadType", "CommentOutboxPayload"));
+                    assertThat(exception.getCause()).isSameAs(cause);
+                });
     }
 
     @Test

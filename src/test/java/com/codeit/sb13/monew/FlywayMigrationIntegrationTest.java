@@ -3,11 +3,19 @@ package com.codeit.sb13.monew;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxProjectionVersionAllocator;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * GitHub Actions workflow에서 PostgreSQL service와 함께 실행하는 Flyway 검증 테스트입니다.
@@ -28,6 +36,12 @@ class FlywayMigrationIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private OutboxProjectionVersionAllocator versionAllocator;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Test
     void flywayMigrationsAreApplied() {
@@ -87,6 +101,43 @@ class FlywayMigrationIntegrationTest {
                   and table_name = 'outbox_events'
                   and column_name = 'retry_count'
                 """);
+        var projectionVersionColumn = jdbcTemplate.queryForMap("""
+                select data_type, is_nullable, column_default
+                from information_schema.columns
+                where table_schema = current_schema()
+                  and table_name = 'outbox_events'
+                  and column_name = 'projection_version'
+                """);
+        var clockColumnTypes = jdbcTemplate.queryForMap("""
+                select
+                    max(case when column_name = 'id' then data_type end) as id_type,
+                    max(case when column_name = 'current_version' then data_type end)
+                        as version_type
+                from information_schema.columns
+                where table_schema = current_schema()
+                  and table_name = 'outbox_projection_clock'
+                """);
+        Long clockVersion = jdbcTemplate.queryForObject(
+                "select current_version from outbox_projection_clock where id = 1",
+                Long.class
+        );
+        Integer singletonCheckCount = jdbcTemplate.queryForObject("""
+                select count(*)
+                from information_schema.table_constraints
+                where table_schema = current_schema()
+                  and table_name = 'outbox_projection_clock'
+                  and constraint_type = 'CHECK'
+                  and constraint_name = 'ck_outbox_projection_clock_singleton'
+                """, Integer.class);
+        List<String> claimColumns = jdbcTemplate.queryForList("""
+                select column_name
+                from information_schema.columns
+                where table_schema = current_schema()
+                  and table_name = 'outbox_events'
+                  and column_name in ('claim_id', 'claimed_at', 'claim_until')
+                  and is_nullable = 'YES'
+                order by column_name
+                """, String.class);
         Long secondaryIndexCount = jdbcTemplate.queryForObject("""
                 select count(*)
                 from pg_indexes
@@ -101,6 +152,66 @@ class FlywayMigrationIntegrationTest {
         assertThat((String) statusColumn.get("column_default")).contains("PENDING");
         assertThat(retryCountColumn.get("is_nullable")).isEqualTo("NO");
         assertThat((String) retryCountColumn.get("column_default")).contains("0");
+        assertThat(projectionVersionColumn.get("data_type")).isEqualTo("bigint");
+        assertThat(projectionVersionColumn.get("is_nullable")).isEqualTo("NO");
+        assertThat(projectionVersionColumn.get("column_default")).isNull();
+        assertThat(clockColumnTypes.get("id_type")).isEqualTo("bigint");
+        assertThat(clockColumnTypes.get("version_type")).isEqualTo("bigint");
+        assertThat(clockVersion).isNotNull().isGreaterThanOrEqualTo(0L);
+        assertThat(singletonCheckCount).isZero();
+        assertThat(claimColumns).containsExactly("claim_id", "claim_until", "claimed_at");
         assertThat(secondaryIndexCount).isZero();
+    }
+
+    @Test
+    void projectionVersionAllocationIsSerializedUntilCommit() throws Exception {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        CountDownLatch firstAllocated = new CountDownLatch(1);
+        CountDownLatch allowFirstCommit = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Long> first = executor.submit(() -> transaction.execute(status -> {
+                long version = versionAllocator.allocate();
+                firstAllocated.countDown();
+                await(allowFirstCommit);
+                return version;
+            }));
+            assertThat(firstAllocated.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<Long> second = executor.submit(() ->
+                    transaction.execute(status -> versionAllocator.allocate()));
+            assertThat(second.isDone()).isFalse();
+
+            allowFirstCommit.countDown();
+            assertThat(second.get(5, TimeUnit.SECONDS))
+                    .isEqualTo(first.get(5, TimeUnit.SECONDS) + 1L);
+        } finally {
+            allowFirstCommit.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void rolledBackProjectionVersionCanBeAllocatedAgain() {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        Long rolledBack = transaction.execute(status -> {
+            long version = versionAllocator.allocate();
+            status.setRollbackOnly();
+            return version;
+        });
+        Long committed = transaction.execute(status -> versionAllocator.allocate());
+
+        assertThat(committed).isEqualTo(rolledBack);
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("동시성 테스트 신호를 기다리지 못했습니다.");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("동시성 테스트가 중단되었습니다.", e);
+        }
     }
 }

@@ -51,5 +51,9 @@ class UserHardDeleteOutboxIntegrationTest {
         assertThat(event.getPayloadJson().path("likedCommentIds").isArray()).isTrue();
         assertThat(event.getPayloadJson().path("viewedArticleIds").isArray()).isTrue();
         assertThat(event.getPayloadJson().path("subscribedInterestIds").isArray()).isTrue();
+        assertThat(event.getPayloadJson().path("impact").path("activityKeys").isArray()).isTrue();
+        assertThat(event.getPayloadJson().path("impact").path("commentSnapshotIds").isArray())
+                .isTrue();
+        assertThat(event.getProjectionVersion()).isPositive();
     }
 }

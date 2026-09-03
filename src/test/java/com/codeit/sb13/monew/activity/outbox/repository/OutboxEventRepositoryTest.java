@@ -48,7 +48,8 @@ class OutboxEventRepositoryTest {
                 aggregateId,
                 actorUserId,
                 payload,
-                occurredAt
+                occurredAt,
+                1L
         ));
         em.clear();
 
@@ -59,12 +60,16 @@ class OutboxEventRepositoryTest {
         assertThat(found.getAggregateId()).isEqualTo(aggregateId);
         assertThat(found.getActorUserId()).isEqualTo(actorUserId);
         assertThat(found.getPayloadJson()).isEqualTo(payload);
+        assertThat(found.getProjectionVersion()).isEqualTo(1L);
         assertThat(found.getStatus()).isEqualTo(OutboxEventStatus.PENDING);
         assertThat(found.getRetryCount()).isZero();
         assertThat(found.getOccurredAt()).isEqualTo(occurredAt);
         assertThat(found.getNextRetryAt()).isNull();
         assertThat(found.getProcessedAt()).isNull();
         assertThat(found.getLastError()).isNull();
+        assertThat(found.getClaimId()).isNull();
+        assertThat(found.getClaimedAt()).isNull();
+        assertThat(found.getClaimUntil()).isNull();
         assertThat(found.getCreatedAt()).isNotNull();
         assertThat(found.getUpdatedAt()).isNotNull();
     }
@@ -135,7 +140,8 @@ class OutboxEventRepositoryTest {
                 UUID.randomUUID(),
                 actorUserId,
                 JsonNodeFactory.instance.objectNode().put("viewed", true),
-                LocalDateTime.now()
+                LocalDateTime.now(),
+                1L
         );
     }
 }

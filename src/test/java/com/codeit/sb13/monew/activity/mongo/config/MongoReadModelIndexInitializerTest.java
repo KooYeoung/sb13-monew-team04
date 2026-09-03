@@ -39,6 +39,8 @@ class MongoReadModelIndexInitializerTest {
                 .append("targetType", 1)
                 .append("targetId", 1));
         assertThat(naturalKey.getIndexOptions().getBoolean("unique")).isTrue();
+        assertThat((Document) naturalKey.getIndexOptions().get("partialFilterExpression"))
+                .isEqualTo(new Document("tombstone", false));
     }
 
     @Test

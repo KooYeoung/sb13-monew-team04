@@ -23,7 +23,8 @@ MongoDB Read Model을 적용하면 RDB 원본 데이터의 변경을 MongoDB 조
 -> userId=deletedUserId, visible=true인 activity visible=false, status=USER_DELETED 처리
 
 사용자 물리삭제
--> userId=deletedUserId인 activity_histories 문서 제거
+-> userId=deletedUserId인 기존 activity와 삭제 전 수집한 activity key를 scrubbed tombstone 처리
+-> 작성 댓글 snapshot도 scrubbed tombstone 처리
 
 댓글 논리삭제
 -> targetType=COMMENT, targetId=commentId, visible=true인 activity visible=false, status=TARGET_DELETED 처리
@@ -31,8 +32,8 @@ MongoDB Read Model을 적용하면 RDB 원본 데이터의 변경을 MongoDB 조
 -> comment snapshot visible=false 처리
 
 댓글 물리삭제
--> comment snapshot 제거
--> targetType=COMMENT, targetId=commentId인 activity_histories 문서 제거
+-> comment snapshot을 scrubbed tombstone 처리
+-> targetType=COMMENT, targetId=commentId인 activity key를 scrubbed tombstone 처리
 
 기사 논리삭제
 -> targetType=ARTICLE, targetId=articleId, visible=true인 activity visible=false, status=TARGET_DELETED 처리
@@ -42,12 +43,11 @@ MongoDB Read Model을 적용하면 RDB 원본 데이터의 변경을 MongoDB 조
 -> article snapshot visible=false 처리
 
 기사 물리삭제
--> article snapshot 제거
--> targetType=ARTICLE, targetId=articleId인 activity_histories 문서 제거
--> targetType=COMMENT, parentTargetType=ARTICLE, parentTargetId=articleId인 activity_histories 문서 제거
+-> article과 자식 comment snapshot을 scrubbed tombstone 처리
+-> 조회, 댓글 작성, 댓글 좋아요 activity key를 scrubbed tombstone 처리
 ```
 
-물리삭제 이후에는 복구를 고려하지 않는다. 삭제 전 `PENDING` 또는 재시도 가능한 `FAILED` 이벤트가 나중에 처리되더라도, worker는 activity 또는 snapshot upsert 전에 RDB 현재 상태를 확인한다. source row가 없으면 payload만으로 MongoDB 문서를 재생성하지 않고 no-op 처리한다.
+물리삭제 이후에는 복구를 고려하지 않는다. 삭제 전 `PENDING` 또는 재시도 가능한 `FAILED` 이벤트가 나중에 처리되더라도, worker는 RDB 현재 상태와 결정적 `_id`의 더 높은 `projectionVersion` tombstone을 확인한다. stale 이벤트는 MongoDB 문서를 재생성하지 않고 no-op 처리한다.
 
 ## Payload와 RDB 재조회 기준
 
@@ -59,7 +59,7 @@ Outbox의 공통 envelope는 row의 `id`, `event_type`, `aggregate_type`, `aggre
 | 관심사·기사·사용자 변경 | `action` | 현재 표시값과 노출 상태 | snapshot을 복원하지 않음 |
 | 댓글·댓글 좋아요 | 부모 `articleId`, `action` | 댓글·기사의 현재 상태와 현재 좋아요 row 존재 여부 | activity를 생성하지 않고 숨김·삭제 또는 no-op |
 | count 변경 | `action=COUNT_CHANGED` | `aggregate_id`가 가리키는 대상의 현재 likeCount, viewCount, commentCount, subscriberCount | snapshot을 복원하지 않음 |
-| 사용자 물리삭제 | `action=HARD_DELETED`, 삭제 전에 확보한 댓글·기사·좋아요·조회·구독 영향 ID 목록 | 남아 있는 연관 데이터와 MongoDB cleanup 대상 확인 | payload의 영향 ID를 삭제 후보로 사용하되 activity나 snapshot 복원에는 사용하지 않음 |
+| 삭제·닉네임 변경 | `action`, 삭제 전에 확보한 `impact.activityKeys`, `impact.commentSnapshotIds`; 사용자 물리삭제 count 영향 ID | 남아 있는 연관 데이터와 MongoDB cleanup/갱신 대상 확인 | 결정적 `_id` hidden guard/tombstone 또는 snapshot 갱신에 사용하되 표시값 복원에는 사용하지 않음 |
 
 MID4-137 구현에서 `aggregate_id`와 `actor_user_id`는 payload에 중복하지 않는다. Java payload record의 `OutboxEventAction`은 JSON 문자열로 직렬화되며, 예를 들어 댓글 작성 payload는 `{"articleId":"...","action":"WRITTEN"}` 형태로 저장된다.
 
@@ -135,14 +135,14 @@ MID4-137 구현에서 `aggregate_id`와 `actor_user_id`는 payload에 중복하�
 -> hiddenByTargetType=COMMENT, hiddenByTargetId=commentId 저장
 
 댓글 물리삭제
--> 해당 commentId를 참조하는 작성 댓글 activity 제거
+-> 해당 commentId를 참조하는 작성 댓글 activity scrubbed tombstone 처리
 
 기사 논리삭제
 -> parentTargetType=ARTICLE, parentTargetId=articleId인 visible=true 작성 댓글 활동 visible=false, status=TARGET_DELETED 처리
 -> hiddenByTargetType=ARTICLE, hiddenByTargetId=articleId 저장
 
 기사 물리삭제
--> parentTargetType=ARTICLE, parentTargetId=articleId인 작성 댓글 activity 제거
+-> parentTargetType=ARTICLE, parentTargetId=articleId인 작성 댓글 activity scrubbed tombstone 처리
 
 댓글 좋아요 수 변경
 -> 댓글 snapshot의 likeCount 갱신 필요 신호로 처리
@@ -169,14 +169,14 @@ MID4-137 구현에서 `aggregate_id`와 `actor_user_id`는 payload에 중복하�
 -> hiddenByTargetType=COMMENT, hiddenByTargetId=commentId 저장
 
 댓글 물리삭제
--> 해당 commentId를 참조하는 좋아요 댓글 activity 제거
+-> 해당 commentId를 참조하는 좋아요 댓글 activity scrubbed tombstone 처리
 
 기사 논리삭제
 -> parentTargetType=ARTICLE, parentTargetId=articleId인 visible=true 좋아요 댓글 활동 visible=false, status=TARGET_DELETED 처리
 -> hiddenByTargetType=ARTICLE, hiddenByTargetId=articleId 저장
 
 기사 물리삭제
--> parentTargetType=ARTICLE, parentTargetId=articleId인 좋아요 댓글 activity 제거
+-> parentTargetType=ARTICLE, parentTargetId=articleId인 좋아요 댓글 activity scrubbed tombstone 처리
 
 댓글 좋아요 수 변경
 -> 댓글 snapshot의 likeCount 갱신 필요 신호로 처리
@@ -201,7 +201,7 @@ MID4-137 구현에서 `aggregate_id`와 `actor_user_id`는 payload에 중복하�
 -> hiddenByTargetType=ARTICLE, hiddenByTargetId=articleId 저장
 
 기사 물리삭제
--> 해당 articleId를 참조하는 최근 본 뉴스 activity 제거
+-> 해당 articleId를 참조하는 최근 본 뉴스 activity scrubbed tombstone 처리
 
 조회수 변경
 -> ARTICLE_VIEW_COUNT_CHANGED 이벤트로 처리

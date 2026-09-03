@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxProjectionImpactReader;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
@@ -78,6 +79,9 @@ class InterestServiceTest {
 
     @Mock
     OutboxEventWriter outboxEventWriter;
+
+    @Mock
+    OutboxProjectionImpactReader projectionImpactReader;
 
     @Captor
     ArgumentCaptor<Interest> interestCaptor;

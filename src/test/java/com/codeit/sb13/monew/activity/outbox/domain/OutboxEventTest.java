@@ -124,7 +124,8 @@ class OutboxEventTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 JsonNodeFactory.instance.objectNode().put("viewed", true),
-                LocalDateTime.of(2026, 9, 2, 10, 0)
+                LocalDateTime.of(2026, 9, 2, 10, 0),
+                1L
         );
     }
 }

@@ -31,6 +31,9 @@ class OutboxEventWriterTest {
     @Mock
     private OutboxPayloadSerializer payloadSerializer;
 
+    @Mock
+    private OutboxProjectionVersionAllocator projectionVersionAllocator;
+
     @InjectMocks
     private OutboxEventWriter outboxEventWriter;
 
@@ -48,6 +51,7 @@ class OutboxEventWriterTest {
                 .put("articleId", articleId.toString())
                 .put("action", OutboxEventAction.WRITTEN.name());
         given(payloadSerializer.serialize(payload)).willReturn(json);
+        given(projectionVersionAllocator.allocate()).willReturn(7L);
 
         outboxEventWriter.write(
                 OutboxEventType.COMMENT_WRITTEN,
@@ -66,6 +70,7 @@ class OutboxEventWriterTest {
         assertThat(event.getActorUserId()).isEqualTo(actorUserId);
         assertThat(event.getPayloadJson()).isEqualTo(json);
         assertThat(event.getStatus()).isEqualTo(OutboxEventStatus.PENDING);
+        assertThat(event.getProjectionVersion()).isEqualTo(7L);
         assertThat(event.getOccurredAt()).isNotNull();
     }
 }

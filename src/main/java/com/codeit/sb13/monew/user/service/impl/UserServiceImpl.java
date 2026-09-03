@@ -3,6 +3,8 @@ package com.codeit.sb13.monew.user.service.impl;
 import com.codeit.sb13.monew.activity.service.ActivityVisibilityUpdater;
 import com.codeit.sb13.monew.activity.outbox.payload.UserOutboxPayload;
 import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxProjectionImpactReader;
+import com.codeit.sb13.monew.activity.outbox.payload.ProjectionImpact;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
@@ -44,6 +46,7 @@ public class UserServiceImpl implements UserService {
   private final UserMapper userMapper;
   private final ActivityVisibilityUpdater activityVisibilityUpdater;
   private final OutboxEventWriter outboxEventWriter;
+  private final OutboxProjectionImpactReader projectionImpactReader;
 
   @Transactional
   public UserCreateResult signUp(UserCreateCommand command) {
@@ -111,6 +114,7 @@ public class UserServiceImpl implements UserService {
 
     User user = userRepository.findById(command.userId())
         .orElseThrow(() -> new UserNotFoundException(command.userId()));
+    ProjectionImpact impact = projectionImpactReader.forNicknameChange(command.userId());
 
     user.updateNickname(command.nickname());
     User saveUser = userRepository.saveAndFlush(user);
@@ -120,7 +124,8 @@ public class UserServiceImpl implements UserService {
         saveUser.getId(),
         command.userId(),
         new UserOutboxPayload(
-            OutboxEventAction.UPDATED
+            OutboxEventAction.UPDATED,
+            impact
         )
     );
 
@@ -154,6 +159,7 @@ public class UserServiceImpl implements UserService {
   @Transactional
   public void deleteUser(UUID userId) {
     log.debug("논리 삭제 요청 - userId: {}", userId);
+    ProjectionImpact impact = projectionImpactReader.forUser(userId);
     int updatedCount = userRepository.softDeleteIfNotDeleted(userId, LocalDateTime.now());
 
     if (updatedCount == 0) {
@@ -169,7 +175,8 @@ public class UserServiceImpl implements UserService {
         userId,
         userId,
         new UserOutboxPayload(
-            OutboxEventAction.SOFT_DELETED
+            OutboxEventAction.SOFT_DELETED,
+            impact
         )
     );
     log.info(

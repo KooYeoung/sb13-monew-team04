@@ -3,6 +3,7 @@ package com.codeit.sb13.monew.user.service;
 import com.codeit.sb13.monew.article.repository.ArticleViewRepository;
 import com.codeit.sb13.monew.activity.outbox.payload.UserHardDeleteOutboxPayload;
 import com.codeit.sb13.monew.activity.outbox.service.OutboxEventWriter;
+import com.codeit.sb13.monew.activity.outbox.service.OutboxProjectionImpactReader;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
@@ -32,6 +33,7 @@ public class UserHardDeleteExecutor {
   private final NotificationRepository notificationRepository;
   private final UserRepository userRepository;
   private final OutboxEventWriter outboxEventWriter;
+  private final OutboxProjectionImpactReader projectionImpactReader;
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void hardDeleteUser(UUID userId) {
@@ -66,7 +68,8 @@ public class UserHardDeleteExecutor {
         commentRepository.findArticleIdsByUserId(userId),
         commentLikeRepository.findCommentIdsLikedByUserId(userId),
         articleViewRepository.findArticleIdsByUserId(userId),
-        subscribeRepository.findInterestIdsByUserId(userId)
+        subscribeRepository.findInterestIdsByUserId(userId),
+        projectionImpactReader.forUser(userId)
     );
   }
 
