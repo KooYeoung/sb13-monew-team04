@@ -38,9 +38,10 @@ MID4-135부터 MID4-138까지의 작업은 MongoDB 적용 결론을 변경하지
 | 저장 계약 | 공통 envelope는 개별 컬럼, payload body는 JSONB로 저장하며 writer는 기존 트랜잭션에 필수 참여 |
 | MongoDB 문서 | activity와 댓글·기사·관심사 snapshot 문서, 결정적 SHA-256 `_id`, `projectionVersion`, hidden guard와 scrubbed tombstone 정의 |
 | Outbox worker | `PENDING`과 재시도 시각이 지난 `FAILED`를 `SKIP LOCKED`와 lease로 batch claim하고 RDB 현재 상태를 조회해 version CAS upsert, 숨김 또는 tombstone 처리 |
-| 실패 처리 | 1분, 5분, 15분, 1시간 retry 후 5회 실패 시 `DEAD_LETTER`; 이벤트별 상태 저장은 독립 트랜잭션으로 처리 |
+| count batch 병합 | 4개 count 이벤트를 같은 polling batch의 `event_type + aggregate_id`로 묶고 최고 projection version으로 MongoDB를 한 번 갱신한 뒤 그룹 전체 상태 전이 |
+| 실패 처리 | 1분, 5분, 15분, 1시간 retry 후 5회 실패 시 `DEAD_LETTER`; 단건 또는 count 그룹 상태 저장은 독립 트랜잭션으로 처리 |
 | 다중 인스턴스 순서 보호 | commit 순서와 일치하는 전역 projection version 및 MongoDB CAS로 서로 다른 batch의 동일 target stale write 차단 |
-| 아직 구현하지 않은 범위 | count 이벤트 polling batch 병합, 복구·재노출, 초기 투영, MongoDB 조회 경로 전환, 운영 재처리 |
+| 아직 구현하지 않은 범위 | 복구·재노출, 초기 투영, MongoDB 조회 경로 전환, 운영 재처리 |
 
 따라서 현재 API는 계속 RDB를 조회하지만, MID4-137에서 연동한 쓰기 요청은 원본 변경과 같은 RDB 트랜잭션에 Outbox row를 생성한다. payload 직렬화 뒤 전역 clock row를 잠그는 버전 발급도 요청 처리 중 동기 수행되므로 서로 무관한 쓰기 요청 사이에 잠깐의 대기가 생길 수 있다. MID4-138 worker의 RDB 재조회와 MongoDB 반영은 response 반환 이후 별도 thread에서 blocking 방식으로 수행된다. 여러 인스턴스에서 worker를 활성화할 수 있으며, 각 실행은 batch UUID와 lease를 원자적으로 기록해 서로 다른 이벤트 row를 병렬 처리한다. worker polling 인덱스는 성능 측정 없이 추가하지 않는다.
 

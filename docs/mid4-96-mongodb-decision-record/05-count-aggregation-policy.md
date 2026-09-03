@@ -45,11 +45,11 @@ INTEREST_SUBSCRIBER_COUNT_CHANGED
 -> MongoDB interest snapshot에 subscriberCount를 $set으로 반영한다.
 ```
 
-MID4-137은 위 네 종류의 count 변경 신호를 저장하는 producer까지만 구현했다. batch 병합, RDB 현재 count 재조회와 MongoDB `$set`은 후속 Outbox worker 범위다.
+MID4-137은 위 네 종류의 count 변경 신호를 저장하는 producer를 구현했고, MID4-138은 RDB 현재 count 재조회와 MongoDB `$set`을 구현했다. MID4-247은 같은 polling batch의 중복 신호를 그룹화해 projection과 상태 전이를 한 번으로 병합한다.
 
 기사 조회는 발생 빈도가 높을 수 있으므로 조회수 변경 이벤트는 worker가 outbox row마다 RDB를 1회씩 재조회하지 않는다.
 
-초기 기준은 다음과 같다.
+현재 구현 기준은 다음과 같다.
 
 ```text
 ARTICLE_VIEW_COUNT_CHANGED
@@ -74,7 +74,8 @@ count 이벤트 병합 그룹
 
 cleanup 이후 stale event
 -> snapshot 대상 RDB source row가 물리삭제되어 없음
--> MongoDB snapshot upsert를 수행하지 않음
+-> 해당 projection version으로 결정적 snapshot ID의 tombstone을 시도
+-> 더 높은 삭제 tombstone이 이미 있으면 MongoDB CAS no-op
 -> 선택된 그룹 row 전체를 stale event로 보고 PROCESSED 처리
 
 처리 실패
@@ -95,6 +96,16 @@ worker 중단
 물리삭제 cleanup 이후 삭제 전 count 이벤트가 재처리될 수 있으므로, count snapshot upsert도 activity와 동일하게 RDB source row 존재 확인을 먼저 수행한다. source row가 없으면 결정적 `_id`에 해당 이벤트 버전의 tombstone을 시도한다. 더 높은 삭제 tombstone이 이미 있으면 CAS no-op이며 선택된 row를 `PROCESSED`로 정리한다.
 
 성공 상태 전이는 그룹 전체에 동일하게 적용하지만, 실패 시 retry 이력은 row별로 보존한다. 같은 그룹 안에 `retry_count=4`인 row와 `retry_count=1`인 row가 있고 `max_retry_count=5`에서 다시 실패하면, 첫 번째 row는 `DEAD_LETTER`로 전환하고 두 번째 row는 `retry_count=2`, `FAILED`, 2회차 기준 `next_retry_at`으로 전환한다.
+
+```text
+E1: ARTICLE_VIEW_COUNT_CHANGED(A1), projection_version=41
+E2: ARTICLE_VIEW_COUNT_CHANGED(A1), projection_version=43
+
+-> source reader에는 version=43 대표 이벤트만 전달
+-> RDB에서 A1의 현재 viewCount를 한 번 조회
+-> MongoDB A1 snapshot을 version=43으로 한 번 갱신
+-> E1과 E2를 같은 processed_at의 PROCESSED로 변경
+```
 
 조회수 이벤트가 worker 처리량을 지속적으로 초과하면 기사 조회 이벤트와 count 갱신 이벤트를 분리하거나, 일정 주기 batch/coalescing publisher로 전환한다. 이 경우 viewCount snapshot은 실시간 정확값이 아니라 짧은 지연을 허용하는 표시값으로 취급한다.
 
@@ -128,7 +139,7 @@ worker 중단
 - worker가 추가 RDB 조회를 수행한다.
 
 판단
-- 후속 MongoDB Read Model 적용 시 기본안 후보로 둔다.
+- 현재 Outbox worker의 기본안으로 적용한다.
 ```
 
 ```text
