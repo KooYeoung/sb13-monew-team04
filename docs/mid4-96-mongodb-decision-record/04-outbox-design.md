@@ -282,12 +282,14 @@ PENDING 이벤트 또는 next_retry_at이 지난 FAILED 이벤트 후보를 crea
 -> occurredAt은 현재 관계 row의 시각 또는 검증된 불변 이벤트 시각을 사용하고, 같은 활동의 시각 갱신은 $max 또는 동등한 단조 조건 적용
 -> *_activity_snapshots는 대상 ID의 결정적 _id와 projection_version CAS 기준 upsert
 -> 수정 가능한 snapshot 값은 오래된 payload로 덮어쓰지 않고 batch 조회한 RDB 현재값을 반영
--> MID4-138에서는 count 이벤트도 RDB 현재값으로 개별 반영
--> MID4-247에서 같은 polling batch의 count 이벤트를 그룹화하고 그룹 전체 상태 전이로 확장
+-> count 이벤트는 같은 polling batch의 event_type + 대상 ID로 그룹화
+-> 그룹에서 가장 높은 projection_version의 이벤트로 MongoDB를 한 번 반영
+-> MongoDB 성공 후 같은 그룹의 Outbox row 전체 상태 전이
 -> 현재 상태를 이미 반영한 중복·지연 이벤트도 멱등 처리 후 PROCESSED
 -> MongoDB Read Model 반영 성공 시 PROCESSED
--> 개별 이벤트 실패 시 FAILED, retry_count 증가, next_retry_at 설정, last_error 기록
--> 개별 이벤트가 최대 재시도 횟수를 초과하면 DEAD_LETTER로 전환
+-> 일반 이벤트 실패 시 해당 row를 FAILED 처리하고 retry_count 증가, next_retry_at 설정, last_error 기록
+-> count 그룹 처리 실패 시 그룹 row 전체에 같은 원인을 기록하고 row별 retry 이력으로 FAILED 또는 DEAD_LETTER 결정
+-> 각 row가 최대 재시도 횟수를 초과하면 DEAD_LETTER로 전환
 ```
 
 UUID는 순서 기준으로 사용하지 않는다. worker 조회와 처리 시도 순서는 `created_at` 기준으로 두지만 이는 polling 편의를 위한 정렬일 뿐 projection 정확성 보장 기준이 아니다. `occurred_at`도 활동 발생 시각과 조회 정렬 정보이며 stale event 판정에 사용하지 않는다. 순서 정확성은 commit 순서의 `projection_version`과 MongoDB CAS가, 표시값 정확성은 처리 시점의 RDB 현재 상태 재조회가 함께 보장한다.
@@ -296,28 +298,38 @@ UUID는 순서 기준으로 사용하지 않는다. worker 조회와 처리 시�
 
 후속 구현 검증에는 cleanup 이후 삭제 전 `PENDING` 또는 `FAILED` 이벤트를 재처리해도 해당 activity와 snapshot 문서가 다시 생성되지 않는 시나리오를 포함한다.
 
-MID4-138에서는 count 이벤트도 다른 이벤트와 동일하게 row별 projection과 상태 전이를 수행한다. 같은 batch에서 같은 대상 ID가 반복되면 RDB count query는 ID 집합으로 묶이지만, MongoDB upsert와 `PROCESSED` 또는 실패 상태 저장은 이벤트 row마다 실행한다.
+MID4-247부터 count 이벤트는 같은 batch의 `event_type + snapshot 대상 ID`로 그룹화한다. source reader에는 그룹별 대표 이벤트만 전달하므로 같은 대상의 RDB 현재값을 중복 조회하지 않으며, MongoDB upsert와 상태 전이도 그룹 단위로 실행한다. 일반 이벤트는 기존처럼 row별 처리 순서를 유지한다.
 
 ```text
 E1: ARTICLE_VIEW_COUNT_CHANGED + articleId=A1
 E2: ARTICLE_VIEW_COUNT_CHANGED + articleId=A1
 
-MID4-138
+MID4-247
 -> RDB article A1의 현재 count를 batch query로 조회
--> E1 projection 후 E1을 PROCESSED
--> E2 projection 후 E2를 PROCESSED
-
-MID4-247 후속 범위
 -> E1과 E2를 같은 그룹으로 병합
--> MongoDB projection 1회 후 그룹 row 전체 상태 전이
+-> 두 이벤트 중 가장 높은 projection_version으로 MongoDB projection 1회
+-> E1과 E2를 동일 processed_at의 PROCESSED로 bulk update
 ```
 
-count 집계 이벤트를 batch 안에서 병합 처리하는 후속 구현에서는 상태 전이를 outbox row 단위가 아니라 선택된 그룹 row 전체에 적용한다. 그룹 기준은 현재 polling batch에서 선택된 row 중 같은 `event_type`과 같은 snapshot 대상 ID를 가진 row다.
+같은 snapshot 대상을 변경하더라도 `event_type`이 다르면 한 그룹으로 합치지 않는다. source batch는 모든 그룹의 대표 이벤트를 함께 받아 대상 ID를 중복 제거하므로, 그룹 경계와 RDB batch 조회의 중복 제거는 서로 독립적이다.
+
+```text
+E3: ARTICLE_VIEW_COUNT_CHANGED + articleId=A1
+E4: ARTICLE_COMMENT_COUNT_CHANGED + articleId=A1
+
+MID4-247
+-> event_type이 다르므로 E3와 E4를 서로 다른 처리 그룹으로 유지
+-> source reader의 articleId 집합에서는 A1을 한 번만 유지해 현재 article snapshot과 count를 batch 조회
+-> 각 그룹의 대표 이벤트로 MongoDB projection과 Outbox 상태 전이를 각각 수행
+```
+
+count 집계 이벤트의 상태 전이는 outbox row 단위가 아니라 선택된 그룹 row 전체에 적용한다. 그룹 기준은 현재 polling batch에서 선택된 row 중 같은 `event_type`과 같은 snapshot 대상 ID를 가진 row다. 그룹 자체는 첫 이벤트가 선택된 순서를 유지하고, 대표 이벤트는 가장 높은 `projection_version`을 가진 row로 정한다.
 
 ```text
 count 집계 이벤트 그룹 처리
 -> 선택된 row를 event_type + 대상 ID 기준으로 그룹화
--> 그룹별로 RDB 현재 집계값 조회
+-> 그룹별 대표 이벤트만 source batch 조회 대상으로 전달
+-> 중복 제거된 대상 ID 집합으로 RDB 현재 집계값 조회
 -> MongoDB snapshot을 대상 ID 기준 upsert 후 현재 집계값으로 $set
 -> MongoDB 반영 성공 후 선택된 그룹 row 전체를 PROCESSED, 동일 processed_at으로 bulk update
 -> MongoDB 반영 실패를 감지하면 선택된 그룹 row 각각의 retry_count를 1 증가
@@ -329,6 +341,20 @@ count 집계 이벤트 그룹 처리
 병합 그룹에서는 대표 row만 `PROCESSED`로 변경하지 않는다. 나머지 row가 `PENDING` 또는 재시도 가능한 `FAILED`로 남으면 같은 신호가 다시 선택될 수 있기 때문이다. 반대로 MongoDB 반영 전에 그룹 row를 먼저 `PROCESSED`로 변경하지 않는다. 반영 실패 시 count 변경 신호가 유실될 수 있기 때문이다. 성공 상태 전이는 그룹 전체에 동일하게 적용하지만, 실패 시 `retry_count`, `next_retry_at`, `DEAD_LETTER` 판정은 row별 기존 retry 이력을 보존해 계산한다.
 
 MongoDB 반영 성공 후 outbox 상태 저장 전에 worker가 중단되면 그룹 row가 다시 선택될 수 있다. 이 경우 snapshot 대상 ID 기준 upsert와 RDB 현재 집계값 `$set`으로 재처리가 멱등하게 수렴해야 한다. MongoDB 반영 실패 후 `FAILED` 저장 전 중단된 경우에도 기존 `PENDING` 또는 `FAILED` 상태가 남아 그룹 전체가 다시 재시도된다.
+
+```text
+E1: ARTICLE_VIEW_COUNT_CHANGED(A1), projection_version=41, retry_count=1
+E2: ARTICLE_VIEW_COUNT_CHANGED(A1), projection_version=43, retry_count=4
+
+projection 성공
+-> version=43으로 A1 snapshot을 한 번 갱신
+-> E1, E2를 같은 processed_at의 PROCESSED로 원자적 갱신
+
+projection 실패
+-> E1은 retry_count=2, FAILED, 5분 뒤 재시도
+-> E2는 retry_count=5, DEAD_LETTER
+-> 어느 행이든 claim 소유권 검증이 실패하면 그룹 상태 전이 전체 rollback
+```
 
 초기 재시도 정책은 다음과 같이 둔다.
 
@@ -344,17 +370,17 @@ max_retry_count = 5
 
 `DEAD_LETTER` 이벤트는 worker가 자동 재처리하지 않는다. 운영자가 `last_error`와 원본 데이터를 확인한 뒤 수동으로 상태를 `PENDING`으로 되돌리거나 별도 보정 작업으로 처리한다.
 
-### MID4-138 실패 경계와 오류 코드
+### Outbox worker 실패 경계와 오류 코드
 
-worker는 모든 실패를 같은 방식으로 처리하지 않는다. MongoDB projection을 시작하지 못한 batch와 개별 이벤트 처리 실패, 상태 저장 실패를 구분한다.
+worker는 모든 실패를 같은 방식으로 처리하지 않는다. MongoDB projection을 시작하지 못한 batch, 일반 이벤트의 개별 실패, count 그룹 실패와 상태 저장 실패를 구분한다.
 
-| 실패 단계 | MID4-138 동작 | claim 처리 |
+| 실패 단계 | 동작 | claim 처리 |
 | --- | --- | --- |
 | claim transaction | 예외를 호출자에게 전파하며 transaction을 롤백한다. | 새 claim이 남지 않는다. |
 | heartbeat scheduler 등록 | 오류를 기록하고 batch 처리를 시작하지 않는다. | 즉시 release하며, release도 실패하면 lease 만료를 기다린다. |
 | payload decode | 해당 이벤트를 실패 처리하고 다음 이벤트 decode를 계속한다. | 실패 상태 저장 시 해당 row의 claim을 해제한다. |
-| RDB source batch 조회 | decode된 이벤트를 각각 실패 처리한다. | 상태 저장에 실패한 지점부터 처리를 중단하고 남은 claim은 만료시킨다. |
-| MongoDB projection | 해당 이벤트를 실패 처리하고 다음 이벤트를 계속한다. | 실패 상태 저장 시 해당 row의 claim을 해제한다. |
+| RDB source batch 조회 | 일반 이벤트는 해당 row를, count 이벤트는 선택된 그룹 row 전체를 실패 처리한다. | 처리 단위별 상태 저장을 진행하고 실패한 지점부터 중단해 남은 claim은 만료시킨다. |
+| MongoDB projection | 일반 이벤트는 해당 row를, count 이벤트는 선택된 그룹 row 전체를 실패 처리하고 다음 처리 단위로 진행한다. | 실패 상태 저장 시 일반 이벤트 또는 그룹 row의 claim을 해제한다. |
 | `PROCESSED` 또는 실패 상태 저장 | 새 이벤트 처리를 중단한다. | 종결하지 못한 row는 lease 만료 후 재선점될 수 있다. |
 | heartbeat 갱신 또는 소유권 확인 | 다음 처리 경계에서 batch 처리를 중단한다. | 남은 claim을 명시적으로 해제하지 않고 만료시킨다. |
 
@@ -482,7 +508,7 @@ T1: T2 commit 뒤 clock row 잠금, version=42 발급 및 commit
 
 worker가 두 commit 사이에 실행되면 먼저 commit된 상태가 일시적으로 보일 수 있다. 나중 commit된 transaction의 더 큰 버전이 최종 상태를 반영하며, 과거 이벤트가 뒤늦게 끝나도 CAS가 이를 덮지 못하게 한다. 중복 처리와 재시도도 같은 버전에서는 no-op이므로 멱등하다.
 
-MID4-138 테스트는 서로 다른 worker의 claim batch가 겹치지 않는지, 만료 claim 회수, 이전 claim UUID의 상태 갱신 차단, row별 retry와 heartbeat 갱신을 검증한다. PostgreSQL 통합 테스트는 clock 잠금이 commit까지 다음 할당을 막고 rollback된 버전을 재사용하는지 확인한다. 실제 MongoDB 컨테이너 테스트는 V2 후 V1 역순 쓰기, 문서 없는 취소 guard, scrubbed tombstone, 동일 버전 재시도와 fan-out의 빠진 문서 후속 반영을 검증한다.
+MID4-138 테스트는 서로 다른 worker의 claim batch가 겹치지 않는지, 만료 claim 회수, 이전 claim UUID의 상태 갱신 차단, row별 retry와 heartbeat 갱신을 검증한다. MID4-247 테스트는 4개 count type의 동일 대상 병합, 최고 projection version 선택, 그룹 성공·실패 상태 전이와 부분 claim 상실 차단을 검증한다. PostgreSQL 통합 테스트는 clock 잠금이 commit까지 다음 할당을 막고 rollback된 버전을 재사용하는지 확인한다. 실제 MongoDB 컨테이너 테스트는 V2 후 V1 역순 쓰기, 문서 없는 취소 guard, scrubbed tombstone, 동일 버전 재시도와 fan-out의 빠진 문서 후속 반영을 검증한다.
 
 ### Projection Version과 CAS 기준
 

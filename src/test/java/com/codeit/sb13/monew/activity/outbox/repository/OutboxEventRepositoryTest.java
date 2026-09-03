@@ -10,6 +10,7 @@ import com.codeit.sb13.monew.global.config.JpaAuditingConfig;
 import com.codeit.sb13.monew.global.config.QueryDslConfig;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,7 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.JsonNodeFactory;
 
@@ -131,6 +133,67 @@ class OutboxEventRepositoryTest {
         assertThat(processed.getProcessedAt()).isEqualTo(processedAt);
         assertThat(processed.getNextRetryAt()).isNull();
         assertThat(processed.getLastError()).isNull();
+    }
+
+    @Test
+    @DisplayName("같은 claim의 count 이벤트 그룹을 한 번에 완료 처리한다")
+    void markCountGroupProcessed() {
+        UUID claimId = UUID.randomUUID();
+        OutboxEvent first = outboxEventRepository.save(createPendingEvent(UUID.randomUUID()));
+        OutboxEvent second = outboxEventRepository.save(createPendingEvent(UUID.randomUUID()));
+        ReflectionTestUtils.setField(first, "claimId", claimId);
+        ReflectionTestUtils.setField(second, "claimId", claimId);
+        outboxEventRepository.flush();
+        LocalDateTime processedAt = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS);
+
+        int updated = outboxEventRepository.markAllProcessedIfClaimed(
+                List.of(first.getId(), second.getId()),
+                claimId,
+                processedAt
+        );
+        em.clear();
+
+        assertThat(updated).isEqualTo(2);
+        assertThat(outboxEventRepository.findAllById(List.of(first.getId(), second.getId())))
+                .allSatisfy(event -> {
+                    assertThat(event.getStatus()).isEqualTo(OutboxEventStatus.PROCESSED);
+                    assertThat(event.getProcessedAt()).isEqualTo(processedAt);
+                    assertThat(event.getClaimId()).isNull();
+                });
+    }
+
+    @Test
+    @DisplayName("같은 retry 횟수의 count 이벤트 그룹에 동일한 실패 결과를 기록한다")
+    void markCountGroupFailed() {
+        UUID claimId = UUID.randomUUID();
+        OutboxEvent first = outboxEventRepository.save(createPendingEvent(UUID.randomUUID()));
+        OutboxEvent second = outboxEventRepository.save(createPendingEvent(UUID.randomUUID()));
+        ReflectionTestUtils.setField(first, "claimId", claimId);
+        ReflectionTestUtils.setField(second, "claimId", claimId);
+        outboxEventRepository.flush();
+        LocalDateTime failedAt = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS);
+        LocalDateTime nextRetryAt = failedAt.plusMinutes(1);
+
+        int updated = outboxEventRepository.markAllFailedIfClaimed(
+                List.of(first.getId(), second.getId()),
+                claimId,
+                0,
+                OutboxEventStatus.FAILED,
+                nextRetryAt,
+                "mongo unavailable",
+                failedAt
+        );
+        em.clear();
+
+        assertThat(updated).isEqualTo(2);
+        assertThat(outboxEventRepository.findAllById(List.of(first.getId(), second.getId())))
+                .allSatisfy(event -> {
+                    assertThat(event.getStatus()).isEqualTo(OutboxEventStatus.FAILED);
+                    assertThat(event.getRetryCount()).isEqualTo(1);
+                    assertThat(event.getNextRetryAt()).isEqualTo(nextRetryAt);
+                    assertThat(event.getLastError()).isEqualTo("mongo unavailable");
+                    assertThat(event.getClaimId()).isNull();
+                });
     }
 
     private OutboxEvent createPendingEvent(UUID actorUserId) {

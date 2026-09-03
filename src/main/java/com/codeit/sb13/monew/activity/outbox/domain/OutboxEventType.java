@@ -27,5 +27,18 @@ public enum OutboxEventType {
     INTEREST_SUBSCRIBER_COUNT_CHANGED,
     COMMENT_LIKE_CHANGED,
     ARTICLE_VIEW_COUNT_CHANGED,
-    ARTICLE_COMMENT_COUNT_CHANGED
+    ARTICLE_COMMENT_COUNT_CHANGED;
+
+    /**
+     * polling batch 안에서 같은 snapshot 대상으로 병합할 수 있는 count 신호인지 확인한다.
+     *
+     * @return RDB 현재 집계값으로 수렴시키는 count 변경 이벤트이면 {@code true}
+     */
+    public boolean isCountChanged() {
+        return switch (this) {
+            case INTEREST_SUBSCRIBER_COUNT_CHANGED, COMMENT_LIKE_CHANGED,
+                    ARTICLE_VIEW_COUNT_CHANGED, ARTICLE_COMMENT_COUNT_CHANGED -> true;
+            default -> false;
+        };
+    }
 }

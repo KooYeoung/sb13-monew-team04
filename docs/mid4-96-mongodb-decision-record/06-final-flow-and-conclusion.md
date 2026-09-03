@@ -47,7 +47,7 @@ MongoDB 후속 적용 시 요청 처리 흐름은 다음과 같이 둔다.
 -> *_activity_snapshots 저장 또는 갱신
 ```
 
-### MID4-138 현재 구현 경계
+### Outbox worker 현재 구현 경계
 
 MID4-137에서는 위 흐름 중 원본 변경과 `outbox_events` 저장까지 구현했다. 별도 도메인 이벤트 버스에 발행한 뒤 수집하는 구조가 아니라, 각 도메인 서비스가 타입이 지정된 payload record를 만들고 `OutboxEventWriter`를 호출한다. MID4-138에서는 commit된 Outbox를 batch UUID와 lease로 claim해 MongoDB Read Model에 반영하는 다중 인스턴스 worker를 추가했다.
 
@@ -77,7 +77,7 @@ response 반환 이후
 -> 성공 시 PROCESSED, 실패 시 retry 또는 DEAD_LETTER
 ```
 
-MongoDB 문서, RDB 현재 상태 batch 재조회, projection writer와 Outbox worker는 구현됐지만 기본 비활성화 상태다. 현재 조회 API는 계속 RDB를 사용하며 MongoDB 조회 전환은 MID4-139 범위다. MID4-138의 네 가지 count 이벤트는 row별로 현재값을 반영하고, 같은 polling batch의 중복 신호 병합은 MID4-247에서 구현한다.
+MongoDB 문서, RDB 현재 상태 batch 재조회, projection writer와 Outbox worker는 구현됐지만 기본 비활성화 상태다. 현재 조회 API는 계속 RDB를 사용하며 MongoDB 조회 전환은 MID4-139 범위다. MID4-247은 네 가지 count 이벤트를 같은 polling batch의 `event_type + 대상 ID`로 묶어 최고 projection version으로 한 번 반영하고 그룹 전체 상태를 전이한다.
 
 여기서 비동기는 사용자 request transaction과 worker 실행 시점이 분리된다는 의미다. worker 내부에서는 RDB 조회와 `MongoTemplate` 명령을 blocking 방식으로 순차 실행하고 각 결과를 확인한 뒤 Outbox 상태를 저장한다.
 
@@ -171,14 +171,14 @@ MongoDB 반영은 response 반환 이후 worker가 비동기로 수행하므로,
 
 카운트 집계값은 MongoDB 반영만을 위해 RDB counter를 바로 만들지 않고, 기본적으로 worker가 RDB에서 현재 집계값을 다시 조회해 MongoDB snapshot에 반영한다.
 
-MID4-138에서는 같은 polling batch의 count 대상 ID를 집합으로 모아 RDB 현재 집계값을 한 번에 조회하지만, MongoDB upsert와 Outbox 상태 전이는 이벤트 row별로 수행한다. `event_type + snapshot 대상 ID` 기준 병합, projection 1회 실행과 그룹 row 전체 상태 전이는 MID4-247의 후속 범위다.
+MID4-247은 같은 polling batch의 count 이벤트를 `event_type + snapshot 대상 ID`로 병합한다. 그룹별 최고 `projection_version` 이벤트만 RDB source batch 조회와 MongoDB projection에 전달하고, 선택된 그룹 row 전체를 같은 결과로 전이한다.
 
 ```text
 동일 batch에 ARTICLE_VIEW_COUNT_CHANGED(A1) 두 건 선택
 -> A1의 현재 viewCount를 batch query로 조회
--> 첫 번째 row projection 및 PROCESSED
--> 두 번째 row projection 및 PROCESSED
--> 현재 구현에서는 두 row를 하나의 상태 전이 그룹으로 합치지 않음
+-> 두 row 중 가장 높은 projection_version으로 MongoDB projection 1회
+-> 두 row 전체를 동일 processed_at의 PROCESSED로 bulk update
+-> 실패 시 같은 원인을 기록하되 row별 retry_count로 FAILED 또는 DEAD_LETTER 결정
 ```
 
 사용자가 같은 대상에 대해 같은 종류의 활동을 반복하면 activity를 계속 추가하지 않고 `userId + type + targetType + targetId` 기준으로 기존 activity를 upsert한다.
