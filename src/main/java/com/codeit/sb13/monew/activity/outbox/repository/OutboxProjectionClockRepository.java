@@ -9,9 +9,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface OutboxProjectionClockRepository
-        extends JpaRepository<OutboxProjectionClock, Short> {
+        extends JpaRepository<OutboxProjectionClock, Long> {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT clock FROM OutboxProjectionClock clock WHERE clock.id = :id")
-    Optional<OutboxProjectionClock> findByIdForUpdate(@Param("id") short id);
+    Optional<OutboxProjectionClock> findByIdForUpdate(@Param("id") long id);
 }

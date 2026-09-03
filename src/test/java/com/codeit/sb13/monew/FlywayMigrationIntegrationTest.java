@@ -108,10 +108,27 @@ class FlywayMigrationIntegrationTest {
                   and table_name = 'outbox_events'
                   and column_name = 'projection_version'
                 """);
+        var clockColumnTypes = jdbcTemplate.queryForMap("""
+                select
+                    max(case when column_name = 'id' then data_type end) as id_type,
+                    max(case when column_name = 'current_version' then data_type end)
+                        as version_type
+                from information_schema.columns
+                where table_schema = current_schema()
+                  and table_name = 'outbox_projection_clock'
+                """);
         Long clockVersion = jdbcTemplate.queryForObject(
                 "select current_version from outbox_projection_clock where id = 1",
                 Long.class
         );
+        Integer singletonCheckCount = jdbcTemplate.queryForObject("""
+                select count(*)
+                from information_schema.table_constraints
+                where table_schema = current_schema()
+                  and table_name = 'outbox_projection_clock'
+                  and constraint_type = 'CHECK'
+                  and constraint_name = 'ck_outbox_projection_clock_singleton'
+                """, Integer.class);
         List<String> claimColumns = jdbcTemplate.queryForList("""
                 select column_name
                 from information_schema.columns
@@ -138,7 +155,10 @@ class FlywayMigrationIntegrationTest {
         assertThat(projectionVersionColumn.get("data_type")).isEqualTo("bigint");
         assertThat(projectionVersionColumn.get("is_nullable")).isEqualTo("NO");
         assertThat(projectionVersionColumn.get("column_default")).isNull();
+        assertThat(clockColumnTypes.get("id_type")).isEqualTo("bigint");
+        assertThat(clockColumnTypes.get("version_type")).isEqualTo("bigint");
         assertThat(clockVersion).isNotNull().isGreaterThanOrEqualTo(0L);
+        assertThat(singletonCheckCount).isZero();
         assertThat(claimColumns).containsExactly("claim_id", "claim_until", "claimed_at");
         assertThat(secondaryIndexCount).isZero();
     }

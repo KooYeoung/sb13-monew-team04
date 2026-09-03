@@ -1,8 +1,7 @@
 CREATE TABLE outbox_projection_clock (
-    id SMALLINT NOT NULL,
+    id BIGINT NOT NULL,
     current_version BIGINT NOT NULL,
-    CONSTRAINT pk_outbox_projection_clock PRIMARY KEY (id),
-    CONSTRAINT ck_outbox_projection_clock_singleton CHECK (id = 1)
+    CONSTRAINT pk_outbox_projection_clock PRIMARY KEY (id)
 );
 
 INSERT INTO outbox_projection_clock (id, current_version)

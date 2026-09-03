@@ -76,7 +76,7 @@ created_at      TIMESTAMP
 updated_at      TIMESTAMP
 
 outbox_projection_clock
-id              SMALLINT PK, singleton 1
+id              BIGINT PK, application singleton 1
 current_version BIGINT NOT NULL
 ```
 
@@ -108,6 +108,8 @@ MID4-138
 MID4-246은 Outbox 테이블 컬럼이나 애플리케이션 코드를 추가하지 않고 payload 책임과 worker 재조회 책임을 먼저 확정했다. MID4-137은 이 정책에 맞춰 실제 도메인 쓰기 흐름이 Outbox row를 생성하도록 producer를 연동했다.
 
 단순 DB sequence는 값 할당 순서와 transaction commit 순서가 일치하지 않으므로 정확한 순서 guard로 사용하지 않는다. 대신 모든 Outbox producer가 payload 직렬화 후 singleton `outbox_projection_clock(id=1)` row를 `PESSIMISTIC_WRITE`로 잠그고 `current_version`을 증가시킨다. 이 잠금은 원본 변경과 Outbox row가 commit 또는 rollback될 때까지 유지되어 `projection_version` 순서와 commit 순서를 일치시킨다. 낙관적 락과 원본 엔티티별 `@Version`은 사용하지 않는다.
+
+`id`와 실제 단조 증가 값인 `current_version`은 모두 `BIGINT`로 통일한다. 현재 `id`는 값이 항상 1인 singleton 선택자지만, 식별자 타입의 일관성과 향후 구조 변경 유연성을 위해 별도의 작은 정수 타입을 사용하지 않는다. singleton 여부는 DB `CHECK` 제약으로 강제하지 않고 `OutboxProjectionClock.nextVersion()`이 `id=1`인지 검증하며, clock row가 없거나 검증에 실패하면 `OBX_009`로 요청 트랜잭션을 중단한다.
 
 전역 clock은 서로 무관한 요청 쓰기도 잠시 직렬화하고 DB connection 점유 시간을 늘릴 수 있다. 이는 다중 worker에서 target 간 fan-out과 삭제까지 하나의 비교 가능한 순서로 보호하기 위해 선택한 비용이다. worker의 MongoDB 처리 중에는 이 RDB 잠금을 유지하지 않는다.
 
