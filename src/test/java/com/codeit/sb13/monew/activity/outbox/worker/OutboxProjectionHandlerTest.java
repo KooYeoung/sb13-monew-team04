@@ -176,6 +176,43 @@ class OutboxProjectionHandlerTest {
     }
 
     @Test
+    @DisplayName("부모 기사가 비노출인 댓글은 snapshot과 activity를 다시 활성화하지 않는다")
+    void invisibleParentKeepsCommentAndActivityHidden() {
+        UUID userId = UUID.randomUUID();
+        UUID commentId = UUID.randomUUID();
+        UUID articleId = UUID.randomUUID();
+        CommentState comment = comment(commentId, articleId, false);
+        RelationState like = new RelationState(
+                UUID.randomUUID(), commentId, userId, true, now.minusMinutes(1)
+        );
+        ProjectionSourceBatch source = source(
+                Map.of(userId, new UserState(userId, "사용자", true)),
+                Map.of(commentId, comment),
+                Map.of(new RelationKey(commentId, userId), like),
+                Map.of()
+        );
+
+        handler.project(commentLikeEvent(
+                OutboxEventType.COMMENT_LIKED,
+                userId,
+                commentId,
+                articleId
+        ), source, now);
+
+        verify(writer).hideCommentSnapshot(commentId, 1L, now);
+        verify(writer).hideActivity(
+                any(ActivityProjection.class),
+                eq(ActivityHistoryStatus.TARGET_DELETED),
+                eq(ActivityTargetType.COMMENT),
+                eq(commentId),
+                eq(1L),
+                eq(now)
+        );
+        verify(writer, never()).upsertCommentSnapshot(any(), eq(1L), any());
+        verify(writer, never()).upsertActivity(any(), eq(1L), any());
+    }
+
+    @Test
     @DisplayName("카운트 이벤트는 현재 RDB 기사 count가 포함된 snapshot으로 갱신한다")
     void countEventRefreshesCurrentArticleSnapshot() {
         UUID articleId = UUID.randomUUID();
