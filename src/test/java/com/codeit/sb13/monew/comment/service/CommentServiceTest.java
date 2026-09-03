@@ -13,6 +13,7 @@ import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
 import com.codeit.sb13.monew.activity.outbox.payload.CommentOutboxPayload;
 import com.codeit.sb13.monew.activity.outbox.payload.CountOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.ProjectionImpact;
 import com.codeit.sb13.monew.article.domain.Article;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.repository.ArticleRepository;
@@ -471,6 +472,7 @@ public class CommentServiceTest {
     // given
     articleUserSetUp();
     UUID commentId = UUID.randomUUID();
+    ProjectionImpact impact = new ProjectionImpact(List.of(), List.of(commentId));
     Comment comment = Comment.builder()
         .article(article)
         .user(user)
@@ -482,6 +484,7 @@ public class CommentServiceTest {
     given(commentRepository.findForHardDeleteById(commentId)).willReturn(Optional.of(comment));
     given(activityVisibilityUpdater.hideActiveByDeletedComment(eq(commentId)))
             .willReturn(0L);
+    given(projectionImpactReader.forComment(commentId)).willReturn(impact);
 
     // when
     commentService.softDelete(commentId);
@@ -496,7 +499,7 @@ public class CommentServiceTest {
         OutboxAggregateType.COMMENT,
         commentId,
         null,
-        new CommentOutboxPayload(article.getId(), OutboxEventAction.SOFT_DELETED)
+        new CommentOutboxPayload(article.getId(), OutboxEventAction.SOFT_DELETED, impact)
     );
     then(outboxEventWriter).should().write(
         OutboxEventType.ARTICLE_COMMENT_COUNT_CHANGED,
@@ -539,7 +542,9 @@ public class CommentServiceTest {
     ReflectionTestUtils.setField(comment, "id", UUID.randomUUID());
     ReflectionTestUtils.setField(comment, "createdAt", createdAt);
 
+    ProjectionImpact impact = new ProjectionImpact(List.of(), List.of(comment.getId()));
     given(commentRepository.findForHardDeleteById(comment.getId())).willReturn(Optional.of(comment));
+    given(projectionImpactReader.forComment(comment.getId())).willReturn(impact);
 
     // when
     commentService.hardDelete(comment.getId());
@@ -553,7 +558,7 @@ public class CommentServiceTest {
         OutboxAggregateType.COMMENT,
         comment.getId(),
         null,
-        new CommentOutboxPayload(article.getId(), OutboxEventAction.HARD_DELETED)
+        new CommentOutboxPayload(article.getId(), OutboxEventAction.HARD_DELETED, impact)
     );
     then(outboxEventWriter).should().write(
         OutboxEventType.ARTICLE_COMMENT_COUNT_CHANGED,

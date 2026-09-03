@@ -60,6 +60,7 @@ class OutboxEventRepositoryTest {
         assertThat(found.getAggregateId()).isEqualTo(aggregateId);
         assertThat(found.getActorUserId()).isEqualTo(actorUserId);
         assertThat(found.getPayloadJson()).isEqualTo(payload);
+        assertThat(found.getProjectionVersion()).isEqualTo(1L);
         assertThat(found.getStatus()).isEqualTo(OutboxEventStatus.PENDING);
         assertThat(found.getRetryCount()).isZero();
         assertThat(found.getOccurredAt()).isEqualTo(occurredAt);

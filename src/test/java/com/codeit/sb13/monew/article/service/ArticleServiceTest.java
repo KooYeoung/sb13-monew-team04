@@ -8,6 +8,7 @@ import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventType;
 import com.codeit.sb13.monew.activity.outbox.payload.ArticleOutboxPayload;
+import com.codeit.sb13.monew.activity.outbox.payload.ProjectionImpact;
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchCondition;
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchPage;
 import com.codeit.sb13.monew.article.repository.dto.ArticleSearchRow;
@@ -249,12 +250,14 @@ class ArticleServiceTest {
     @DisplayName("기사 삭제 (논리 삭제)")
     void testSoftDeleteSuccess() {
         // given
+        ProjectionImpact impact = new ProjectionImpact(List.of(), List.of(UUID.randomUUID()));
         when(articleRepository.findByIdAndDeletedAtIsNull(testArticleId))
                 .thenReturn(Optional.of(testArticle));
         when(articleRepository.save(any(Article.class)))
                 .thenReturn(testArticle);
         when(activityVisibilityUpdater.hideActiveByDeletedArticle(testArticleId))
                 .thenReturn(new ArticleActivityVisibilityUpdateResult(1L, 2L, 3L));
+        when(projectionImpactReader.forArticle(testArticleId)).thenReturn(impact);
 
         // when
         articleService.softDelete(testArticleId);
@@ -268,7 +271,7 @@ class ArticleServiceTest {
                 OutboxAggregateType.ARTICLE,
                 testArticleId,
                 null,
-                new ArticleOutboxPayload(OutboxEventAction.SOFT_DELETED)
+                new ArticleOutboxPayload(OutboxEventAction.SOFT_DELETED, impact)
         );
     }
 
@@ -291,7 +294,9 @@ class ArticleServiceTest {
     @DisplayName("기사 물리 삭제 - 연관 데이터를 FK 제약 순서대로 제거한다")
     void testHardDeleteSuccess() {
         // given
+        ProjectionImpact impact = new ProjectionImpact(List.of(), List.of(UUID.randomUUID()));
         when(articleRepository.existsById(testArticleId)).thenReturn(true);
+        when(projectionImpactReader.forArticle(testArticleId)).thenReturn(impact);
 
         // when
         articleService.hardDelete(testArticleId);
@@ -308,7 +313,7 @@ class ArticleServiceTest {
                 OutboxAggregateType.ARTICLE,
                 testArticleId,
                 null,
-                new ArticleOutboxPayload(OutboxEventAction.HARD_DELETED)
+                new ArticleOutboxPayload(OutboxEventAction.HARD_DELETED, impact)
         );
     }
 
