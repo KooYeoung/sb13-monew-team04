@@ -205,7 +205,7 @@ OutboxEventWriter.write(
 
 `OutboxEventPayload`는 도메인별 record만 허용하는 sealed interface다. producer는 record를 넘기고, `OutboxPayloadSerializer`가 Jackson `ObjectMapper.valueToTree`로 `JsonNode`를 만든 뒤 `payload_json` JSONB 컬럼에 저장한다. `OutboxEventAction` enum은 JSON 안에서 `WRITTEN`, `UPDATED`, `COUNT_CHANGED` 같은 문자열로 직렬화된다.
 
-`OutboxEventWriter.write`는 `Propagation.MANDATORY`를 사용한다. 따라서 호출한 도메인 서비스의 기존 트랜잭션에 참여하고, 기존 트랜잭션이 없으면 `IllegalTransactionStateException`으로 거부한다. `REQUIRES_NEW` helper에서 호출하면 그 helper가 시작한 새 트랜잭션에 참여한다. writer가 별도 트랜잭션을 만들거나 독립 커밋하지 않는다.
+`OutboxEventWriter.write`와 내부 `OutboxProjectionVersionAllocator.allocate`는 모두 `Propagation.MANDATORY`를 사용한다. 따라서 호출한 도메인 서비스의 기존 트랜잭션에 참여하고, 기존 트랜잭션이 없으면 `IllegalTransactionStateException`으로 거부한다. `REQUIRES_NEW` helper에서 호출하면 그 helper가 시작한 새 트랜잭션에 참여한다. writer와 allocator가 별도 트랜잭션을 만들거나 독립 커밋하지 않는다.
 
 payload 직렬화, projection version 발급과 Outbox 저장은 요청 트랜잭션 안에서 동기 수행된다. 직렬화가 실패하면 version lock을 얻기 전에 `OutboxPayloadSerializationException`이 발생한다. clock row가 없거나 버전을 발급하지 못하면 `OBX_009` `OutboxProjectionVersionAllocationException`이 발생한다. 두 경우 모두 원본 변경, clock 증가와 Outbox row가 함께 롤백된다. 비동기 범위는 커밋 이후 worker가 수행할 RDB 현재 상태 조회와 MongoDB 반영이다.
 

@@ -63,6 +63,9 @@ class OutboxTransactionRollbackIntegrationTest {
     private OutboxEventWriter outboxEventWriter;
 
     @Autowired
+    private OutboxProjectionVersionAllocator projectionVersionAllocator;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @MockitoBean
@@ -135,6 +138,17 @@ class OutboxTransactionRollbackIntegrationTest {
                 UUID.randomUUID(),
                 new UserOutboxPayload(OutboxEventAction.UPDATED)
         )).isInstanceOf(IllegalTransactionStateException.class);
+    }
+
+    @Test
+    @DisplayName("Projection version allocator는 기존 트랜잭션 없이 단독 실행할 수 없다")
+    void allocatorRequiresExistingTransaction() {
+        long before = currentProjectionVersion();
+
+        assertThatThrownBy(projectionVersionAllocator::allocate)
+                .isInstanceOf(IllegalTransactionStateException.class);
+
+        assertThat(currentProjectionVersion()).isEqualTo(before);
     }
 
     private void failSerialization() {
