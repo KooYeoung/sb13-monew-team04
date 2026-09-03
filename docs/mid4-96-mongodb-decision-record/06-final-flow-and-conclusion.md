@@ -77,7 +77,9 @@ response 반환 이후
 -> 성공 시 PROCESSED, 실패 시 retry 또는 DEAD_LETTER
 ```
 
-MongoDB 문서, RDB 현재 상태 batch 재조회, projection writer와 Outbox worker는 구현됐지만 기본 비활성화 상태다. 현재 조회 API는 계속 RDB를 사용하며 MongoDB 조회 전환은 MID4-139 범위다. MID4-247은 네 가지 count 이벤트를 같은 polling batch의 `event_type + 대상 ID`로 묶어 최고 projection version으로 한 번 반영하고 그룹 전체 상태를 전이한다.
+MongoDB 문서, RDB 현재 상태 batch 재조회, projection writer와 Outbox worker는 구현됐지만 기본 비활성화 상태다. 현재 조회 API는 계속 RDB를 사용하며 MongoDB 조회 전환은 MID4-139 범위다. MID4-247은 네 가지 count 이벤트를 같은 polling batch의 `event_type + 대상 ID`로 묶어 최고 projection version으로 한 번 반영하고 그룹 전체 상태를 전이한다. MID4-248은 도메인별 물리삭제 cleanup과 낮은 버전의 `PENDING`·`FAILED`·in-flight stale replay가 높은 버전 tombstone을 덮지 못하는 경계를 실제 MongoDB 통합 테스트로 검증한다.
+
+동일 ID 복구·재노출은 아직 구현 범위가 아니다. 현재 RDB에는 이를 발생시키는 명령이 없으며, S3 기사 복원은 새 UUID로 기사를 생성한다. 향후 같은 ID 복구 동작이 추가되면 그 transaction에서 event type과 producer를 함께 추가하고, 대상과 부모의 RDB 현재 상태를 다시 확인한 뒤 snapshot과 activity를 복구해야 한다.
 
 여기서 비동기는 사용자 request transaction과 worker 실행 시점이 분리된다는 의미다. worker 내부에서는 RDB 조회와 `MongoTemplate` 명령을 blocking 방식으로 순차 실행하고 각 결과를 확인한 뒤 Outbox 상태를 저장한다.
 

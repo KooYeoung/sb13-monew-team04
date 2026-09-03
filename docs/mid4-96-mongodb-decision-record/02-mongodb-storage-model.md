@@ -308,7 +308,7 @@ U1 + INTEREST_SUBSCRIBED + INTEREST + I1
 
 이미 같은 activity가 있으면 새로 만들지 않고 기존 문서를 갱신한다.
 
-아래 복구·재노출 흐름은 후속 설계다. MID4-138 이벤트 목록과 projection handler에는 별도 복구 이벤트 및 기존 `TARGET_DELETED` activity의 재활성화 처리가 포함되지 않는다. 후속 구현에서는 activity만 `ACTIVE`로 바꾸지 않고, 먼저 RDB 기준 대상과 필요한 부모 대상이 현재 노출 가능한 상태인지 확인한 뒤 snapshot과 activity를 함께 복구해야 한다. 대상이 아직 RDB에서 삭제 또는 비노출 상태이면 activity를 재활성화하지 않고 `hiddenByTargetType`, `hiddenByTargetId`는 복구 성공 시에만 제거한다.
+아래 복구·재노출 흐름은 후속 설계다. MID4-248 시점의 RDB에는 같은 ID 복구·재노출 동작이 없고, 이벤트 목록과 projection handler에도 별도 복구 이벤트 및 기존 `TARGET_DELETED` activity의 재활성화 처리가 포함되지 않는다. S3 기사 복원은 새 UUID를 발급하는 신규 기사 생성으로 처리한다. 후속 구현에서는 실제 RDB 복구 명령과 같은 transaction에 이벤트를 저장하고, activity만 `ACTIVE`로 바꾸지 않고 먼저 RDB 기준 대상과 필요한 부모 대상이 현재 노출 가능한 상태인지 확인한 뒤 snapshot과 activity를 함께 복구해야 한다. 대상이 아직 RDB에서 삭제 또는 비노출 상태이면 activity를 재활성화하지 않고 `hiddenByTargetType`, `hiddenByTargetId`는 복구 성공 시에만 제거한다.
 
 ```text
 댓글 C1 좋아요 취소

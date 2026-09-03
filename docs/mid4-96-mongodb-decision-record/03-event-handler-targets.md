@@ -47,7 +47,20 @@ MongoDB Read Model을 적용하면 RDB 원본 데이터의 변경을 MongoDB 조
 -> 조회, 댓글 작성, 댓글 좋아요 activity key를 scrubbed tombstone 처리
 ```
 
-물리삭제 이후에는 복구를 고려하지 않는다. 삭제 전 `PENDING` 또는 재시도 가능한 `FAILED` 이벤트가 나중에 처리되더라도, worker는 RDB 현재 상태와 결정적 `_id`의 더 높은 `projectionVersion` tombstone을 확인한다. stale 이벤트는 MongoDB 문서를 재생성하지 않고 no-op 처리한다.
+물리삭제 이후에는 복구를 고려하지 않는다. 삭제 전 `PENDING` 또는 재시도 가능한 `FAILED` 이벤트가 나중에 처리되더라도, worker는 RDB 현재 상태와 결정적 `_id`의 더 높은 `projectionVersion` tombstone을 확인한다. stale 이벤트는 MongoDB 문서를 재생성하지 않고 no-op 처리한다. MID4-248은 댓글·기사·관심사·사용자 물리삭제의 기존 문서 bulk cleanup과 payload fan-out tombstone 물질화, 그리고 아래 두 stale replay를 실제 MongoDB 통합 테스트로 고정했다.
+
+```text
+PENDING 또는 FAILED 이벤트 version=41
+-> 물리삭제 tombstone version=42가 먼저 반영됨
+-> worker가 source row 부재를 확인하고 version=41 tombstone을 다시 시도
+-> 저장 version < incoming version 조건이 거짓이므로 no-op
+-> outbox row는 정상 처리된 stale 이벤트로 PROCESSED 전환 가능
+
+worker가 version=41의 삭제 전 RDB 상태를 이미 읽음
+-> 다른 worker가 물리삭제 tombstone version=42를 먼저 반영
+-> 첫 worker가 오래된 live snapshot/activity upsert를 시도
+-> 같은 결정적 _id의 version=42가 유지되고 표시 필드는 복원되지 않음
+```
 
 ## Payload와 RDB 재조회 기준
 
@@ -65,7 +78,9 @@ MID4-137 구현에서 `aggregate_id`와 `actor_user_id`는 payload에 중복하�
 
 이미 알고 있는 불변 값은 payload snapshot으로 사용할 수 있다. 다만 producer가 이미 알고 있는 mutable 값도 감사·디버깅 목적으로 payload에 포함할 수 있을 뿐, worker는 이를 MongoDB의 최종 상태로 사용하지 않는다.
 
-## 공통 복구 이벤트
+## 공통 복구 이벤트(후속 설계)
+
+현재 RDB 도메인에는 논리삭제된 댓글·기사·관심사를 같은 ID로 복구하거나 재노출하는 동작이 없고, 이에 대응하는 Outbox event type과 producer도 없다. S3 기사 복원은 기존 기사를 같은 ID로 되살리는 흐름이 아니라 새 UUID의 기사를 생성하므로 여기서 말하는 재노출 이벤트가 아니다. 따라서 MID4-248은 아래 후보 설계를 구현하지 않고, 현재 존재하는 물리삭제와 stale replay 계약만 검증한다.
 
 대상 복구 이벤트는 activity만 재활성화하지 않는다. 복구 대상과 관련될 수 있는 `status=TARGET_DELETED` activity 후보를 `targetType`, `targetId`, `parentTargetType`, `parentTargetId`로 찾고, RDB 기준 대상과 필요한 부모 대상이 현재 노출 가능한 상태인지 다시 계산한다. 남은 차단 원인이 없으면 대상 snapshot을 RDB 현재 값으로 갱신해 `visible=true`로 복구한 뒤 activity를 `visible=true`, `status=ACTIVE`로 복구한다. 대상이 아직 RDB에서 삭제 또는 비노출 상태이면 activity 재활성화를 하지 않는다. `CANCELED`, `UNSUBSCRIBED`, `USER_DELETED` 상태는 대상 복구 이벤트로 자동 복구하지 않는다.
 

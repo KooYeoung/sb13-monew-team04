@@ -11,7 +11,7 @@
 - 로컬 단기 측정에서는 RDB가 `200 rps`까지 통과했지만, 더 긴 측정에서는 `190 rps`를 보수적인 통과 구간으로 확인했다.
 - 일반 조회만 보면 MongoDB 조회용 데이터를 바로 도입할 근거가 부족해 적용을 후순위로 두었다.
 - MID4-135에서 후속 비교를 위한 MongoDB 환경과 인덱스 초기화 기반은 준비했지만 기본 비활성화 상태이며, 실제 조회는 계속 RDB를 사용한다.
-- MID4-136에서 Outbox 기본 테이블과 JPA 저장 모델을 준비했고, MID4-137에서 도메인 쓰기 트랜잭션이 Outbox row를 함께 저장하도록 연동했다. MongoDB worker와 조회 전환은 아직 없다.
+- MID4-136에서 Outbox 기본 테이블과 JPA 저장 모델을 준비했고, MID4-137에서 producer를 연동했으며, MID4-138의 MongoDB worker와 MID4-247의 count batch 병합까지 구현했다. MID4-248은 물리삭제와 stale replay를 검증했지만 worker는 기본 비활성화이고 조회 전환은 아직 없다.
 - 하지만 한 댓글·기사·관심사에 연결 데이터가 몰리거나 제외할 데이터가 많으면 반복 조회 비용이 다시 커졌다.
 - 활동 데이터에 노출 상태를 저장하고 직접 확인하도록 바꾸자 이 특수 조건도 크게 개선됐다.
 - 남은 문제는 결과마다 댓글 수·조회 수·구독자 수를 다시 세는 과정과 비활성 데이터를 읽은 뒤 제외하는 일부 인덱스 경로다.
@@ -31,6 +31,9 @@
 | 준비 | [MID4-135 MongoDB 환경 구성](environment-setup.md#7-mongodb-read-model-로컬-설정) | 후속 Read Model 구현 전에 무엇이 준비됐는가 | 연결 설정, 로컬 Compose, 컬렉션 이름과 인덱스 초기화만 준비했으며 조회 경로는 전환하지 않았다. |
 | 준비 | MID4-136 Outbox 이벤트 저장 구조 | 비동기 projection 전에 무엇이 준비됐는가 | JSONB payload와 처리 상태를 저장하는 RDB 테이블·JPA 모델만 준비했으며 실제 이벤트 생성과 worker는 연결하지 않았다. |
 | 구현 | MID4-137 도메인 Outbox 이벤트 연동 | 쓰기 요청이 Outbox를 어떻게 저장하는가 | 사용자·관심사·기사·댓글 변경과 같은 트랜잭션에서 JSONB payload를 가진 Outbox row를 저장하며 worker와 조회 전환은 포함하지 않았다. |
+| 구현 | MID4-138 Outbox worker와 projection | commit된 이벤트를 MongoDB에 어떻게 반영하는가 | RDB 현재 상태 재조회, 다중 worker claim/lease, 전역 version CAS, hidden guard와 scrubbed tombstone을 구현했다. |
+| 구현 | MID4-247 count batch 병합 | 같은 대상의 count 이벤트 중복 처리를 어떻게 줄이는가 | polling batch 안에서 같은 event type과 대상 ID를 그룹화해 최고 version으로 한 번 투영한다. |
+| 검증 | MID4-248 삭제와 stale replay | 물리삭제 뒤 오래된 이벤트가 문서를 되살릴 수 있는가 | 도메인별 cleanup과 낮은 version의 PENDING·FAILED·in-flight 쓰기가 tombstone을 덮지 못함을 실제 MongoDB에서 검증했다. |
 
 ## 궁금한 내용으로 바로 가기
 
@@ -58,6 +61,7 @@
 | MID4-135 | 성능 측정 없이 MongoDB 후속 구현 기반 준비 | 환경과 인덱스 초기화가 준비됐다는 의미이며 MongoDB 적용 효과를 검증한 결과가 아니다. |
 | MID4-136 | 성능 측정 없이 Outbox 저장 기반 준비 | 테이블과 JPA 모델만 추가했으며 쓰기 요청에 Outbox insert가 포함된 성능 결과가 아니다. |
 | MID4-137 | 성능 측정 없이 도메인 Outbox producer 연동 | MID4-137에서 연동한 쓰기 요청에는 Outbox 저장 비용이 포함되지만, 기존 MID4-206 측정값을 Outbox 적용 후 결과로 재분류하지 않는다. |
+| MID4-138·247·248 | 성능 측정 없이 worker 구현과 정합성 검증 | MongoDB projection 동작과 삭제·재시도 경계를 검증한 결과이며 RDB 대비 조회 성능 결과가 아니다. worker와 조회 경로는 기본 전환되지 않았다. |
 
 따라서 MID4-179의 `200 rps`와 MID4-206의 `190 rps`는 서로 모순되는 값이 아니다. 앞의 값은 1분 단기 경계이고, 뒤의 값은 더 엄격한 응답 시간 기준으로 30분 동안 확인한 보수적인 구간이다.
 
@@ -107,7 +111,7 @@
 
 ## 다음에 확인할 내용
 
-- MongoDB 환경·인덱스와 Outbox producer까지 준비됐으므로 적용 조건이 충족되면 document, RDB 현재 상태 batch 재조회 기반 projection writer, Outbox worker와 조회 전환을 순서대로 구현한다.
+- MongoDB document, RDB 현재 상태 batch 재조회 기반 projection writer와 Outbox worker까지 구현됐으므로, 적용 조건이 충족되면 초기 투영과 MongoDB 조회 경로 전환을 검증한다.
 - 비활성 데이터를 읽은 뒤 제외하는 조회에 활성 데이터만 담는 부분 인덱스를 적용했을 때 효과를 측정한다.
 - 기사별 댓글·조회 수와 관심사별 구독자 수를 결과마다 다시 계산하는 구조가 데이터 증가 시 어느 지점에서 한계에 도달하는지 확인한다.
 - 목표 처리량과 응답 시간 기준이 확정되면 같은 조건에서 RDB와 MongoDB 조회용 데이터를 비교한다.
