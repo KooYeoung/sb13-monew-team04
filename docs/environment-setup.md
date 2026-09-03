@@ -117,7 +117,13 @@ Outbox worker는 `MONEW_MONGODB_ENABLED=true`와 `MONEW_MONGODB_WORKER_ENABLED=t
 
 이 스키마를 적용하면 기존 MongoDB 문서는 결정적 `_id`, `projectionVersion`, `tombstone` 계약과 호환되지 않습니다. 기존의 같은 이름인 non-partial natural-key 인덱스도 partial unique 인덱스로 제자리 변경할 수 없어, 그대로 두면 시작 시 `IndexOptionsConflict`가 발생합니다. 현재 Read Model은 기본 비활성화이고 운영 조회 경로에 사용하지 않으므로 온라인 변환이나 애플리케이션 시작 시 자동 인덱스 삭제는 제공하지 않습니다. 로컬에서는 아래 절차로 `mongodb-data` 볼륨을 재생성해 문서와 인덱스를 함께 초기화한 뒤 Read Model을 다시 투영합니다.
 
-구형 Outbox 삭제 payload에는 삭제 전에만 알 수 있는 activity key와 자식 snapshot 영향 범위가 없을 수 있습니다. 물리 삭제가 끝난 뒤에는 이 범위를 RDB에서 복원할 수 없으므로, CAS worker를 활성화하기 전에 구형 worker로 기존 Outbox를 모두 처리하거나 명시적인 데이터 마이그레이션을 완료해야 합니다. 그다음 MongoDB Read Model을 초기화하고 새 worker로 재투영합니다. 이 전환이 끝나기 전에는 `MONEW_MONGODB_WORKER_ENABLED`를 `false`로 유지합니다.
+CAS 도입 전에 생성된 Outbox 삭제 payload에는 삭제 전에만 알 수 있는 activity key와 자식 snapshot 영향 범위가 없습니다. 현재 저장소에는 pre-CAS Outbox를 안전하게 projection하는 처리 경로가 없고, 물리 삭제 후에는 RDB에서 영향 범위를 복원할 수도 없습니다. 따라서 local/dev에서는 CAS worker를 활성화하기 전에 `projection_version=0`인 pre-CAS Outbox row와 MongoDB Read Model을 함께 초기화합니다. 이 데이터는 복구할 수 없으므로 필요한 기록을 먼저 백업해야 합니다.
+
+```sql
+DELETE FROM outbox_events WHERE projection_version = 0;
+```
+
+운영 환경에서는 별도 데이터 마이그레이션과 초기 투영 절차가 마련되기 전까지 worker와 MongoDB 조회 경로를 활성화하지 않습니다. 전환이 끝나기 전에는 `MONEW_MONGODB_WORKER_ENABLED=false`를 유지합니다.
 
 ### MongoDB 계정 변경과 개발 볼륨 재생성
 

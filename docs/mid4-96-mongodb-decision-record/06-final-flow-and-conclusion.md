@@ -35,6 +35,9 @@ MongoDB 후속 적용 시 요청 처리 흐름은 다음과 같이 둔다.
 -> RDB 트랜잭션 시작
 -> 원본 데이터 변경
 -> 도메인 이벤트 수집
+-> payload 직렬화
+-> outbox_projection_clock(id=1) row를 PESSIMISTIC_WRITE로 잠금
+-> current_version 증가 및 projection_version 발급
 -> outbox_events 테이블에 이벤트 저장
 -> RDB 커밋
 -> 사용자 response 반환
@@ -54,7 +57,10 @@ MID4-137에서는 위 흐름 중 원본 변경과 `outbox_events` 저장까지 �
 -> 원본 데이터 변경
 -> OutboxEventPayload record 생성
 -> 같은 트랜잭션에 MANDATORY로 참여하는 writer 호출
--> payload를 JsonNode로 직렬화하고 outbox_events 저장
+-> payload를 JsonNode로 직렬화
+-> outbox_projection_clock(id=1) row를 PESSIMISTIC_WRITE로 잠금
+-> current_version 증가 및 projection_version 발급
+-> outbox_events 저장
 -> RDB 커밋
 -> 사용자 response 반환
 ```
@@ -191,9 +197,9 @@ natural key와 atomic upsert는 중복 문서 방지 계약이다. activity의 `
 W1: 댓글 C1의 이전 상태 조회
 W2: 댓글 C1의 최신 상태 조회 및 MongoDB 반영
 W1: 이전 상태를 나중에 MongoDB 반영
--> natural key 중복은 없음
--> occurredAt은 역행하지 않음
--> content, visible, status는 이전 값으로 회귀할 수 있음
+-> W2의 projectionVersion=42가 먼저 저장됨
+-> W1의 projectionVersion=41은 저장 version < incoming version 조건을 만족하지 못함
+-> stale 성공(no-op)으로 처리되어 content, visible, status는 회귀하지 않음
 ```
 
 원본 엔티티별 `@Version`, advisory lock과 target별 worker 직렬화는 추가하지 않는다. Outbox projection fencing token은 `outbox_projection_clock` singleton row의 비관적 잠금으로 발급한다. worker의 짧은 claim transaction에는 별도로 `FOR UPDATE SKIP LOCKED`를 사용하고 MongoDB 반영 중에는 RDB row lock을 유지하지 않는다. Outbox row와 version 저장은 원본 변경과 같은 request transaction에서 동기 수행하지만, MongoDB 반영과 RDB 현재 상태 batch 재조회는 response 반환 이후 worker가 별도 thread에서 blocking 방식으로 수행한다.

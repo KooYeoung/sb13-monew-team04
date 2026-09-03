@@ -236,6 +236,29 @@ MID4-137에서 저장하는 이벤트 계약은 다음과 같다. `aggregate_id`
 
 위 표는 이벤트별 핵심 필드만 축약한 것이다. 기사·댓글·관심사·사용자 payload에는 `impact`가 함께 직렬화되며 일반 이벤트는 `{"activityKeys":[],"commentSnapshotIds":[]}`를 저장한다. 삭제와 닉네임 변경 이벤트의 `impact.activityKeys`는 `userId`, 활동을 나타내는 `activityEventType` enum, `targetId`로 이루어진 natural key 목록이며 `impact.commentSnapshotIds`는 영향을 받는 댓글 snapshot ID 목록이다. 댓글/기사/관심사/사용자 삭제 전과 사용자 닉네임 변경 시점에 RDB에서 수집해 중복을 제거한 불변 목록으로 저장한다. 기존 JSON의 `impact=null`은 빈 목록으로 역직렬화한다.
 
+기사 물리삭제 payload의 직렬화 예시는 다음과 같다. 공통 envelope의 `event_type`, `aggregate_type`, `aggregate_id`, `actor_user_id`, `projection_version`은 이 JSON에 중복하지 않는다.
+
+```json
+{
+  "action": "HARD_DELETED",
+  "impact": {
+    "activityKeys": [
+      {
+        "userId": "viewer-user-uuid",
+        "activityEventType": "ARTICLE_VIEWED",
+        "targetId": "article-uuid"
+      },
+      {
+        "userId": "comment-author-uuid",
+        "activityEventType": "COMMENT_WRITTEN",
+        "targetId": "comment-uuid"
+      }
+    ],
+    "commentSnapshotIds": ["comment-uuid"]
+  }
+}
+```
+
 사용자 물리삭제 payload의 영향 ID와 projection key 목록은 연관 row를 삭제하기 전에 수집하고 중복을 제거한, 해당 transaction이 관찰한 불변 snapshot이다. 수집 순간과 삭제 사이에 관계 변경이 끼어들 가능성까지 payload 하나로 선형화하지는 않는다. worker는 이를 보완하기 위해 삭제 버전보다 오래된 기존 MongoDB 문서를 대상/부모/사용자 조건의 versioned bulk update로 먼저 tombstone 처리하고, payload key마다 문서가 없을 때도 결정적 `_id` tombstone을 upsert한다. 아직 MongoDB에 없던 과거 이벤트는 처리 시점의 actor/source 부재 확인으로 활성화하지 않는다.
 
 MID4-138 worker는 `USER_HARD_DELETED`의 impact key마다 activity와 작성 댓글 snapshot을 scrubbed tombstone으로 만들고, 기존 영향 ID를 count 재계산 후보로 사용한다. 사용자 물리삭제 이후 더 낮은 버전의 활동 이벤트는 actor/source row 재확인과 tombstone CAS 양쪽에서 재생성이 차단된다.
@@ -362,8 +385,9 @@ MongoDB 반영 성공 후 PROCESSED 저장 실패
 | `OBX_006` | `OutboxRetryPolicyException` | 한도를 소진한 retry count에 다음 지연시간을 요청함 | `currentRetryCount`, `maxRetryCount` |
 | `OBX_007` | `OutboxHeartbeatStartException` | heartbeat scheduler 등록 실패 | `claimId` |
 | `OBX_008` | `OutboxHeartbeatRenewException` | heartbeat DB 갱신 실패 | `claimId` |
+| `OBX_009` | `OutboxProjectionVersionAllocationException` | singleton clock row가 없거나 projection version 잠금·할당에 실패함 | `reason`(선택) |
 
-이 예외들은 worker 내부 상태 전이, 로그와 `last_error` 진단을 위한 계약이며 별도 Outbox HTTP endpoint의 응답 계약을 의미하지 않는다.
+`OBX_003`부터 `OBX_008`까지는 worker 내부 상태 전이, 로그와 `last_error` 진단에 사용한다. `OBX_009`는 요청 트랜잭션에서 projection version을 발급하지 못했을 때 원본 변경과 Outbox 저장을 함께 롤백하기 위한 계약이다. 어느 코드도 별도 Outbox HTTP endpoint의 응답 계약을 의미하지 않는다.
 
 ```text
 payload decode 첫 실패 예시

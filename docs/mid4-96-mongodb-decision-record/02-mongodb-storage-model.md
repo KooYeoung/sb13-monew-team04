@@ -601,7 +601,7 @@ DTO 변경이 곧바로 MongoDB 스키마 변경을 강제하지 않도록, Mong
 
 논리삭제, 비공개, 좋아요 취소 같은 상태 변경은 MongoDB 문서를 물리 삭제하기보다 상태 필드로 처리한다.
 
-예시:
+MongoDB에서 상태 변경 시 갱신되는 필드 fragment 예시는 다음과 같다. `_id`와 activity natural key 필드는 기존 값을 유지한다.
 
 ```json
 {
@@ -609,7 +609,9 @@ DTO 변경이 곧바로 MongoDB 스키마 변경을 강제하지 않도록, Mong
   "status": "TARGET_DELETED",
   "hiddenByTargetType": "ARTICLE",
   "hiddenByTargetId": "article-uuid",
-  "updatedAt": "2026-08-15T12:00:00"
+  "updatedAt": "2026-08-15T12:00:00",
+  "projectionVersion": 43,
+  "tombstone": false
 }
 ```
 
@@ -680,6 +682,18 @@ INTEREST_SUBSCRIBED + 관심사 비노출
 ## 물리삭제 처리
 
 물리삭제는 RDB에서 복구 대상이 아니게 최종 제거되는 단계다. MongoDB에서는 문서를 실제 remove하지 않고 결정적 `_id`, `projectionVersion`, `tombstone=true`, `visible=false`, `updatedAt`만 남기는 scrubbed tombstone으로 바꾼다. 사용자 ID, target ID, 제목, 내용 같은 식별·표시 필드는 `$unset`해 조회 모델에서는 제거된 것과 같게 취급하면서, 같은 논리 키의 과거 이벤트는 버전 CAS로 차단한다.
+
+기사 snapshot의 scrubbed tombstone 예시는 다음과 같다.
+
+```json
+{
+  "_id": "sha256(article|article-uuid)",
+  "visible": false,
+  "updatedAt": "2026-08-15T12:30:00",
+  "projectionVersion": 44,
+  "tombstone": true
+}
+```
 
 ```text
 사용자 U1 물리삭제
