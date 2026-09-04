@@ -96,6 +96,43 @@ public enum ApiErrorCode {
             "Outbox projection 버전을 발급하지 못했습니다."
     ),
 
+    // READ MODEL BACKFILL RMB
+    READ_MODEL_BACKFILL_CONFIGURATION_INVALID(
+            "RMB_001",
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Read Model 초기 투영 설정이 올바르지 않습니다."
+    ),
+    READ_MODEL_BACKFILL_STATE_INVALID(
+            "RMB_002",
+            HttpStatus.CONFLICT,
+            "Read Model 초기 투영 상태를 변경할 수 없습니다."
+    ),
+    READ_MODEL_BACKFILL_CLAIM_OWNERSHIP_LOST(
+            "RMB_003",
+            HttpStatus.CONFLICT,
+            "Read Model 초기 투영 claim 소유권을 잃었습니다."
+    ),
+    READ_MODEL_BACKFILL_HEARTBEAT_FAILED(
+            "RMB_004",
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Read Model 초기 투영 heartbeat를 유지하지 못했습니다."
+    ),
+    READ_MODEL_BACKFILL_REPORT_SERIALIZATION_FAILED(
+            "RMB_005",
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Read Model 초기 투영 검증 결과를 직렬화하지 못했습니다."
+    ),
+    READ_MODEL_BACKFILL_CHECKPOINT_NOT_FOUND(
+            "RMB_006",
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Read Model 초기 투영 checkpoint를 찾지 못했습니다."
+    ),
+    READ_MODEL_BACKFILL_PROGRESS_INVALID(
+            "RMB_007",
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Read Model 초기 투영 cursor가 진행되지 않았습니다."
+    ),
+
     // GLOBAL/COMMON GLB
     INVALID_REQUEST("GLB_001", HttpStatus.BAD_REQUEST, "요청 데이터가 올바르지 않습니다."),
     ADVISORY_LOCK_FAILED("GLB_002", HttpStatus.INTERNAL_SERVER_ERROR, "DB락 처리에 실패했습니다."),

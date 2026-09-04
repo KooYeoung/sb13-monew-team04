@@ -26,6 +26,14 @@ springdoc:
     tags-sorter: alpha
 
 monew:
+  mongodb:
+    backfill:
+      enabled: ${MONEW_MONGODB_BACKFILL_ENABLED:false}
+      run-id: ${MONEW_MONGODB_BACKFILL_RUN_ID:}
+      fixed-delay-ms: ${MONEW_MONGODB_BACKFILL_FIXED_DELAY_MS:1000}
+      batch-size: ${MONEW_MONGODB_BACKFILL_BATCH_SIZE:100}
+      claim-lease: ${MONEW_MONGODB_BACKFILL_CLAIM_LEASE:5m}
+      heartbeat-interval: ${MONEW_MONGODB_BACKFILL_HEARTBEAT_INTERVAL:1m}
   news:
     naver:
       base-url: https://naverapihub.apigw.ntruss.com
