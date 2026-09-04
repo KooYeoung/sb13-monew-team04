@@ -12,11 +12,9 @@ import com.codeit.sb13.monew.comment.service.impl.CommentLikeActivityService;
 import com.codeit.sb13.monew.interest.service.impl.SubscribedActivityService;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 /** 기존 RDB 활동 조회 서비스 네 개를 공통 활동 조회 계약으로 조합한다. */
-@Primary
 @Component
 @RequiredArgsConstructor
 public class RdbUserActivityReadSource implements UserActivityReadSource {

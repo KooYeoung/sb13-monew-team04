@@ -26,6 +26,8 @@ springdoc:
     tags-sorter: alpha
 
 monew:
+  activity:
+    read-source: ${MONEW_ACTIVITY_READ_SOURCE:RDB}
   mongodb:
     backfill:
       enabled: ${MONEW_MONGODB_BACKFILL_ENABLED:false}

@@ -32,6 +32,8 @@ logging:
     org.hibernate.orm.jdbc.bind: off
 
 monew:
+  activity:
+    read-source: RDB
   mongodb:
     enabled: false
     initialize-indexes: false
