@@ -516,7 +516,7 @@ T1: T2 commit 뒤 clock row 잠금, version=42 발급 및 commit
 
 worker가 두 commit 사이에 실행되면 먼저 commit된 상태가 일시적으로 보일 수 있다. 나중 commit된 transaction의 더 큰 버전이 최종 상태를 반영하며, 과거 이벤트가 뒤늦게 끝나도 CAS가 이를 덮지 못하게 한다. 중복 처리와 재시도도 같은 버전에서는 no-op이므로 멱등하다.
 
-MID4-138 테스트는 서로 다른 worker의 claim batch가 겹치지 않는지, 만료 claim 회수, 이전 claim UUID의 상태 갱신 차단, row별 retry와 heartbeat 갱신을 검증한다. MID4-247 테스트는 4개 count type의 동일 대상 병합, 최고 projection version 선택, 그룹 성공·실패 상태 전이와 부분 claim 상실 차단을 검증한다. MID4-248의 MongoDB projection 통합 테스트는 댓글·기사·관심사·사용자 물리삭제 fan-out과 낮은 version의 `PENDING`·`FAILED`·in-flight stale replay를 검증하고, JPA source reader와 handler 단위 테스트는 부모 기사가 비노출인 댓글 활동 차단을 검증한다. PostgreSQL 통합 테스트는 claim의 동시성·소유권과 상태 영속화, clock 잠금이 commit까지 다음 할당을 막고 rollback된 버전을 재사용하는지 확인한다. 실제 MongoDB 컨테이너 테스트는 V2 후 V1 역순 쓰기, 문서 없는 취소 guard, scrubbed tombstone, 동일 버전 재시도와 fan-out의 빠진 문서 후속 반영을 검증한다.
+MID4-138 테스트는 서로 다른 worker의 claim batch가 겹치지 않는지, 만료 claim 회수, 이전 claim UUID의 상태 갱신 차단, row별 retry와 heartbeat 갱신을 검증한다. MID4-247 테스트는 4개 count type의 동일 대상 병합, 최고 projection version 선택, 그룹 성공·실패 상태 전이와 부분 claim 상실 차단을 검증한다. MID4-248의 MongoDB projection 통합 테스트는 댓글·기사·관심사·사용자 물리삭제 fan-out과 낮은 version의 `PENDING`·`FAILED`·in-flight stale replay를 검증하고, JPA source reader와 handler 단위 테스트는 부모 기사가 비노출인 댓글 활동 차단을 검증한다. MID4-249는 초기 투영도 같은 전역 clock에서 version을 발급받고 공통 projection handler를 사용한다. run-id별 checkpoint와 DB 시각 lease, page 재실행 및 정합성 실패 시 전체 멱등 재투영 기준은 [초기 데이터 투영 및 정합성 검증](./09-initial-projection-and-reconciliation.md)에 기록한다. PostgreSQL 통합 테스트는 claim의 동시성·소유권과 상태 영속화, clock 잠금이 commit까지 다음 할당을 막고 rollback된 버전을 재사용하는지 확인한다. 실제 MongoDB 컨테이너 테스트는 V2 후 V1 역순 쓰기, 문서 없는 취소 guard, scrubbed tombstone, 동일 버전 재시도와 fan-out의 빠진 문서 후속 반영을 검증한다.
 
 ### Projection Version과 CAS 기준
 

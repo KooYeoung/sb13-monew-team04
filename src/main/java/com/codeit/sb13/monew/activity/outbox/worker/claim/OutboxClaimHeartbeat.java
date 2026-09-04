@@ -9,7 +9,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
@@ -21,14 +20,23 @@ import org.springframework.stereotype.Component;
  * worker가 다음 처리 경계에서 이를 감지해 중단하도록 한다.</p>
  */
 @Component
-@RequiredArgsConstructor
 public class OutboxClaimHeartbeat {
 
     private final OutboxClaimService claimService;
     private final OutboxWorkerProperties properties;
 
-    @Qualifier("outboxClaimHeartbeatExecutor")
     private final ScheduledExecutorService heartbeatExecutor;
+
+    public OutboxClaimHeartbeat(
+            OutboxClaimService claimService,
+            OutboxWorkerProperties properties,
+            @Qualifier("outboxClaimHeartbeatExecutor")
+            ScheduledExecutorService heartbeatExecutor
+    ) {
+        this.claimService = claimService;
+        this.properties = properties;
+        this.heartbeatExecutor = heartbeatExecutor;
+    }
 
     /**
      * 지정한 batch claim의 주기적 lease 연장을 시작한다.

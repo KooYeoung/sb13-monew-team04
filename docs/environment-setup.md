@@ -82,6 +82,12 @@ MONEW_MONGODB_WORKER_FIXED_DELAY_MS=1000
 MONEW_MONGODB_WORKER_BATCH_SIZE=100
 MONEW_MONGODB_WORKER_CLAIM_LEASE=5m
 MONEW_MONGODB_WORKER_HEARTBEAT_INTERVAL=1m
+MONEW_MONGODB_BACKFILL_ENABLED=false
+# MONEW_MONGODB_BACKFILL_RUN_ID=<실행마다-새-UUID>
+MONEW_MONGODB_BACKFILL_FIXED_DELAY_MS=1000
+MONEW_MONGODB_BACKFILL_BATCH_SIZE=100
+MONEW_MONGODB_BACKFILL_CLAIM_LEASE=5m
+MONEW_MONGODB_BACKFILL_HEARTBEAT_INTERVAL=1m
 MONEW_MONGODB_PORT=27017
 MONEW_MONGODB_DATABASE=monew
 MONEW_MONGODB_ROOT_USERNAME=<관리자-계정>
@@ -92,6 +98,8 @@ MONEW_MONGODB_URI=mongodb://<애플리케이션-계정>:<URL-인코딩된-애플
 ```
 
 root 계정은 `admin` database에서 초기화와 관리 작업에만 사용합니다. 애플리케이션과 `MONEW_MONGODB_URI`에서는 root 계정을 사용하지 않습니다. 로컬 Compose 포트는 `127.0.0.1`에만 열리며, 원격 또는 운영 MongoDB에 연결할 때는 서버 인증서를 검증하는 TLS URI를 사용합니다.
+
+초기 투영은 `MONEW_MONGODB_ENABLED`, `MONEW_MONGODB_WORKER_ENABLED`, `MONEW_MONGODB_BACKFILL_ENABLED`가 모두 `true`이고 유효한 `MONEW_MONGODB_BACKFILL_RUN_ID`가 있을 때만 실행됩니다. 재개·검증 절차는 [초기 데이터 투영 및 정합성 검증](mid4-96-mongodb-decision-record/09-initial-projection-and-reconciliation.md)을 따릅니다.
 
 MongoDB만 수동 실행할 때는 다음 명령을 사용합니다.
 
@@ -123,7 +131,19 @@ CAS 도입 전에 생성된 Outbox 삭제 payload에는 삭제 전에만 알 수
 DELETE FROM outbox_events WHERE projection_version = 0;
 ```
 
-운영 환경에서는 별도 데이터 마이그레이션과 초기 투영 절차가 마련되기 전까지 worker와 MongoDB 조회 경로를 활성화하지 않습니다. 전환이 끝나기 전에는 `MONEW_MONGODB_WORKER_ENABLED=false`를 유지합니다.
+운영 환경에서는 별도 데이터 마이그레이션과 초기 투영 절차가 마련되기 전까지 worker와
+MongoDB 조회 경로를 활성화하지 않습니다. 실제 초기 투영 시점에는 새 run-id를 지정하고
+Outbox worker를 함께 활성화해야 투영 도중 발생한 신규 변경도 누락하지 않습니다.
+
+| 단계 | `MONEW_MONGODB_ENABLED` | `MONEW_MONGODB_WORKER_ENABLED` | `MONEW_MONGODB_BACKFILL_ENABLED` | 조회 경로 |
+| --- | --- | --- | --- | --- |
+| 마이그레이션 준비 전 | `false` | `false` | `false` | RDB |
+| 초기 투영 및 정합성 검증 중 | `true` | `true` | `true` | RDB |
+| `COMPLETED` 확인 후 | `true` | `true` | `false` | MID4-139 전환 전까지 RDB |
+
+완료 후에는 애플리케이션을 `MONEW_MONGODB_BACKFILL_ENABLED=false`로 재시작해 초기 투영
+scheduler만 중지합니다. 실시간 변경을 계속 반영하려면 Outbox worker는 활성화 상태로
+유지합니다.
 
 ### MongoDB 계정 변경과 개발 볼륨 재생성
 

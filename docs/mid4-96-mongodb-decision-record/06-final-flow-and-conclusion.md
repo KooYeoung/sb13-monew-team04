@@ -77,7 +77,7 @@ response 반환 이후
 -> 성공 시 PROCESSED, 실패 시 retry 또는 DEAD_LETTER
 ```
 
-MongoDB 문서, RDB 현재 상태 batch 재조회, projection writer와 Outbox worker는 구현됐지만 기본 비활성화 상태다. 현재 조회 API는 계속 RDB를 사용하며 MongoDB 조회 전환은 MID4-139 범위다. MID4-247은 네 가지 count 이벤트를 같은 polling batch의 `event_type + 대상 ID`로 묶어 최고 projection version으로 한 번 반영하고 그룹 전체 상태를 전이한다. MID4-248은 도메인별 물리삭제 cleanup과 낮은 버전의 `PENDING`·`FAILED`·in-flight stale replay가 높은 버전 tombstone을 덮지 못하는 경계를 실제 MongoDB 통합 테스트로 검증한다.
+MongoDB 문서, RDB 현재 상태 batch 재조회, projection writer와 Outbox worker는 구현됐지만 기본 비활성화 상태다. 현재 조회 API는 계속 RDB를 사용하며 MongoDB 조회 전환은 MID4-139 범위다. MID4-247은 네 가지 count 이벤트를 같은 polling batch의 `event_type + 대상 ID`로 묶어 최고 projection version으로 한 번 반영하고 그룹 전체 상태를 전이한다. MID4-248은 도메인별 물리삭제 cleanup과 낮은 버전의 `PENDING`·`FAILED`·in-flight stale replay가 높은 버전 tombstone을 덮지 못하는 경계를 실제 MongoDB 통합 테스트로 검증한다. MID4-249는 네 활동 유형의 기존 RDB 데이터를 run-id와 checkpoint 기반으로 초기 투영하고 완료 후 정합성 보고서를 저장한다. 상세 실행 계약과 예시는 [초기 데이터 투영 및 정합성 검증](./09-initial-projection-and-reconciliation.md)에 기록한다.
 
 동일 ID 복구·재노출은 아직 구현 범위가 아니다. 현재 RDB에는 이를 발생시키는 명령이 없으며, S3 기사 복원은 새 UUID로 기사를 생성한다. 향후 같은 ID 복구 동작이 추가되면 그 transaction에서 event type과 producer를 함께 추가하고, 대상과 부모의 RDB 현재 상태를 다시 확인한 뒤 snapshot과 activity를 복구해야 한다.
 
