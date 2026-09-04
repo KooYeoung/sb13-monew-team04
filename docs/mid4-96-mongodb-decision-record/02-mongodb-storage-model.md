@@ -528,7 +528,8 @@ MID4-250 조회기는 요청 `limit + 1`개의 activity를 조회해 다음 페�
 처음 `limit`개만 snapshot 매핑 후보로 확정한다. cursor는 마지막 응답 DTO가 아니라 마지막으로
 스캔한 activity의 `occurredAt`, `_id`로 이동한다. 같은 시각에서는 `_id` 내림차순이 순서를
 결정하며 다음 페이지 조건은 `occurredAt < cursor.occurredAt` 또는 같은 시각에서
-`_id < cursor._id`다.
+`_id < cursor.activityId`다. `cursor.activityId`에는 마지막으로 스캔한 activity의 MongoDB
+`_id`가 들어간다.
 
 snapshot 조회 후 snapshot이 없거나 `visible=false` 또는 `tombstone=true`이면 해당 activity는 응답에서 제외한다. 초기 정책에서는 제외된 항목만큼 추가 activity를 더 조회해 `limit`을 반드시 채우지 않는다. 따라서 Read Model 반영 지연이나 삭제 전파 상황에서는 응답 개수가 요청 `limit`보다 적을 수 있다. 구체적인 cursor와 짧은 페이지 예시는 [MongoDB 활동내역 조회 계약](./10-mongodb-query-contract.md)을 따른다.
 

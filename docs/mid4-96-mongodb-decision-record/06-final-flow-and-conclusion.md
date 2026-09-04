@@ -135,11 +135,12 @@ outbox worker의 MongoDB 반영 시간은 쓰기 API response time에 포함하�
 
 기사 조회처럼 발생 빈도가 높은 이벤트는 일반 쓰기 이벤트와 분리해 별도 부하 테스트를 진행한다.
 
-활동내역 API 조회 흐름은 다음과 같이 둔다.
+MID4-139에서 MongoDB source를 선택한 경우의 활동내역 API 조회 흐름은 다음과 같이 둔다.
 
 ```text
 활동내역 API 요청
--> activity_histories에서 userId + type + visible=true 기준 최신순 조회
+-> activity_histories에서 userId + type + targetType + visible=true
+   + status=ACTIVE + tombstone=false 기준 최신순 조회
 -> occurredAt DESC, _id DESC 기준으로 cursor/limit 적용
 -> targetId 목록 추출
 -> 대상 snapshot 컬렉션 조회
@@ -150,6 +151,11 @@ outbox worker의 MongoDB 반영 시간은 쓰기 API response time에 포함하�
 ```
 
 커서에는 `occurredAt`과 `_id`를 함께 포함한다. snapshot 누락, `visible=false` 또는 tombstone 항목을 제외한 뒤에는 limit을 채우기 위한 추가 조회를 하지 않는다. 다음 cursor는 마지막 응답 항목이 아닌 마지막 스캔 activity를 기준으로 하므로 짧거나 빈 페이지에서도 scan이 진행된다. 따라서 응답 개수는 요청 limit보다 적을 수 있다.
+
+기존 응답 범위를 유지하기 위해 구독 관심사는 내부 page를 마지막까지 순회해 현재 활성
+구독 전체를 반환한다. 최근 작성 댓글, 최근 좋아요한 댓글, 최근 조회 기사는 첫 page의
+최대 10건만 반환한다. 구독 page의 cursor가 없거나 내림차순으로 진행하지 않으면 무한
+반복을 막기 위해 조회를 실패 처리한다.
 
 ## 후속 설계 결론
 

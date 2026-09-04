@@ -15,12 +15,16 @@ MID4-250은 MongoDB Read Model에서 기존 사용자 활동내역 DTO를 만들
 사용자 존재, 이메일, 닉네임, 가입일은 계속 RDB에서 읽는다. MongoDB 구현은 다음 네
 활동 목록만 담당한다.
 
-| activity type | snapshot | 기존 DTO |
-| --- | --- | --- |
-| `INTEREST_SUBSCRIBED` | `interest_activity_snapshots` | `RecentSubscribed` |
-| `COMMENT_WRITTEN` | `comment_activity_snapshots` | `RecentComment` |
-| `COMMENT_LIKED` | `comment_activity_snapshots` | `RecentCommentLike` |
-| `ARTICLE_VIEWED` | `article_activity_snapshots` | `RecentArticle` |
+| activity type | snapshot | 기존 DTO | 기존 API 응답 범위 |
+| --- | --- | --- | --- |
+| `INTEREST_SUBSCRIBED` | `interest_activity_snapshots` | `RecentSubscribed` | 현재 구독 중인 관심사 전체 |
+| `COMMENT_WRITTEN` | `comment_activity_snapshots` | `RecentComment` | 최신 10건 |
+| `COMMENT_LIKED` | `comment_activity_snapshots` | `RecentCommentLike` | 최신 10건 |
+| `ARTICLE_VIEWED` | `article_activity_snapshots` | `RecentArticle` | 최신 10건 |
+
+MongoDB source도 이 범위를 유지한다. 최근 활동 세 영역은 첫 page 10건만 사용한다. 구독은
+내부적으로 10건씩 cursor page를 읽고 마지막 page까지 합쳐 기존 RDB와 같이 전체를
+반환한다. 이 내부 cursor와 page 크기는 공개 API에 노출하지 않는다.
 
 ## activity 조회와 cursor
 
@@ -36,9 +40,17 @@ tombstone = false
 order by occurredAt desc, _id desc
 ```
 
-첫 페이지의 cursor는 `null`이다. 다음 페이지 cursor에는 `occurredAt`과 64자리 소문자
-SHA-256 activity `_id`가 모두 있어야 한다. 둘 중 하나가 없거나 형식이 잘못되면
-`ReadModelQueryConditionInvalidException`으로 거부한다.
+내부 조회 요청은 `userId`가 있어야 하고 `limit`은 1 이상 `Integer.MAX_VALUE` 미만이어야
+한다. 첫 페이지의 cursor는 `null`이다. 다음 페이지 cursor에는 `occurredAt`과 64자리
+소문자 SHA-256 activity `_id`가 모두 있어야 한다. 사용자, limit 또는 cursor 조건이
+잘못되면 `ReadModelQueryConditionInvalidException`으로 거부한다.
+
+```text
+userId=null                            -> 거부
+limit=0 또는 limit=Integer.MAX_VALUE   -> 거부
+cursor.occurredAt=null                 -> 거부
+cursor.activityId=대문자 또는 64자리 아님 -> 거부
+```
 
 ```text
 다음 페이지 조건
@@ -47,9 +59,9 @@ OR (occurredAt = cursor.occurredAt AND _id < cursor.activityId)
 ```
 
 예를 들어 같은 시각의 `_id`가 `ff...`, `ee...`, `dd...`이고 limit이 2이면 첫 페이지는
-`ff...`, `ee...` 순서다. 다음 cursor는 `(같은 occurredAt, ee...)`이며 다음 페이지는
-`dd...`부터 시작한다. `_id` 보조 정렬 때문에 같은 발생 시각에서도 중복과 누락 없이
-진행한다.
+`ff...`, `ee...` 순서다. 여기서 `...`는 가독성을 위해 64자리 SHA-256의 나머지 문자를
+생략한 표기다. 다음 cursor는 `(같은 occurredAt, ee...)`이며 다음 페이지는 `dd...`부터
+시작한다. `_id` 보조 정렬 때문에 같은 발생 시각에서도 중복과 누락 없이 진행한다.
 
 ## snapshot 필터링과 page 진행
 
@@ -81,17 +93,32 @@ nextCursor=B의 occurredAt + _id
 B가 응답에서 빠졌어도 다음 조회는 B 이후부터 시작한다. 모든 후보가 필터링돼 content가
 비어도 `hasNext=true`이면 같은 방식으로 다음 cursor를 제공한다.
 
-## 기존 DTO 매핑
-
-activity의 `sourceActivityId`는 기존 RDB 활동 row ID, `occurredAt`은 구독·좋아요·조회
-발생 시각으로 사용한다. 표시 정보와 현재 count는 snapshot에서 가져온다.
+구독 전체 조회는 짧거나 빈 내부 page도 건너뛰며 마지막 page까지 합친다.
 
 ```text
-interest snapshot subscriberCount -> RecentSubscribed.interestSubscriberCount
-comment snapshot likeCount -> RecentComment.likeCount / RecentCommentLike.commentLikeCount
-article snapshot commentCount -> RecentArticle.articleCommentCount
-article snapshot viewCount -> RecentArticle.articleViewCount
+현재 활성 구독=12건, 내부 page 크기=10
+1 page: content=10건, hasNext=true, nextCursor 있음
+2 page: content=2건, hasNext=false
+
+최종 UserActivityDto.subscriptions=12건
+comments/commentLikes/articleViews=각각 첫 page 최대 10건
 ```
+
+`hasNext=true`인데 다음 cursor가 없거나 이전 cursor보다 내림차순으로 진행하지 않으면
+`ReadModelQueryProgressException`으로 중단한다. 이는 잘못된 page 응답으로 구독 전체 조회가
+무한 반복되는 것을 막는 내부 정합성 검사다.
+
+## 기존 DTO 매핑
+
+activity의 `sourceActivityId`는 기존 RDB 활동 row ID다. 표시 정보와 현재 count는
+snapshot에서 가져오며 시간 필드는 기존 DTO 의미에 맞춰 다음과 같이 매핑한다.
+
+| DTO | activity에서 가져오는 값 | snapshot에서 가져오는 값 |
+| --- | --- | --- |
+| `RecentSubscribed` | `id=sourceActivityId`, `createdAt=occurredAt` | 관심사 표시 정보, `subscriberCount -> interestSubscriberCount` |
+| `RecentComment` | `id=sourceActivityId` | 댓글·기사·작성자 표시 정보, `likeCount`, `createdAt` |
+| `RecentCommentLike` | `id=sourceActivityId`, `createdAt=occurredAt` | 댓글·기사·작성자 표시 정보, `likeCount -> commentLikeCount`, `createdAt -> commentCreatedAt` |
+| `RecentArticle` | `id=sourceActivityId`, `viewedBy=userId`, `viewedAt=occurredAt` | 기사 표시 정보, `commentCount -> articleCommentCount`, `viewCount -> articleViewCount` |
 
 저장 문서의 필수 UUID를 변환할 수 없으면 `ReadModelDocumentMappingException`으로 처리한다.
 snapshot 누락과 비노출은 정상적인 짧은 페이지이고 예외가 아니다. MongoDB 연결·조회
