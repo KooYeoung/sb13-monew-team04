@@ -11,8 +11,8 @@
 - 로컬 단기 측정에서는 RDB가 `200 rps`까지 통과했지만, 더 긴 측정에서는 `190 rps`를 보수적인 통과 구간으로 확인했다.
 - 일반 조회만 보면 MongoDB 조회용 데이터를 바로 도입할 근거가 부족해 적용을 후순위로 두었다.
 - MID4-135에서 후속 비교를 위한 MongoDB 환경과 인덱스 초기화 기반은 준비했지만 기본 비활성화 상태이며, 실제 조회는 계속 RDB를 사용한다.
-- MID4-136에서 Outbox 기본 테이블과 JPA 저장 모델을 준비했고, MID4-137에서 producer를 연동했으며, MID4-138의 MongoDB worker와 MID4-247의 count batch 병합까지 구현했다. MID4-248은 물리삭제와 stale replay를 검증했지만 worker는 기본 비활성화이고 조회 전환은 아직 없다.
-- MID4-249에서 초기 데이터 투영과 정합성 검증, MID4-250에서 복합 cursor 조회 계약을 준비했으며 MID4-253에서 MongoDB 조건식을 Querydsl Q 타입으로 통일했다. 이 작업들도 조회 전환이나 성능 측정 결과를 의미하지 않는다.
+- MID4-136에서 Outbox 기본 테이블과 JPA 저장 모델을 준비했고, MID4-137에서 producer를 연동했으며, MID4-138의 MongoDB worker와 MID4-247의 count batch 병합까지 구현했다. MID4-248은 물리삭제와 stale replay를 검증했지만 worker와 MongoDB 조회 source는 기본 비활성화다.
+- MID4-249에서 초기 데이터 투영과 정합성 검증, MID4-250에서 복합 cursor 조회 계약을 준비했으며 MID4-253에서 MongoDB 조건식을 Querydsl Q 타입으로 통일했다. MID4-139는 기본값 RDB인 조회 source 설정과 MongoDB 장애 시 요청 전체의 RDB fallback을 연결했다. 이 작업들도 MongoDB 성능 측정 결과를 의미하지 않는다.
 - 하지만 한 댓글·기사·관심사에 연결 데이터가 몰리거나 제외할 데이터가 많으면 반복 조회 비용이 다시 커졌다.
 - 활동 데이터에 노출 상태를 저장하고 직접 확인하도록 바꾸자 이 특수 조건도 크게 개선됐다.
 - 남은 문제는 결과마다 댓글 수·조회 수·구독자 수를 다시 세는 과정과 비활성 데이터를 읽은 뒤 제외하는 일부 인덱스 경로다.
@@ -38,6 +38,7 @@
 | 구현 | MID4-249 초기 데이터 투영 | 기존 RDB 활동을 어떻게 채우고 검증하는가 | checkpoint 재개와 activity·snapshot 정합성 보고를 구현했다. |
 | 구현 | MID4-250 MongoDB 조회 계약 | 기존 DTO를 MongoDB에서 어떻게 조립하는가 | 복합 cursor, snapshot 필터링과 구독 전체 조회 계약을 검증했다. |
 | 리팩터링 | MID4-253 Querydsl 조건식 전환 | MongoDB 조건식을 어떻게 타입 안전하게 유지하는가 | 조회·검증·CAS·partial filter는 Q 타입으로 표현하고 원자적 DML은 MongoTemplate에 유지했다. |
+| 구현 | MID4-139 조회 source routing | MongoDB 조회를 어떻게 선택하고 장애 시 어떻게 복귀하는가 | 기본 RDB 설정을 유지하며 MongoDB 조회 예외는 WARN 기록 후 요청 전체를 RDB에서 다시 조회한다. |
 
 ## 궁금한 내용으로 바로 가기
 
@@ -67,7 +68,7 @@
 | MID4-136 | 성능 측정 없이 Outbox 저장 기반 준비 | 테이블과 JPA 모델만 추가했으며 쓰기 요청에 Outbox insert가 포함된 성능 결과가 아니다. |
 | MID4-137 | 성능 측정 없이 도메인 Outbox producer 연동 | MID4-137에서 연동한 쓰기 요청에는 Outbox 저장 비용이 포함되지만, 기존 MID4-206 측정값을 Outbox 적용 후 결과로 재분류하지 않는다. |
 | MID4-138·247·248 | 성능 측정 없이 worker 구현과 정합성 검증 | MongoDB projection 동작과 삭제·재시도 경계를 검증한 결과이며 RDB 대비 조회 성능 결과가 아니다. worker와 조회 경로는 기본 전환되지 않았다. |
-| MID4-249·250·253 | 성능 측정 없이 초기 투영·조회 계약·Querydsl 리팩터링 | 데이터 이관과 조회 동작 및 조건식 유지보수성을 검증한 결과이며 RDB 대비 MongoDB 성능 결과가 아니다. 기본 조회 source는 RDB다. |
+| MID4-249·250·253·139 | 성능 측정 없이 초기 투영·조회 계약·Querydsl 리팩터링·source routing | 데이터 이관과 조회 동작, 조건식 유지보수성 및 fallback을 검증한 결과이며 RDB 대비 MongoDB 성능 결과가 아니다. 기본 조회 source는 RDB다. |
 
 따라서 MID4-179의 `200 rps`와 MID4-206의 `190 rps`는 서로 모순되는 값이 아니다. 앞의 값은 1분 단기 경계이고, 뒤의 값은 더 엄격한 응답 시간 기준으로 30분 동안 확인한 보수적인 구간이다.
 
@@ -117,7 +118,7 @@
 
 ## 다음에 확인할 내용
 
-- MongoDB document, RDB 현재 상태 batch 재조회 기반 projection writer와 Outbox worker까지 구현됐으므로, 적용 조건이 충족되면 초기 투영과 MongoDB 조회 경로 전환을 검증한다.
+- MongoDB document, RDB 현재 상태 batch 재조회 기반 projection writer와 Outbox worker 및 조회 router까지 구현됐으므로, 적용 조건이 충족되면 초기 투영·worker catch-up·정합성 확인 뒤 `MONEW_ACTIVITY_READ_SOURCE=MONGODB` 전환을 검증한다.
 - 비활성 데이터를 읽은 뒤 제외하는 조회에 활성 데이터만 담는 부분 인덱스를 적용했을 때 효과를 측정한다.
 - 기사별 댓글·조회 수와 관심사별 구독자 수를 결과마다 다시 계산하는 구조가 데이터 증가 시 어느 지점에서 한계에 도달하는지 확인한다.
 - 목표 처리량과 응답 시간 기준이 확정되면 같은 조건에서 RDB와 MongoDB 조회용 데이터를 비교한다.

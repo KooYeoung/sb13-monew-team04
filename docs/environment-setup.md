@@ -68,13 +68,14 @@ docker compose down
 
 ## 7. MongoDB Read Model 로컬 설정
 
-MongoDB Read Model은 기본적으로 비활성화되어 있습니다. 후속 MongoDB 작업을 실행할 때만 `.env.dev`에서 활성화합니다.
+MongoDB Read Model과 활동내역 MongoDB 조회는 기본적으로 비활성화되어 있습니다. 후속 MongoDB 작업을 실행할 때만 `.env.dev`에서 활성화합니다.
 
-이 환경 준비는 MongoDB Read Model의 운영 적용 결정을 의미하지 않습니다. 현재 활동내역 API는 계속 RDB를 사용하며, 적용 판단과 미구현 범위는 [MID4-96 MongoDB/Redis 적용 여부 판단 기록](mid4-96-mongodb-decision-record/README.md)에서 관리합니다.
+이 환경 준비는 MongoDB Read Model의 운영 적용 결정을 의미하지 않습니다. 활동내역 API의 기본 조회 source는 계속 RDB이며, 적용 판단과 미구현 범위는 [MID4-96 MongoDB/Redis 적용 여부 판단 기록](mid4-96-mongodb-decision-record/README.md)에서 관리합니다.
 
 MongoDB 컨테이너는 관리 전용 root 계정과 애플리케이션 전용 계정을 분리합니다. 애플리케이션 계정에는 `MONEW_MONGODB_DATABASE`에 대한 `readWrite` 권한만 부여됩니다. 아래의 계정명과 비밀번호는 개인 로컬 값으로 교체하고, URI의 비밀번호에 특수 문자가 있으면 URL encoding합니다.
 
 ```properties
+MONEW_ACTIVITY_READ_SOURCE=RDB
 MONEW_MONGODB_ENABLED=true
 MONEW_MONGODB_INITIALIZE_INDEXES=true
 MONEW_MONGODB_WORKER_ENABLED=false
@@ -100,6 +101,10 @@ MONEW_MONGODB_URI=mongodb://<애플리케이션-계정>:<URL-인코딩된-애플
 root 계정은 `admin` database에서 초기화와 관리 작업에만 사용합니다. 애플리케이션과 `MONEW_MONGODB_URI`에서는 root 계정을 사용하지 않습니다. 로컬 Compose 포트는 `127.0.0.1`에만 열리며, 원격 또는 운영 MongoDB에 연결할 때는 서버 인증서를 검증하는 TLS URI를 사용합니다.
 
 초기 투영은 `MONEW_MONGODB_ENABLED`, `MONEW_MONGODB_WORKER_ENABLED`, `MONEW_MONGODB_BACKFILL_ENABLED`가 모두 `true`이고 유효한 `MONEW_MONGODB_BACKFILL_RUN_ID`가 있을 때만 실행됩니다. 재개·검증 절차는 [초기 데이터 투영 및 정합성 검증](mid4-96-mongodb-decision-record/09-initial-projection-and-reconciliation.md)을 따릅니다.
+
+활동내역 조회 source는 기반 활성화 여부와 분리된 `MONEW_ACTIVITY_READ_SOURCE`로 선택합니다. 기본값 `RDB`는 MongoDB를 조회하지 않습니다. `MONGODB`는 `MONEW_MONGODB_ENABLED=true`일 때만 사용할 수 있으며 두 설정이 모순되면 애플리케이션 시작을 실패시킵니다. 초기 투영이 `COMPLETED`이고 Outbox worker가 최신 변경을 따라잡아 정합성 검증까지 통과한 뒤에만 MongoDB 조회로 전환합니다.
+
+MongoDB 조회 중 연결, 조회, 문서 매핑 또는 cursor 진행 예외가 발생하면 요청 전체를 RDB source에서 다시 조회하고 WARN 로그에 사용자 ID와 예외 정보를 남깁니다. 일부 MongoDB 결과와 RDB 결과를 섞지 않습니다. 반대로 정상적으로 조회된 빈 결과는 장애가 아니므로 fallback하지 않습니다. 지속적인 MongoDB 장애에도 요청마다 MongoDB를 먼저 시도하며, 현재 자동 retry나 circuit breaker는 적용하지 않습니다.
 
 MongoDB만 수동 실행할 때는 다음 명령을 사용합니다.
 
@@ -135,11 +140,11 @@ DELETE FROM outbox_events WHERE projection_version = 0;
 MongoDB 조회 경로를 활성화하지 않습니다. 실제 초기 투영 시점에는 새 run-id를 지정하고
 Outbox worker를 함께 활성화해야 투영 도중 발생한 신규 변경도 누락하지 않습니다.
 
-| 단계 | `MONEW_MONGODB_ENABLED` | `MONEW_MONGODB_WORKER_ENABLED` | `MONEW_MONGODB_BACKFILL_ENABLED` | 조회 경로 |
+| 단계 | `MONEW_MONGODB_ENABLED` | `MONEW_MONGODB_WORKER_ENABLED` | `MONEW_MONGODB_BACKFILL_ENABLED` | `MONEW_ACTIVITY_READ_SOURCE` |
 | --- | --- | --- | --- | --- |
-| 마이그레이션 준비 전 | `false` | `false` | `false` | RDB |
-| 초기 투영 및 정합성 검증 중 | `true` | `true` | `true` | RDB |
-| `COMPLETED` 확인 후 | `true` | `true` | `false` | MID4-139 전환 전까지 RDB |
+| 마이그레이션 준비 전 | `false` | `false` | `false` | `RDB` |
+| 초기 투영 및 정합성 검증 중 | `true` | `true` | `true` | `RDB` |
+| `COMPLETED` 및 worker catch-up 확인 후 | `true` | `true` | `false` | 검증된 인스턴스부터 `MONGODB` |
 
 완료 후에는 애플리케이션을 `MONEW_MONGODB_BACKFILL_ENABLED=false`로 재시작해 초기 투영
 scheduler만 중지합니다. 실시간 변경을 계속 반영하려면 Outbox worker는 활성화 상태로

@@ -6,7 +6,7 @@
 
 MID4-249는 MongoDB 조회 경로 전환 전에 기존 RDB 활동 데이터를 Read Model로 채우고,
 중단 후 재개 및 최종 정합성 확인이 가능한 실행 경로를 준비한다. MongoDB 조회 계약과
-cursor 검증은 MID4-250, 실제 조회 API 전환과 fallback은 MID4-139 범위다.
+cursor 검증은 MID4-250, 설정 기반 조회 API 전환과 fallback은 MID4-139에서 구현한다.
 
 초기 투영 대상은 현재 노출 가능한 다음 네 활동이다.
 

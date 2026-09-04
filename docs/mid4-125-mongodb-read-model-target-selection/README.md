@@ -98,7 +98,7 @@ RDB baseline의 10m 실패 원인은 최근 조회 기사 read-path 인덱스 �
 | 최근 조회 기사 | RDB 유지 | baseline 병목이었지만 인덱스 후 10m median 0.525ms |
 | 구독 중인 관심사 | RDB 유지, fan-out 후속 관찰 | 현재 total median 1.283ms, 단 worst-case fan-out은 미측정 |
 
-MongoDB Read Model 적용 대상은 현재 선정하지 않는다. 결론은 `후순위`다. MID4-125 수행 당시에는 MongoDB dev 환경구성도 작업 범위에 포함하지 않았으며, 이후 MID4-135에서 비활성 기본값의 환경·인덱스 기반을, MID4-136에서 RDB Outbox 기본 저장 구조를 준비했다. 두 작업은 조회 경로 전환이나 도메인 이벤트 연동을 포함하지 않았다. 이후 MID4-137에서 도메인 Outbox producer를 연동했지만 projection, worker와 조회 전환은 아직 구현하지 않았으므로 적용 결론은 그대로다.
+MongoDB Read Model 적용 대상은 현재 선정하지 않는다. 결론은 `후순위`다. MID4-125 수행 당시에는 MongoDB dev 환경구성도 작업 범위에 포함하지 않았다. 이후 관련 티켓에서 환경·Outbox·projection worker·초기 투영·MongoDB 조회 구현을 준비했고 MID4-139에서 설정 기반 조회 source routing도 연결했지만, 기본 source는 RDB이며 이 문서의 성능 판단을 MongoDB 적용 효과로 재분류하지 않는다.
 
 ## 나중에 MongoDB를 적용한다면
 
@@ -151,7 +151,7 @@ Redis는 영구 저장소가 아니므로 활동내역 Read Model 저장소로 �
 
 ## 최종 의사결정과의 관계
 
-MID4-96의 MongoDB/Redis 적용 여부 판단에는 이 문서, [MID4-179 RDB 최대 요청량 측정](../mid4-179-rdb-throughput-limit/README.md), [MongoDB/Redis 적용 판단 기록](../mid4-96-mongodb-decision-record/README.md)을 근거로 연결한다. 현재 MID4-125 결론은 MongoDB `후순위`, Redis `미적용`이다. 이후 MID4-135에서 MongoDB 환경과 인덱스 초기화 기반을, MID4-136에서 PostgreSQL JSONB payload를 사용하는 Outbox 기본 저장 구조를 준비했고 MID4-137에서 도메인 쓰기 연동을 구현했다. projection, worker와 조회 전환은 아직 구현하지 않았으므로 적용 결론은 그대로다.
+MID4-96의 MongoDB/Redis 적용 여부 판단에는 이 문서, [MID4-179 RDB 최대 요청량 측정](../mid4-179-rdb-throughput-limit/README.md), [MongoDB/Redis 적용 판단 기록](../mid4-96-mongodb-decision-record/README.md)을 근거로 연결한다. 현재 MID4-125 결론은 MongoDB `후순위`, Redis `미적용`이다. 이후 MongoDB 환경, Outbox, projection worker, 초기 투영과 조회 source routing까지 구현했지만 기본 조회 source는 RDB다. 운영 전환 여부는 초기 투영·worker catch-up·정합성 검증과 별도 성능 판단을 거쳐 결정한다.
 
 ## 완료 조건 대응
 
