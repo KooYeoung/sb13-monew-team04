@@ -1,12 +1,12 @@
 # 초기 데이터 투영 및 정합성 검증
 
-[상위 문서](./README.md) | [이전: RDB 조회 성능 측정 시나리오](./08-rdb-performance-test-scenarios.md)
+[상위 문서](./README.md) | [이전: RDB 조회 성능 측정 시나리오](./08-rdb-performance-test-scenarios.md) | [다음: MongoDB 조회 계약](./10-mongodb-query-contract.md)
 
 ## 목적과 범위
 
 MID4-249는 MongoDB 조회 경로 전환 전에 기존 RDB 활동 데이터를 Read Model로 채우고,
-중단 후 재개 및 최종 정합성 확인이 가능한 실행 경로를 준비한다. 조회 API 전환은
-MID4-139, shadow read 비교는 MID4-250 범위이며 이 작업에서는 수행하지 않는다.
+중단 후 재개 및 최종 정합성 확인이 가능한 실행 경로를 준비한다. MongoDB 조회 계약과
+cursor 검증은 MID4-250, 실제 조회 API 전환과 fallback은 MID4-139 범위다.
 
 초기 투영 대상은 현재 노출 가능한 다음 네 활동이다.
 

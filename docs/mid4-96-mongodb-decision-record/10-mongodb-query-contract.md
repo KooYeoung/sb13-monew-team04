@@ -1,0 +1,106 @@
+# MongoDB 활동내역 조회 계약
+
+[상위 문서](./README.md) | [이전: 초기 데이터 투영 및 정합성 검증](./09-initial-projection-and-reconciliation.md)
+
+## 목적과 구현 경계
+
+MID4-250은 MongoDB Read Model에서 기존 사용자 활동내역 DTO를 만들 수 있는 조회 계약을
+구현한다. `GET /api/user-activities/{userId}`의 endpoint와 응답 필드는 바꾸지 않는다.
+
+`UserActivityReadSource`는 활동 목록 저장소를 추상화하고 RDB와 MongoDB 구현이 같은
+`UserActivitySections`를 반환한다. 현재는 RDB 구현이 기본 source다. 설정 기반 MongoDB
+선택과 MongoDB 장애 시 RDB fallback은 MID4-139에서 연결한다. shadow read 비교도 이
+티켓에 포함하지 않는다.
+
+사용자 존재, 이메일, 닉네임, 가입일은 계속 RDB에서 읽는다. MongoDB 구현은 다음 네
+활동 목록만 담당한다.
+
+| activity type | snapshot | 기존 DTO |
+| --- | --- | --- |
+| `INTEREST_SUBSCRIBED` | `interest_activity_snapshots` | `RecentSubscribed` |
+| `COMMENT_WRITTEN` | `comment_activity_snapshots` | `RecentComment` |
+| `COMMENT_LIKED` | `comment_activity_snapshots` | `RecentCommentLike` |
+| `ARTICLE_VIEWED` | `article_activity_snapshots` | `RecentArticle` |
+
+## activity 조회와 cursor
+
+각 유형은 다음 조건으로 조회한다.
+
+```text
+userId = 요청 사용자
+type = 요청 활동 유형
+targetType = 활동 유형에 대응하는 대상 유형
+visible = true
+status = ACTIVE
+tombstone = false
+order by occurredAt desc, _id desc
+```
+
+첫 페이지의 cursor는 `null`이다. 다음 페이지 cursor에는 `occurredAt`과 64자리 소문자
+SHA-256 activity `_id`가 모두 있어야 한다. 둘 중 하나가 없거나 형식이 잘못되면
+`ReadModelQueryConditionInvalidException`으로 거부한다.
+
+```text
+다음 페이지 조건
+occurredAt < cursor.occurredAt
+OR (occurredAt = cursor.occurredAt AND _id < cursor.activityId)
+```
+
+예를 들어 같은 시각의 `_id`가 `ff...`, `ee...`, `dd...`이고 limit이 2이면 첫 페이지는
+`ff...`, `ee...` 순서다. 다음 cursor는 `(같은 occurredAt, ee...)`이며 다음 페이지는
+`dd...`부터 시작한다. `_id` 보조 정렬 때문에 같은 발생 시각에서도 중복과 누락 없이
+진행한다.
+
+## snapshot 필터링과 page 진행
+
+조회기는 activity를 `limit + 1`개 가져와 다음 페이지 존재 여부를 판단하고 처음
+`limit`개를 이번 페이지의 스캔 후보로 확정한다. 그 후보가 참조하는 snapshot을 `_id`
+목록으로 한 번에 조회한 뒤 activity 순서대로 DTO를 만든다.
+
+다음 snapshot은 응답에서 제외한다.
+
+- 문서가 없음
+- `visible=false`
+- `tombstone=true`
+- snapshot의 대상 ID와 activity `targetId`가 다름
+
+제외된 항목을 채우려고 뒤의 activity를 추가 조회하지 않는다. cursor는 마지막 응답 DTO가
+아니라 마지막 스캔 후보를 기준으로 한다.
+
+```text
+limit=2, 원본 조회=A/B/C
+A snapshot=visible
+B snapshot=missing
+C=hasNext 확인용
+
+응답 content=[A]
+hasNext=true
+nextCursor=B의 occurredAt + _id
+```
+
+B가 응답에서 빠졌어도 다음 조회는 B 이후부터 시작한다. 모든 후보가 필터링돼 content가
+비어도 `hasNext=true`이면 같은 방식으로 다음 cursor를 제공한다.
+
+## 기존 DTO 매핑
+
+activity의 `sourceActivityId`는 기존 RDB 활동 row ID, `occurredAt`은 구독·좋아요·조회
+발생 시각으로 사용한다. 표시 정보와 현재 count는 snapshot에서 가져온다.
+
+```text
+interest snapshot subscriberCount -> RecentSubscribed.interestSubscriberCount
+comment snapshot likeCount -> RecentComment.likeCount / RecentCommentLike.commentLikeCount
+article snapshot commentCount -> RecentArticle.articleCommentCount
+article snapshot viewCount -> RecentArticle.articleViewCount
+```
+
+저장 문서의 필수 UUID를 변환할 수 없으면 `ReadModelDocumentMappingException`으로 처리한다.
+snapshot 누락과 비노출은 정상적인 짧은 페이지이고 예외가 아니다. MongoDB 연결·조회
+예외는 이 계층에서 숨기지 않으며 MID4-139의 routing 계층이 RDB fallback 여부를 판단한다.
+
+## 제외 범위
+
+- 공개 API에 cursor 또는 새 응답 필드 추가
+- 설정에 따른 MongoDB/RDB source 선택
+- MongoDB 장애 시 RDB fallback 실행
+- shadow read 비교
+- 신규 인덱스와 성능 측정
