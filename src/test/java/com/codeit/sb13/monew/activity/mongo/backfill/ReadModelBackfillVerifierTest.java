@@ -18,6 +18,7 @@ import com.codeit.sb13.monew.activity.mongo.document.ActivityHistoryStatus;
 import com.codeit.sb13.monew.activity.mongo.document.ActivityHistoryType;
 import com.codeit.sb13.monew.activity.mongo.document.ActivityTargetType;
 import com.codeit.sb13.monew.activity.mongo.document.InterestActivitySnapshot;
+import com.codeit.sb13.monew.activity.mongo.querydsl.MongoQuerydslSupport;
 import com.codeit.sb13.monew.activity.mongo.service.MongoProjectionKeyFactory;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
@@ -37,17 +38,15 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
 
 class ReadModelBackfillVerifierTest {
 
     private final ReadModelBackfillScanner scanner = mock(ReadModelBackfillScanner.class);
     private final OutboxProjectionSourceReader sourceReader =
             mock(OutboxProjectionSourceReader.class);
-    private final MongoTemplate mongoTemplate = mock(MongoTemplate.class);
+    private final MongoQuerydslSupport querydsl = mock(MongoQuerydslSupport.class);
     private final ReadModelBackfillVerifier verifier =
-            new ReadModelBackfillVerifier(scanner, sourceReader, mongoTemplate);
+            new ReadModelBackfillVerifier(scanner, sourceReader, querydsl);
 
     @Test
     @DisplayName("노출 활동의 결정적 ID와 snapshot 현재 count가 모두 맞으면 검증에 성공한다")
@@ -116,12 +115,12 @@ class ReadModelBackfillVerifierTest {
                 5,
                 false
         );
-        given(mongoTemplate.find(any(Query.class), eq(ActivityHistoryDocument.class),
-                eq(ACTIVITY_HISTORIES))).willReturn(List.of(activity));
-        given(mongoTemplate.find(any(Query.class), eq(InterestActivitySnapshot.class),
-                eq(INTEREST_SNAPSHOTS))).willReturn(List.of(snapshot));
-        given(mongoTemplate.count(any(Query.class), eq(ActivityHistoryDocument.class),
-                eq(ACTIVITY_HISTORIES))).willReturn(1L, 0L, 0L, 0L);
+        org.mockito.Mockito.doReturn(List.of(activity)).when(querydsl)
+                .fetch(any(), eq(ACTIVITY_HISTORIES), any());
+        org.mockito.Mockito.doReturn(List.of(snapshot)).when(querydsl)
+                .fetch(any(), eq(INTEREST_SNAPSHOTS), any());
+        given(querydsl.count(any(), eq(ACTIVITY_HISTORIES), any()))
+                .willReturn(1L, 0L, 0L, 0L);
 
         ReadModelBackfillVerificationReport report = verifier.verify(100, () -> { });
 
@@ -162,7 +161,7 @@ class ReadModelBackfillVerifierTest {
                 );
 
         verify(sourceReader, times(1)).read(repeatedPage.events());
-        verifyNoInteractions(mongoTemplate);
+        verifyNoInteractions(querydsl);
     }
 
     @Test
@@ -203,7 +202,7 @@ class ReadModelBackfillVerifierTest {
                 );
 
         verify(sourceReader, times(2)).read(any());
-        verifyNoInteractions(mongoTemplate);
+        verifyNoInteractions(querydsl);
     }
 
     @Test
@@ -225,7 +224,7 @@ class ReadModelBackfillVerifierTest {
                                 .containsEntry("nextCursor", inconsistentCursor)
                 );
 
-        verifyNoInteractions(sourceReader, mongoTemplate);
+        verifyNoInteractions(sourceReader, querydsl);
     }
 
     @Test
@@ -251,7 +250,7 @@ class ReadModelBackfillVerifierTest {
 
         verify(scanner).scan(ReadModelBackfillStage.SUBSCRIPTION, null, null, 100, 0);
         verify(sourceReader).read(page.events());
-        verifyNoInteractions(mongoTemplate);
+        verifyNoInteractions(querydsl);
     }
 
     private InitialProjectionPage emptyPage() {

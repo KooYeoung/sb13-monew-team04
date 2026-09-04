@@ -15,6 +15,7 @@ import com.codeit.sb13.monew.activity.mongo.document.ActivityTargetType;
 import com.codeit.sb13.monew.activity.mongo.service.ActivityProjection;
 import com.codeit.sb13.monew.activity.mongo.service.MongoProjectionKeyFactory;
 import com.codeit.sb13.monew.activity.mongo.service.MongoReadModelWriter;
+import com.codeit.sb13.monew.activity.mongo.querydsl.MongoQuerydslSupport;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxAggregateType;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEvent;
 import com.codeit.sb13.monew.activity.outbox.domain.OutboxEventAction;
@@ -114,7 +115,10 @@ class OutboxProjectionStaleReplayIntegrationTest {
         String uri = "mongodb://" + mongo.getHost() + ':' + mongo.getMappedPort(27017);
         mongoClient = MongoClients.create(uri);
         mongoTemplate = new MongoTemplate(mongoClient, "monew-stale-" + UUID.randomUUID());
-        writer = new MongoReadModelWriter(mongoTemplate);
+        writer = new MongoReadModelWriter(
+                mongoTemplate,
+                new MongoQuerydslSupport(mongoTemplate)
+        );
         handler = new OutboxProjectionHandler(writer);
         payloadSerializer = new OutboxPayloadSerializer(new ObjectMapper());
 
