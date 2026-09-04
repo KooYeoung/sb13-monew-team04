@@ -11,16 +11,24 @@ import com.codeit.sb13.monew.activity.mongo.document.ActivityTargetType;
 import com.codeit.sb13.monew.activity.mongo.document.ArticleActivitySnapshot;
 import com.codeit.sb13.monew.activity.mongo.document.CommentActivitySnapshot;
 import com.codeit.sb13.monew.activity.mongo.document.InterestActivitySnapshot;
+import com.codeit.sb13.monew.activity.mongo.document.QActivityHistoryDocument;
+import com.codeit.sb13.monew.activity.mongo.document.QArticleActivitySnapshot;
+import com.codeit.sb13.monew.activity.mongo.document.QCommentActivitySnapshot;
+import com.codeit.sb13.monew.activity.mongo.document.QInterestActivitySnapshot;
+import com.codeit.sb13.monew.activity.mongo.querydsl.MongoQuerydslSupport;
 import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch.ArticleState;
 import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch.CommentState;
 import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch.InterestState;
 import com.mongodb.client.result.UpdateResult;
+import com.querydsl.core.types.EntityPath;
+import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.core.types.dsl.NumberPath;
+import com.querydsl.core.types.dsl.StringPath;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Component;
@@ -36,7 +44,32 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class MongoReadModelWriter {
 
+    private static final QActivityHistoryDocument ACTIVITY =
+            QActivityHistoryDocument.activityHistoryDocument;
+    private static final QCommentActivitySnapshot COMMENT_SNAPSHOT =
+            QCommentActivitySnapshot.commentActivitySnapshot;
+    private static final QArticleActivitySnapshot ARTICLE_SNAPSHOT =
+            QArticleActivitySnapshot.articleActivitySnapshot;
+    private static final QInterestActivitySnapshot INTEREST_SNAPSHOT =
+            QInterestActivitySnapshot.interestActivitySnapshot;
+    private static final VersionedDocument<ActivityHistoryDocument> ACTIVITY_DOCUMENT =
+            new VersionedDocument<>(ACTIVITY, ACTIVITY.id, ACTIVITY.projectionVersion,
+                    ActivityHistoryDocument.class, ACTIVITY_HISTORIES);
+    private static final VersionedDocument<CommentActivitySnapshot> COMMENT_DOCUMENT =
+            new VersionedDocument<>(COMMENT_SNAPSHOT, COMMENT_SNAPSHOT.id,
+                    COMMENT_SNAPSHOT.projectionVersion,
+                    CommentActivitySnapshot.class, COMMENT_SNAPSHOTS);
+    private static final VersionedDocument<ArticleActivitySnapshot> ARTICLE_DOCUMENT =
+            new VersionedDocument<>(ARTICLE_SNAPSHOT, ARTICLE_SNAPSHOT.id,
+                    ARTICLE_SNAPSHOT.projectionVersion,
+                    ArticleActivitySnapshot.class, ARTICLE_SNAPSHOTS);
+    private static final VersionedDocument<InterestActivitySnapshot> INTEREST_DOCUMENT =
+            new VersionedDocument<>(INTEREST_SNAPSHOT, INTEREST_SNAPSHOT.id,
+                    INTEREST_SNAPSHOT.projectionVersion,
+                    InterestActivitySnapshot.class, INTEREST_SNAPSHOTS);
+
     private final MongoTemplate mongoTemplate;
+    private final MongoQuerydslSupport querydsl;
 
     public void upsertActivity(
             ActivityProjection activity,
@@ -59,8 +92,7 @@ public class MongoReadModelWriter {
                 .setOnInsert("createdAt", now)
                 .max("occurredAt", activity.occurredAt());
         setParent(update, activity);
-        casUpsert(id, projectionVersion, update, ActivityHistoryDocument.class,
-                ACTIVITY_HISTORIES);
+        casUpsert(id, projectionVersion, update, ACTIVITY_DOCUMENT);
     }
 
     public void hideActivity(
@@ -98,8 +130,7 @@ public class MongoReadModelWriter {
         if (updateExistingActivity(id, projectionVersion, false, fenceOnly)) {
             return;
         }
-        casUpsert(id, projectionVersion, update, ActivityHistoryDocument.class,
-                ACTIVITY_HISTORIES);
+        casUpsert(id, projectionVersion, update, ACTIVITY_DOCUMENT);
     }
 
     public void tombstoneActivity(
@@ -109,7 +140,7 @@ public class MongoReadModelWriter {
     ) {
         tombstone(
                 activityId(activity), projectionVersion, now,
-                ActivityHistoryDocument.class, ACTIVITY_HISTORIES,
+                ACTIVITY_DOCUMENT,
                 "sourceActivityId", "userId", "type", "targetType", "targetId",
                 "parentTargetType", "parentTargetId", "occurredAt", "status",
                 "hiddenByTargetType", "hiddenByTargetId", "createdAt"
@@ -134,8 +165,7 @@ public class MongoReadModelWriter {
                 .set("tombstone", false)
                 .set("createdAt", state.createdAt())
                 .set("updatedAt", state.updatedAt() == null ? now : state.updatedAt());
-        casUpsert(id, projectionVersion, update, CommentActivitySnapshot.class,
-                COMMENT_SNAPSHOTS);
+        casUpsert(id, projectionVersion, update, COMMENT_DOCUMENT);
     }
 
     public void upsertArticleSnapshot(
@@ -156,8 +186,7 @@ public class MongoReadModelWriter {
                 .set("visible", true)
                 .set("tombstone", false)
                 .set("updatedAt", state.updatedAt() == null ? now : state.updatedAt());
-        casUpsert(id, projectionVersion, update, ArticleActivitySnapshot.class,
-                ARTICLE_SNAPSHOTS);
+        casUpsert(id, projectionVersion, update, ARTICLE_DOCUMENT);
     }
 
     public void upsertInterestSnapshot(
@@ -174,48 +203,47 @@ public class MongoReadModelWriter {
                 .set("visible", true)
                 .set("tombstone", false)
                 .set("updatedAt", state.updatedAt() == null ? now : state.updatedAt());
-        casUpsert(id, projectionVersion, update, InterestActivitySnapshot.class,
-                INTEREST_SNAPSHOTS);
+        casUpsert(id, projectionVersion, update, INTEREST_DOCUMENT);
     }
 
     public void hideCommentSnapshot(UUID id, long version, LocalDateTime now) {
         hideSnapshot(MongoProjectionKeyFactory.comment(id), "commentId", id, version, now,
-                CommentActivitySnapshot.class, COMMENT_SNAPSHOTS);
+                COMMENT_DOCUMENT);
     }
 
     public void hideArticleSnapshot(UUID id, long version, LocalDateTime now) {
         hideSnapshot(MongoProjectionKeyFactory.article(id), "articleId", id, version, now,
-                ArticleActivitySnapshot.class, ARTICLE_SNAPSHOTS);
+                ARTICLE_DOCUMENT);
     }
 
     public void hideInterestSnapshot(UUID id, long version, LocalDateTime now) {
         hideSnapshot(MongoProjectionKeyFactory.interest(id), "interestId", id, version, now,
-                InterestActivitySnapshot.class, INTEREST_SNAPSHOTS);
+                INTEREST_DOCUMENT);
     }
 
     public void tombstoneComment(UUID id, long version, LocalDateTime now) {
         tombstone(MongoProjectionKeyFactory.comment(id), version, now,
-                CommentActivitySnapshot.class, COMMENT_SNAPSHOTS,
+                COMMENT_DOCUMENT,
                 "commentId", "articleId", "articleTitle", "authorUserId", "authorNickname",
                 "content", "likeCount", "createdAt");
     }
 
     public void tombstoneArticle(UUID id, long version, LocalDateTime now) {
         tombstone(MongoProjectionKeyFactory.article(id), version, now,
-                ArticleActivitySnapshot.class, ARTICLE_SNAPSHOTS,
+                ARTICLE_DOCUMENT,
                 "articleId", "title", "summary", "source", "sourceUrl", "publishedAt",
                 "viewCount", "commentCount");
     }
 
     public void tombstoneInterest(UUID id, long version, LocalDateTime now) {
         tombstone(MongoProjectionKeyFactory.interest(id), version, now,
-                InterestActivitySnapshot.class, INTEREST_SNAPSHOTS,
+                INTEREST_DOCUMENT,
                 "interestId", "name", "keywords", "subscriberCount");
     }
 
     public void hideActivitiesByUser(UUID userId, long version, LocalDateTime now) {
         bulkHideActivity(
-                Criteria.where("userId").is(uuid(userId)),
+                ACTIVITY.userId.eq(uuid(userId)),
                 ActivityHistoryStatus.USER_DELETED,
                 null,
                 null,
@@ -231,7 +259,7 @@ public class MongoReadModelWriter {
             LocalDateTime now
     ) {
         bulkHideActivity(
-                Criteria.where("targetType").is(targetType).and("targetId").is(uuid(targetId)),
+                ACTIVITY.targetType.eq(targetType).and(ACTIVITY.targetId.eq(uuid(targetId))),
                 ActivityHistoryStatus.TARGET_DELETED,
                 targetType,
                 targetId,
@@ -247,8 +275,8 @@ public class MongoReadModelWriter {
             LocalDateTime now
     ) {
         bulkHideActivity(
-                Criteria.where("parentTargetType").is(parentType)
-                        .and("parentTargetId").is(uuid(parentId)),
+                ACTIVITY.parentTargetType.eq(parentType)
+                        .and(ACTIVITY.parentTargetId.eq(uuid(parentId))),
                 ActivityHistoryStatus.TARGET_DELETED,
                 parentType,
                 parentId,
@@ -259,26 +287,24 @@ public class MongoReadModelWriter {
 
     public void hideCommentSnapshotsByAuthor(UUID userId, long version, LocalDateTime now) {
         bulkHideSnapshot(
-                Criteria.where("authorUserId").is(uuid(userId)),
+                COMMENT_SNAPSHOT.authorUserId.eq(uuid(userId)),
                 version,
                 now,
-                CommentActivitySnapshot.class,
-                COMMENT_SNAPSHOTS
+                COMMENT_DOCUMENT
         );
     }
 
     public void hideCommentSnapshotsByArticle(UUID articleId, long version, LocalDateTime now) {
         bulkHideSnapshot(
-                Criteria.where("articleId").is(uuid(articleId)),
+                COMMENT_SNAPSHOT.articleId.eq(uuid(articleId)),
                 version,
                 now,
-                CommentActivitySnapshot.class,
-                COMMENT_SNAPSHOTS
+                COMMENT_DOCUMENT
         );
     }
 
     public void tombstoneActivitiesByUser(UUID userId, long version, LocalDateTime now) {
-        bulkTombstoneActivity(Criteria.where("userId").is(uuid(userId)), version, now);
+        bulkTombstoneActivity(ACTIVITY.userId.eq(uuid(userId)), version, now);
     }
 
     public void tombstoneActivitiesByTarget(
@@ -288,7 +314,7 @@ public class MongoReadModelWriter {
             LocalDateTime now
     ) {
         bulkTombstoneActivity(
-                Criteria.where("targetType").is(targetType).and("targetId").is(uuid(targetId)),
+                ACTIVITY.targetType.eq(targetType).and(ACTIVITY.targetId.eq(uuid(targetId))),
                 version,
                 now
         );
@@ -301,8 +327,8 @@ public class MongoReadModelWriter {
             LocalDateTime now
     ) {
         bulkTombstoneActivity(
-                Criteria.where("parentTargetType").is(parentType)
-                        .and("parentTargetId").is(uuid(parentId)),
+                ACTIVITY.parentTargetType.eq(parentType)
+                        .and(ACTIVITY.parentTargetId.eq(uuid(parentId))),
                 version,
                 now
         );
@@ -314,7 +340,7 @@ public class MongoReadModelWriter {
             LocalDateTime now
     ) {
         bulkTombstoneCommentSnapshots(
-                Criteria.where("authorUserId").is(uuid(userId)), version, now);
+                COMMENT_SNAPSHOT.authorUserId.eq(uuid(userId)), version, now);
     }
 
     public void tombstoneCommentSnapshotsByArticle(
@@ -323,7 +349,7 @@ public class MongoReadModelWriter {
             LocalDateTime now
     ) {
         bulkTombstoneCommentSnapshots(
-                Criteria.where("articleId").is(uuid(articleId)), version, now);
+                COMMENT_SNAPSHOT.articleId.eq(uuid(articleId)), version, now);
     }
 
     private <T> void hideSnapshot(
@@ -332,19 +358,18 @@ public class MongoReadModelWriter {
             UUID naturalId,
             long version,
             LocalDateTime now,
-            Class<T> type,
-            String collection
+            VersionedDocument<T> document
     ) {
         Update update = versioned(new Update(), version)
                 .set(naturalIdField, uuid(naturalId))
                 .set("visible", false)
                 .set("tombstone", false)
                 .set("updatedAt", now);
-        casUpsert(documentId, version, update, type, collection);
+        casUpsert(documentId, version, update, document);
     }
 
     private void bulkHideActivity(
-            Criteria target,
+            BooleanExpression target,
             ActivityHistoryStatus status,
             ActivityTargetType hiddenByType,
             UUID hiddenById,
@@ -363,42 +388,50 @@ public class MongoReadModelWriter {
                     .set("hiddenByTargetId", uuid(hiddenById));
         }
         mongoTemplate.updateMulti(
-                staleQuery(new Criteria().andOperator(
-                        target, Criteria.where("visible").is(true)), version), update,
+                staleQuery(ACTIVITY_DOCUMENT, target.and(ACTIVITY.visible.isTrue()), version),
+                update,
                 ActivityHistoryDocument.class, ACTIVITY_HISTORIES);
         Update fenceOnly = versioned(new Update(), version).set("updatedAt", now);
         mongoTemplate.updateMulti(
-                staleQuery(new Criteria().andOperator(
-                        target, Criteria.where("visible").is(false)), version), fenceOnly,
+                staleQuery(ACTIVITY_DOCUMENT, target.and(ACTIVITY.visible.isFalse()), version),
+                fenceOnly,
                 ActivityHistoryDocument.class, ACTIVITY_HISTORIES);
     }
 
     private <T> void bulkHideSnapshot(
-            Criteria target,
+            BooleanExpression target,
             long version,
             LocalDateTime now,
-            Class<T> type,
-            String collection
+            VersionedDocument<T> document
     ) {
         Update update = versioned(new Update(), version)
                 .set("visible", false)
                 .set("tombstone", false)
                 .set("updatedAt", now);
-        mongoTemplate.updateMulti(staleQuery(target, version), update, type, collection);
+        mongoTemplate.updateMulti(
+                staleQuery(document, target, version),
+                update,
+                document.type(),
+                document.collection()
+        );
     }
 
-    private void bulkTombstoneActivity(Criteria target, long version, LocalDateTime now) {
+    private void bulkTombstoneActivity(
+            BooleanExpression target,
+            long version,
+            LocalDateTime now
+    ) {
         Update update = tombstoneUpdate(version, now,
                 "sourceActivityId", "userId", "type", "targetType", "targetId",
                 "parentTargetType", "parentTargetId", "occurredAt", "status",
                 "hiddenByTargetType", "hiddenByTargetId", "createdAt");
         mongoTemplate.updateMulti(
-                staleQuery(target, version), update,
+                staleQuery(ACTIVITY_DOCUMENT, target, version), update,
                 ActivityHistoryDocument.class, ACTIVITY_HISTORIES);
     }
 
     private void bulkTombstoneCommentSnapshots(
-            Criteria target,
+            BooleanExpression target,
             long version,
             LocalDateTime now
     ) {
@@ -406,7 +439,7 @@ public class MongoReadModelWriter {
                 "commentId", "articleId", "articleTitle", "authorUserId", "authorNickname",
                 "content", "likeCount", "createdAt");
         mongoTemplate.updateMulti(
-                staleQuery(target, version), update,
+                staleQuery(COMMENT_DOCUMENT, target, version), update,
                 CommentActivitySnapshot.class, COMMENT_SNAPSHOTS);
     }
 
@@ -414,12 +447,11 @@ public class MongoReadModelWriter {
             String id,
             long version,
             LocalDateTime now,
-            Class<T> type,
-            String collection,
+            VersionedDocument<T> document,
             String... fieldsToUnset
     ) {
         Update update = tombstoneUpdate(version, now, fieldsToUnset);
-        casUpsert(id, version, update, type, collection);
+        casUpsert(id, version, update, document);
     }
 
     private Update tombstoneUpdate(
@@ -441,22 +473,26 @@ public class MongoReadModelWriter {
             String id,
             long version,
             Update update,
-            Class<T> type,
-            String collection
+            VersionedDocument<T> document
     ) {
-        Query query = Query.query(new Criteria().andOperator(
-                Criteria.where("_id").is(id),
-                new Criteria().orOperator(
-                        Criteria.where("projectionVersion").exists(false),
-                        Criteria.where("projectionVersion").lt(version)
-                )
-        ));
+        Query query = querydsl.toQuery(
+                document.path(),
+                document.collection(),
+                document.id().eq(id).and(staleVersion(document.projectionVersion(), version))
+        );
         try {
-            mongoTemplate.upsert(query, update, type, collection);
+            mongoTemplate.upsert(query, update, document.type(), document.collection());
         } catch (DuplicateKeyException e) {
-            Query newerOrEqual = Query.query(Criteria.where("_id").is(id)
-                    .and("projectionVersion").gte(version));
-            if (!mongoTemplate.exists(newerOrEqual, type, collection)) {
+            Query newerOrEqual = querydsl.toQuery(
+                    document.path(),
+                    document.collection(),
+                    document.id().eq(id).and(document.projectionVersion().goe(version))
+            );
+            if (!mongoTemplate.exists(
+                    newerOrEqual,
+                    document.type(),
+                    document.collection()
+            )) {
                 throw e;
             }
         }
@@ -468,22 +504,30 @@ public class MongoReadModelWriter {
             boolean visible,
             Update update
     ) {
-        Query query = staleQuery(new Criteria().andOperator(
-                Criteria.where("_id").is(id), Criteria.where("visible").is(visible)), version);
+        Query query = staleQuery(
+                ACTIVITY_DOCUMENT,
+                ACTIVITY.id.eq(id).and(ACTIVITY.visible.eq(visible)),
+                version
+        );
         UpdateResult result = mongoTemplate.updateFirst(
                 query, update, ActivityHistoryDocument.class, ACTIVITY_HISTORIES);
         return result != null && result.getMatchedCount() > 0;
     }
 
-    private Query staleQuery(Criteria target, long version) {
-        return Query.query(new Criteria().andOperator(target, staleVersion(version)));
+    private <T> Query staleQuery(
+            VersionedDocument<T> document,
+            BooleanExpression target,
+            long version
+    ) {
+        return querydsl.toQuery(
+                document.path(),
+                document.collection(),
+                target.and(staleVersion(document.projectionVersion(), version))
+        );
     }
 
-    private Criteria staleVersion(long version) {
-        return new Criteria().orOperator(
-                Criteria.where("projectionVersion").exists(false),
-                Criteria.where("projectionVersion").lt(version)
-        );
+    private BooleanExpression staleVersion(NumberPath<Long> projectionVersion, long version) {
+        return projectionVersion.isNull().or(projectionVersion.lt(version));
     }
 
     private Update versioned(Update update, long projectionVersion) {
@@ -506,5 +550,14 @@ public class MongoReadModelWriter {
 
     private String uuid(UUID id) {
         return id == null ? null : id.toString();
+    }
+
+    private record VersionedDocument<T>(
+            EntityPath<T> path,
+            StringPath id,
+            NumberPath<Long> projectionVersion,
+            Class<T> type,
+            String collection
+    ) {
     }
 }
