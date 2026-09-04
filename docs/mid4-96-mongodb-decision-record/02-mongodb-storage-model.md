@@ -170,6 +170,29 @@ mongoTemplate.upsert(
 );
 ```
 
+사용자 또는 대상 단위의 일괄 숨김·삭제도 같은 방식으로 대상 조건과 stale version 조건을
+결합한다. Querydsl은 filter만 만들고, 다건 원자 갱신은 `MongoTemplate.updateMulti`가
+실행한다.
+
+```java
+BooleanExpression bulkPredicate = activity.userId.eq(userId.toString())
+        .and(activity.visible.isTrue())
+        .and(activity.projectionVersion.isNull()
+                .or(activity.projectionVersion.lt(incomingVersion)));
+Query bulkQuery = querydsl.toQuery(
+        activity,
+        ACTIVITY_HISTORIES,
+        bulkPredicate
+);
+
+mongoTemplate.updateMulti(
+        bulkQuery,
+        update,
+        ActivityHistoryDocument.class,
+        ACTIVITY_HISTORIES
+);
+```
+
 RDB UUID는 MongoDB 문서에서 canonical 문자열로 저장한다. MongoDB `_id`는 activity의 `userId|type|targetType|targetId`, snapshot의 `종류|대상 UUID`를 canonical key로 만들어 SHA-256으로 계산한다. 따라서 tombstone이 원본 식별 필드를 지워도 같은 논리 키의 과거 쓰기는 동일 `_id`에서 차단된다. 기존 활동내역 API의 id는 `sourceActivityId`에서 복원한다.
 
 `activity_histories`의 필수 및 권장 인덱스는 다음과 같다.
@@ -203,6 +226,29 @@ MongoDB 인덱스에서 숫자는 저장값이 아니라 인덱스 정렬 방향
 ```
 
 MID4-135의 인덱스 초기화가 이 조합을 `tombstone=false`인 문서에만 적용되는 partial unique index로 생성한다. MID4-253에서는 이 partial filter도 각 document Q 타입의 `tombstone.isFalse()`에서 BSON으로 변환하며 인덱스 구성 자체는 바꾸지 않는다. MID4-138 worker는 같은 outbox 이벤트를 재처리하거나 동일 활동 이벤트가 중복 발행되어도 결정적 `_id`와 이 natural key를 기준으로 하나의 activity만 유지한다. 이는 새 조회용 인덱스를 추가한 것이 아니라 기존 고유 인덱스가 scrubbed tombstone을 제외하도록 조건을 조정한 것이다.
+
+```java
+Document partialFilter = querydsl.toDocument(
+        activity,
+        ACTIVITY_HISTORIES,
+        activity.tombstone.isFalse()
+);
+Index naturalKey = new Index()
+        .on("userId", Direction.ASC)
+        .on("type", Direction.ASC)
+        .on("targetType", Direction.ASC)
+        .on("targetId", Direction.ASC)
+        .unique()
+        .partial(PartialIndexFilter.of(partialFilter))
+        .named("ux_activity_histories_natural_key");
+```
+
+이때 `partialFilter`의 최종 BSON은 다음과 같다. 세 snapshot 컬렉션의 natural key partial
+index도 각 Q 타입에서 같은 형태로 변환한다.
+
+```json
+{ "tombstone": false }
+```
 
 이 인덱스와 versioned atomic upsert는 중복 문서와 stale overwrite를 함께 막는다. event payload의 과거 표시값이 아니라 worker가 조회한 RDB 현재 상태를 반영하고, 같은 문서에는 더 큰 `projectionVersion`만 저장한다.
 
