@@ -10,6 +10,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.codeit.sb13.monew.activity.mongo.querydsl.MongoQuerydslSupport;
 import java.util.List;
 import java.util.Map;
 import org.bson.Document;
@@ -22,7 +23,11 @@ class MongoReadModelIndexInitializerTest {
 
     @Test
     void readModelIndexesMatchDocumentedCollectionsAndNaturalKey() {
-        Map<String, List<IndexDefinition>> definitions = MongoReadModelIndexInitializer.indexDefinitions();
+        MongoReadModelIndexInitializer initializer = initializer(
+                mock(MongoTemplate.class),
+                new MongoReadModelProperties(true, true)
+        );
+        Map<String, List<IndexDefinition>> definitions = initializer.indexDefinitions();
 
         assertThat(definitions).containsOnlyKeys(
                 ACTIVITY_HISTORIES,
@@ -46,7 +51,7 @@ class MongoReadModelIndexInitializerTest {
     @Test
     void initializationCanBeDisabledWithoutAccessingMongoDb() throws Exception {
         MongoTemplate mongoTemplate = mock(MongoTemplate.class);
-        MongoReadModelIndexInitializer initializer = new MongoReadModelIndexInitializer(
+        MongoReadModelIndexInitializer initializer = initializer(
                 mongoTemplate,
                 new MongoReadModelProperties(true, false)
         );
@@ -61,17 +66,30 @@ class MongoReadModelIndexInitializerTest {
         MongoTemplate mongoTemplate = mock(MongoTemplate.class);
         IndexOperations indexOperations = mock(IndexOperations.class);
         when(mongoTemplate.indexOps(org.mockito.ArgumentMatchers.anyString())).thenReturn(indexOperations);
-        MongoReadModelIndexInitializer initializer = new MongoReadModelIndexInitializer(
+        MongoReadModelIndexInitializer initializer = initializer(
                 mongoTemplate,
                 new MongoReadModelProperties(true, true)
         );
 
         initializer.run(null);
 
-        int expectedIndexCount = MongoReadModelIndexInitializer.indexDefinitions().values().stream()
+        int expectedIndexCount = initializer.indexDefinitions().values().stream()
                 .mapToInt(List::size)
                 .sum();
         verify(indexOperations, org.mockito.Mockito.times(expectedIndexCount))
                 .createIndex(org.mockito.ArgumentMatchers.any(IndexDefinition.class));
+    }
+
+    private MongoReadModelIndexInitializer initializer(
+            MongoTemplate mongoTemplate,
+            MongoReadModelProperties properties
+    ) {
+        MongoQuerydslSupport querydsl = mock(MongoQuerydslSupport.class);
+        when(querydsl.toDocument(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any()
+        )).thenReturn(new Document("tombstone", false));
+        return new MongoReadModelIndexInitializer(mongoTemplate, properties, querydsl);
     }
 }

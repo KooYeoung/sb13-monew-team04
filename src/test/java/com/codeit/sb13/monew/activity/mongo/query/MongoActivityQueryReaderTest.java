@@ -6,8 +6,9 @@ import static com.codeit.sb13.monew.activity.mongo.MongoReadModelCollections.COM
 import static com.codeit.sb13.monew.activity.mongo.MongoReadModelCollections.INTEREST_SNAPSHOTS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doReturn;
 
 import com.codeit.sb13.monew.activity.mongo.document.ActivityHistoryDocument;
 import com.codeit.sb13.monew.activity.mongo.document.ActivityHistoryStatus;
@@ -16,6 +17,7 @@ import com.codeit.sb13.monew.activity.mongo.document.ActivityTargetType;
 import com.codeit.sb13.monew.activity.mongo.document.ArticleActivitySnapshot;
 import com.codeit.sb13.monew.activity.mongo.document.CommentActivitySnapshot;
 import com.codeit.sb13.monew.activity.mongo.document.InterestActivitySnapshot;
+import com.codeit.sb13.monew.activity.mongo.querydsl.MongoQuerydslSupport;
 import com.codeit.sb13.monew.activity.mongo.service.MongoProjectionKeyFactory;
 import com.codeit.sb13.monew.activity.service.dto.RecentSubscribed;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
@@ -27,20 +29,18 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
 
 @ExtendWith(MockitoExtension.class)
 class MongoActivityQueryReaderTest {
 
     @Mock
-    MongoTemplate mongoTemplate;
+    MongoQuerydslSupport querydsl;
 
     MongoActivityQueryReader reader;
 
     @BeforeEach
     void setUp() {
-        reader = new MongoActivityQueryReader(mongoTemplate);
+        reader = new MongoActivityQueryReader(querydsl);
     }
 
     @Test
@@ -76,12 +76,10 @@ class MongoActivityQueryReaderTest {
                 1L,
                 false
         );
-        when(mongoTemplate.find(
-                any(Query.class), eq(ActivityHistoryDocument.class), eq(ACTIVITY_HISTORIES)
-        )).thenReturn(List.of(first, missing, sentinel));
-        when(mongoTemplate.find(
-                any(Query.class), eq(InterestActivitySnapshot.class), eq(INTEREST_SNAPSHOTS)
-        )).thenReturn(List.of(firstSnapshot));
+        doReturn(List.of(first, missing, sentinel)).when(querydsl)
+                .fetch(any(), eq(ACTIVITY_HISTORIES), any(), anyLong(), any(), any());
+        doReturn(List.of(firstSnapshot)).when(querydsl)
+                .fetch(any(), eq(INTEREST_SNAPSHOTS), any());
 
         ActivityReadPage<RecentSubscribed> page = reader.readSubscriptions(
                 new ActivityReadRequest(userId, null, 2)
@@ -124,12 +122,10 @@ class MongoActivityQueryReaderTest {
         InterestActivitySnapshot mismatch = interestSnapshot(
                 mismatchTarget, UUID.randomUUID(), true, false, occurredAt
         );
-        when(mongoTemplate.find(
-                any(Query.class), eq(ActivityHistoryDocument.class), eq(ACTIVITY_HISTORIES)
-        )).thenReturn(activities);
-        when(mongoTemplate.find(
-                any(Query.class), eq(InterestActivitySnapshot.class), eq(INTEREST_SNAPSHOTS)
-        )).thenReturn(List.of(hidden, tombstone, mismatch));
+        doReturn(activities).when(querydsl)
+                .fetch(any(), eq(ACTIVITY_HISTORIES), any(), anyLong(), any(), any());
+        doReturn(List.of(hidden, tombstone, mismatch)).when(querydsl)
+                .fetch(any(), eq(INTEREST_SNAPSHOTS), any());
 
         ActivityReadPage<RecentSubscribed> page = reader.readSubscriptions(
                 new ActivityReadRequest(userId, null, 10)
@@ -185,22 +181,20 @@ class MongoActivityQueryReaderTest {
                 "https://example.com/article", occurredAt.minusDays(1),
                 19L, 5L, true, occurredAt, 1L, false
         );
-        when(mongoTemplate.find(
-                any(Query.class), eq(ActivityHistoryDocument.class), eq(ACTIVITY_HISTORIES)
-        )).thenReturn(List.of(subscription))
-                .thenReturn(List.of(comment))
-                .thenReturn(List.of(commentLike))
-                .thenReturn(List.of(articleView));
-        when(mongoTemplate.find(
-                any(Query.class), eq(InterestActivitySnapshot.class), eq(INTEREST_SNAPSHOTS)
-        )).thenReturn(List.of(interestSnapshot));
-        when(mongoTemplate.find(
-                any(Query.class), eq(CommentActivitySnapshot.class), eq(COMMENT_SNAPSHOTS)
-        )).thenReturn(List.of(commentSnapshot))
-                .thenReturn(List.of(commentSnapshot));
-        when(mongoTemplate.find(
-                any(Query.class), eq(ArticleActivitySnapshot.class), eq(ARTICLE_SNAPSHOTS)
-        )).thenReturn(List.of(articleSnapshot));
+        doReturn(List.of(subscription))
+                .doReturn(List.of(comment))
+                .doReturn(List.of(commentLike))
+                .doReturn(List.of(articleView))
+                .when(querydsl)
+                .fetch(any(), eq(ACTIVITY_HISTORIES), any(), anyLong(), any(), any());
+        doReturn(List.of(interestSnapshot)).when(querydsl)
+                .fetch(any(), eq(INTEREST_SNAPSHOTS), any());
+        doReturn(List.of(commentSnapshot))
+                .doReturn(List.of(commentSnapshot))
+                .when(querydsl)
+                .fetch(any(), eq(COMMENT_SNAPSHOTS), any());
+        doReturn(List.of(articleSnapshot)).when(querydsl)
+                .fetch(any(), eq(ARTICLE_SNAPSHOTS), any());
         ActivityReadRequest request = new ActivityReadRequest(userId, null, 10);
 
         assertThat(reader.readSubscriptions(request).content()).singleElement()

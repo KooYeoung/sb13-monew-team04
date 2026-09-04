@@ -13,6 +13,11 @@ import com.codeit.sb13.monew.activity.mongo.document.ActivityTargetType;
 import com.codeit.sb13.monew.activity.mongo.document.ArticleActivitySnapshot;
 import com.codeit.sb13.monew.activity.mongo.document.CommentActivitySnapshot;
 import com.codeit.sb13.monew.activity.mongo.document.InterestActivitySnapshot;
+import com.codeit.sb13.monew.activity.mongo.document.QActivityHistoryDocument;
+import com.codeit.sb13.monew.activity.mongo.document.QArticleActivitySnapshot;
+import com.codeit.sb13.monew.activity.mongo.document.QCommentActivitySnapshot;
+import com.codeit.sb13.monew.activity.mongo.document.QInterestActivitySnapshot;
+import com.codeit.sb13.monew.activity.mongo.querydsl.MongoQuerydslSupport;
 import com.codeit.sb13.monew.activity.mongo.service.MongoProjectionKeyFactory;
 import com.codeit.sb13.monew.activity.outbox.worker.source.OutboxProjectionSourceReader;
 import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch;
@@ -23,6 +28,8 @@ import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch
 import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch.RelationState;
 import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch.UserState;
 import com.codeit.sb13.monew.global.exception.readmodel.ReadModelBackfillProgressException;
+import com.querydsl.core.types.EntityPath;
+import com.querydsl.core.types.dsl.StringPath;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
@@ -33,9 +40,6 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,10 +50,18 @@ import org.springframework.transaction.annotation.Transactional;
 public class ReadModelBackfillVerifier {
 
     private static final long VERIFICATION_VERSION = 0L;
+    private static final QActivityHistoryDocument ACTIVITY =
+            QActivityHistoryDocument.activityHistoryDocument;
+    private static final QInterestActivitySnapshot INTEREST_SNAPSHOT =
+            QInterestActivitySnapshot.interestActivitySnapshot;
+    private static final QCommentActivitySnapshot COMMENT_SNAPSHOT =
+            QCommentActivitySnapshot.commentActivitySnapshot;
+    private static final QArticleActivitySnapshot ARTICLE_SNAPSHOT =
+            QArticleActivitySnapshot.articleActivitySnapshot;
 
     private final ReadModelBackfillScanner scanner;
     private final OutboxProjectionSourceReader sourceReader;
-    private final MongoTemplate mongoTemplate;
+    private final MongoQuerydslSupport querydsl;
 
     /**
      * 모든 초기 투영 stage를 다시 keyset scan하여 MongoDB Read Model과 비교한다.
@@ -214,7 +226,8 @@ public class ReadModelBackfillVerifier {
                         .map(event -> MongoProjectionKeyFactory.interest(event.aggregateId()))
                         .distinct()
                         .toList(),
-                InterestActivitySnapshot.class,
+                INTEREST_SNAPSHOT,
+                INTEREST_SNAPSHOT.id,
                 INTEREST_SNAPSHOTS,
                 InterestActivitySnapshot::id
         );
@@ -240,7 +253,8 @@ public class ReadModelBackfillVerifier {
                         .map(event -> MongoProjectionKeyFactory.comment(event.aggregateId()))
                         .distinct()
                         .toList(),
-                CommentActivitySnapshot.class,
+                COMMENT_SNAPSHOT,
+                COMMENT_SNAPSHOT.id,
                 COMMENT_SNAPSHOTS,
                 CommentActivitySnapshot::id
         );
@@ -266,7 +280,8 @@ public class ReadModelBackfillVerifier {
                         .map(event -> MongoProjectionKeyFactory.article(event.aggregateId()))
                         .distinct()
                         .toList(),
-                ArticleActivitySnapshot.class,
+                ARTICLE_SNAPSHOT,
+                ARTICLE_SNAPSHOT.id,
                 ARTICLE_SNAPSHOTS,
                 ArticleActivitySnapshot::id
         );
@@ -287,7 +302,8 @@ public class ReadModelBackfillVerifier {
     private Map<String, ActivityHistoryDocument> readActivities(List<String> ids) {
         return readByIds(
                 ids,
-                ActivityHistoryDocument.class,
+                ACTIVITY,
+                ACTIVITY.id,
                 ACTIVITY_HISTORIES,
                 ActivityHistoryDocument::id
         );
@@ -295,27 +311,28 @@ public class ReadModelBackfillVerifier {
 
     private <T> Map<String, T> readByIds(
             List<String> ids,
-            Class<T> documentType,
+            EntityPath<T> documentPath,
+            StringPath idPath,
             String collection,
             Function<T, String> idExtractor
     ) {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        return mongoTemplate.find(
-                        Query.query(Criteria.where("_id").in(ids)),
-                        documentType,
-                        collection
-                ).stream()
+        return querydsl.fetch(documentPath, collection, idPath.in(ids))
+                .stream()
                 .collect(Collectors.toMap(idExtractor, Function.identity()));
     }
 
     private long countVisibleActivities(ReadModelBackfillStage stage) {
-        Query query = Query.query(Criteria.where("type").is(activityType(stage))
-                .and("targetType").is(targetType(stage))
-                .and("visible").is(true)
-                .and("tombstone").is(false));
-        return mongoTemplate.count(query, ActivityHistoryDocument.class, ACTIVITY_HISTORIES);
+        return querydsl.count(
+                ACTIVITY,
+                ACTIVITY_HISTORIES,
+                ACTIVITY.type.eq(activityType(stage))
+                        .and(ACTIVITY.targetType.eq(targetType(stage)))
+                        .and(ACTIVITY.visible.isTrue())
+                        .and(ACTIVITY.tombstone.isFalse())
+        );
     }
 
     private String activityId(

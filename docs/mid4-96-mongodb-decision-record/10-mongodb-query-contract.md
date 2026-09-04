@@ -63,11 +63,50 @@ OR (occurredAt = cursor.occurredAt AND _id < cursor.activityId)
 생략한 표기다. 다음 cursor는 `(같은 occurredAt, ee...)`이며 다음 페이지는 `dd...`부터
 시작한다. `_id` 보조 정렬 때문에 같은 발생 시각에서도 중복과 누락 없이 진행한다.
 
+MID4-253부터 문자열 필드명을 조합하는 `Criteria` 대신 MongoDB document에서 생성한 Q 타입으로
+같은 조건을 표현한다. Mongo annotation processor는 기존 JPA Querydsl, Lombok, MapStruct
+processor와 함께 실행한다. `id` 경로는 Spring Data mapping을 거쳐 MongoDB `_id`로 변환된다.
+
+```java
+QActivityHistoryDocument activity = QActivityHistoryDocument.activityHistoryDocument;
+BooleanExpression predicate = activity.userId.eq(request.userId().toString())
+        .and(activity.type.eq(type))
+        .and(activity.targetType.eq(targetType))
+        .and(activity.visible.isTrue())
+        .and(activity.status.eq(ActivityHistoryStatus.ACTIVE))
+        .and(activity.tombstone.isFalse());
+
+if (request.cursor() != null) {
+    predicate = predicate.and(
+            activity.occurredAt.lt(request.cursor().occurredAt())
+                    .or(activity.occurredAt.eq(request.cursor().occurredAt())
+                            .and(activity.id.lt(request.cursor().activityId())))
+    );
+}
+
+List<ActivityHistoryDocument> fetched = querydsl.fetch(
+        activity,
+        ACTIVITY_HISTORIES,
+        predicate,
+        request.limit() + 1L,
+        activity.occurredAt.desc(),
+        activity.id.desc()
+);
+```
+
 ## snapshot 필터링과 page 진행
 
 조회기는 activity를 `limit + 1`개 가져와 다음 페이지 존재 여부를 판단하고 처음
 `limit`개를 이번 페이지의 스캔 후보로 확정한다. 그 후보가 참조하는 snapshot을 `_id`
 목록으로 한 번에 조회한 뒤 activity 순서대로 DTO를 만든다.
+
+```java
+List<CommentActivitySnapshot> snapshots = querydsl.fetch(
+        commentSnapshot,
+        COMMENT_SNAPSHOTS,
+        commentSnapshot.id.in(snapshotIds)
+);
+```
 
 다음 snapshot은 응답에서 제외한다.
 

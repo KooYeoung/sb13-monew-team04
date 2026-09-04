@@ -12,6 +12,11 @@ import com.codeit.sb13.monew.activity.mongo.document.ActivityTargetType;
 import com.codeit.sb13.monew.activity.mongo.document.ArticleActivitySnapshot;
 import com.codeit.sb13.monew.activity.mongo.document.CommentActivitySnapshot;
 import com.codeit.sb13.monew.activity.mongo.document.InterestActivitySnapshot;
+import com.codeit.sb13.monew.activity.mongo.document.QActivityHistoryDocument;
+import com.codeit.sb13.monew.activity.mongo.document.QArticleActivitySnapshot;
+import com.codeit.sb13.monew.activity.mongo.document.QCommentActivitySnapshot;
+import com.codeit.sb13.monew.activity.mongo.document.QInterestActivitySnapshot;
+import com.codeit.sb13.monew.activity.mongo.querydsl.MongoQuerydslSupport;
 import com.codeit.sb13.monew.activity.mongo.service.MongoProjectionKeyFactory;
 import com.codeit.sb13.monew.activity.service.dto.RecentArticle;
 import com.codeit.sb13.monew.activity.service.dto.RecentComment;
@@ -19,6 +24,9 @@ import com.codeit.sb13.monew.activity.service.dto.RecentCommentLike;
 import com.codeit.sb13.monew.activity.service.dto.RecentSubscribed;
 import com.codeit.sb13.monew.global.exception.readmodel.ReadModelDocumentMappingException;
 import com.codeit.sb13.monew.global.exception.readmodel.ReadModelQueryConditionInvalidException;
+import com.querydsl.core.types.EntityPath;
+import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.core.types.dsl.StringPath;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -26,10 +34,6 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
 /**
@@ -43,7 +47,16 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class MongoActivityQueryReader {
 
-    private final MongoTemplate mongoTemplate;
+    private static final QActivityHistoryDocument ACTIVITY =
+            QActivityHistoryDocument.activityHistoryDocument;
+    private static final QInterestActivitySnapshot INTEREST_SNAPSHOT =
+            QInterestActivitySnapshot.interestActivitySnapshot;
+    private static final QCommentActivitySnapshot COMMENT_SNAPSHOT =
+            QCommentActivitySnapshot.commentActivitySnapshot;
+    private static final QArticleActivitySnapshot ARTICLE_SNAPSHOT =
+            QArticleActivitySnapshot.articleActivitySnapshot;
+
+    private final MongoQuerydslSupport querydsl;
 
     public ActivityReadPage<RecentSubscribed> readSubscriptions(ActivityReadRequest request) {
         ActivityCandidates candidates = readActivities(
@@ -54,7 +67,8 @@ public class MongoActivityQueryReader {
         Map<String, InterestActivitySnapshot> snapshots = readSnapshots(
                 candidates.activities(),
                 MongoProjectionKeyFactory::interest,
-                InterestActivitySnapshot.class,
+                INTEREST_SNAPSHOT,
+                INTEREST_SNAPSHOT.id,
                 INTEREST_SNAPSHOTS,
                 InterestActivitySnapshot::id
         );
@@ -74,7 +88,8 @@ public class MongoActivityQueryReader {
         Map<String, CommentActivitySnapshot> snapshots = readSnapshots(
                 candidates.activities(),
                 MongoProjectionKeyFactory::comment,
-                CommentActivitySnapshot.class,
+                COMMENT_SNAPSHOT,
+                COMMENT_SNAPSHOT.id,
                 COMMENT_SNAPSHOTS,
                 CommentActivitySnapshot::id
         );
@@ -94,7 +109,8 @@ public class MongoActivityQueryReader {
         Map<String, CommentActivitySnapshot> snapshots = readSnapshots(
                 candidates.activities(),
                 MongoProjectionKeyFactory::comment,
-                CommentActivitySnapshot.class,
+                COMMENT_SNAPSHOT,
+                COMMENT_SNAPSHOT.id,
                 COMMENT_SNAPSHOTS,
                 CommentActivitySnapshot::id
         );
@@ -114,7 +130,8 @@ public class MongoActivityQueryReader {
         Map<String, ArticleActivitySnapshot> snapshots = readSnapshots(
                 candidates.activities(),
                 MongoProjectionKeyFactory::article,
-                ArticleActivitySnapshot.class,
+                ARTICLE_SNAPSHOT,
+                ARTICLE_SNAPSHOT.id,
                 ARTICLE_SNAPSHOTS,
                 ArticleActivitySnapshot::id
         );
@@ -130,31 +147,27 @@ public class MongoActivityQueryReader {
             ActivityHistoryType type,
             ActivityTargetType targetType
     ) {
-        Criteria criteria = Criteria.where("userId").is(request.userId().toString())
-                .and("type").is(type)
-                .and("targetType").is(targetType)
-                .and("visible").is(true)
-                .and("status").is(ActivityHistoryStatus.ACTIVE)
-                .and("tombstone").is(false);
+        BooleanExpression predicate = ACTIVITY.userId.eq(request.userId().toString())
+                .and(ACTIVITY.type.eq(type))
+                .and(ACTIVITY.targetType.eq(targetType))
+                .and(ACTIVITY.visible.isTrue())
+                .and(ACTIVITY.status.eq(ActivityHistoryStatus.ACTIVE))
+                .and(ACTIVITY.tombstone.isFalse());
         if (request.cursor() != null) {
-            Criteria cursorCriteria = new Criteria().orOperator(
-                    Criteria.where("occurredAt").lt(request.cursor().occurredAt()),
-                    Criteria.where("occurredAt").is(request.cursor().occurredAt())
-                            .and("_id").lt(request.cursor().activityId())
-            );
-            criteria = new Criteria().andOperator(criteria, cursorCriteria);
+            BooleanExpression cursorPredicate = ACTIVITY.occurredAt
+                    .lt(request.cursor().occurredAt())
+                    .or(ACTIVITY.occurredAt.eq(request.cursor().occurredAt())
+                            .and(ACTIVITY.id.lt(request.cursor().activityId())));
+            predicate = predicate.and(cursorPredicate);
         }
 
-        Query query = Query.query(criteria)
-                .with(Sort.by(
-                        Sort.Order.desc("occurredAt"),
-                        Sort.Order.desc("_id")
-                ))
-                .limit(request.limit() + 1);
-        List<ActivityHistoryDocument> fetched = mongoTemplate.find(
-                query,
-                ActivityHistoryDocument.class,
-                ACTIVITY_HISTORIES
+        List<ActivityHistoryDocument> fetched = querydsl.fetch(
+                ACTIVITY,
+                ACTIVITY_HISTORIES,
+                predicate,
+                request.limit() + 1L,
+                ACTIVITY.occurredAt.desc(),
+                ACTIVITY.id.desc()
         );
         boolean hasNext = fetched.size() > request.limit();
         List<ActivityHistoryDocument> activities = hasNext
@@ -169,7 +182,8 @@ public class MongoActivityQueryReader {
     private <T> Map<String, T> readSnapshots(
             List<ActivityHistoryDocument> activities,
             Function<UUID, String> keyFactory,
-            Class<T> documentType,
+            EntityPath<T> documentPath,
+            StringPath idPath,
             String collection,
             Function<T, String> idExtractor
     ) {
@@ -182,11 +196,8 @@ public class MongoActivityQueryReader {
         if (snapshotIds.isEmpty()) {
             return Map.of();
         }
-        return mongoTemplate.find(
-                        Query.query(Criteria.where("_id").in(snapshotIds)),
-                        documentType,
-                        collection
-                ).stream()
+        return querydsl.fetch(documentPath, collection, idPath.in(snapshotIds))
+                .stream()
                 .collect(Collectors.toMap(idExtractor, Function.identity()));
     }
 

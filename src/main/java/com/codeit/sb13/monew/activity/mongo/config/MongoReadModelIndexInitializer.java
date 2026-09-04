@@ -5,10 +5,14 @@ import static com.codeit.sb13.monew.activity.mongo.MongoReadModelCollections.ART
 import static com.codeit.sb13.monew.activity.mongo.MongoReadModelCollections.COMMENT_SNAPSHOTS;
 import static com.codeit.sb13.monew.activity.mongo.MongoReadModelCollections.INTEREST_SNAPSHOTS;
 
+import com.codeit.sb13.monew.activity.mongo.document.QActivityHistoryDocument;
+import com.codeit.sb13.monew.activity.mongo.document.QArticleActivitySnapshot;
+import com.codeit.sb13.monew.activity.mongo.document.QCommentActivitySnapshot;
+import com.codeit.sb13.monew.activity.mongo.document.QInterestActivitySnapshot;
+import com.codeit.sb13.monew.activity.mongo.querydsl.MongoQuerydslSupport;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -18,7 +22,6 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.index.Index;
 import org.springframework.data.mongodb.core.index.IndexDefinition;
 import org.springframework.data.mongodb.core.index.PartialIndexFilter;
-import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -26,8 +29,18 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(prefix = "monew.mongodb", name = "enabled", havingValue = "true")
 public class MongoReadModelIndexInitializer implements ApplicationRunner {
 
+    private static final QActivityHistoryDocument ACTIVITY =
+            QActivityHistoryDocument.activityHistoryDocument;
+    private static final QCommentActivitySnapshot COMMENT_SNAPSHOT =
+            QCommentActivitySnapshot.commentActivitySnapshot;
+    private static final QArticleActivitySnapshot ARTICLE_SNAPSHOT =
+            QArticleActivitySnapshot.articleActivitySnapshot;
+    private static final QInterestActivitySnapshot INTEREST_SNAPSHOT =
+            QInterestActivitySnapshot.interestActivitySnapshot;
+
     private final MongoTemplate mongoTemplate;
     private final MongoReadModelProperties properties;
+    private final MongoQuerydslSupport querydsl;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -40,7 +53,7 @@ public class MongoReadModelIndexInitializer implements ApplicationRunner {
         ));
     }
 
-    static Map<String, List<IndexDefinition>> indexDefinitions() {
+    Map<String, List<IndexDefinition>> indexDefinitions() {
         Map<String, List<IndexDefinition>> definitions = new LinkedHashMap<>();
         definitions.put(ACTIVITY_HISTORIES, List.of(
                 new Index()
@@ -49,7 +62,11 @@ public class MongoReadModelIndexInitializer implements ApplicationRunner {
                         .on("targetType", Direction.ASC)
                         .on("targetId", Direction.ASC)
                         .unique()
-                        .partial(PartialIndexFilter.of(Criteria.where("tombstone").is(false)))
+                        .partial(PartialIndexFilter.of(querydsl.toDocument(
+                                ACTIVITY,
+                                ACTIVITY_HISTORIES,
+                                ACTIVITY.tombstone.isFalse()
+                        )))
                         .named("ux_activity_histories_natural_key"),
                 new Index()
                         .on("userId", Direction.ASC)
@@ -79,19 +96,31 @@ public class MongoReadModelIndexInitializer implements ApplicationRunner {
         ));
         definitions.put(COMMENT_SNAPSHOTS, List.of(
                 new Index().on("commentId", Direction.ASC).unique()
-                        .partial(PartialIndexFilter.of(Criteria.where("tombstone").is(false)))
+                        .partial(PartialIndexFilter.of(querydsl.toDocument(
+                                COMMENT_SNAPSHOT,
+                                COMMENT_SNAPSHOTS,
+                                COMMENT_SNAPSHOT.tombstone.isFalse()
+                        )))
                         .named("ux_comment_activity_snapshots_comment_id"),
                 new Index().on("articleId", Direction.ASC).on("visible", Direction.ASC)
                         .named("idx_comment_activity_snapshots_article_visible")
         ));
         definitions.put(ARTICLE_SNAPSHOTS, List.of(
                 new Index().on("articleId", Direction.ASC).unique()
-                        .partial(PartialIndexFilter.of(Criteria.where("tombstone").is(false)))
+                        .partial(PartialIndexFilter.of(querydsl.toDocument(
+                                ARTICLE_SNAPSHOT,
+                                ARTICLE_SNAPSHOTS,
+                                ARTICLE_SNAPSHOT.tombstone.isFalse()
+                        )))
                         .named("ux_article_activity_snapshots_article_id")
         ));
         definitions.put(INTEREST_SNAPSHOTS, List.of(
                 new Index().on("interestId", Direction.ASC).unique()
-                        .partial(PartialIndexFilter.of(Criteria.where("tombstone").is(false)))
+                        .partial(PartialIndexFilter.of(querydsl.toDocument(
+                                INTEREST_SNAPSHOT,
+                                INTEREST_SNAPSHOTS,
+                                INTEREST_SNAPSHOT.tombstone.isFalse()
+                        )))
                         .named("ux_interest_activity_snapshots_interest_id")
         ));
         return definitions;

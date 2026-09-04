@@ -7,6 +7,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.codeit.sb13.monew.activity.mongo.document.ActivityHistoryStatus;
 import com.codeit.sb13.monew.activity.mongo.document.ActivityHistoryType;
 import com.codeit.sb13.monew.activity.mongo.document.ActivityTargetType;
+import com.codeit.sb13.monew.activity.mongo.document.QActivityHistoryDocument;
+import com.codeit.sb13.monew.activity.mongo.querydsl.MongoQuerydslSupport;
 import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch.ArticleState;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.mongodb.client.MongoClient;
@@ -35,6 +37,7 @@ class MongoReadModelWriterIntegrationTest {
 
     private MongoClient mongoClient;
     private MongoTemplate mongoTemplate;
+    private MongoQuerydslSupport querydsl;
     private MongoReadModelWriter writer;
 
     @BeforeAll
@@ -58,7 +61,34 @@ class MongoReadModelWriterIntegrationTest {
         String uri = "mongodb://" + mongo.getHost() + ':' + mongo.getMappedPort(27017);
         mongoClient = MongoClients.create(uri);
         mongoTemplate = new MongoTemplate(mongoClient, "monew-cas-" + UUID.randomUUID());
-        writer = new MongoReadModelWriter(mongoTemplate);
+        querydsl = new MongoQuerydslSupport(mongoTemplate);
+        writer = new MongoReadModelWriter(mongoTemplate, querydsl);
+    }
+
+    @Test
+    void querydslPreservesIdMissingVersionAndPartialIndexFilters() {
+        QActivityHistoryDocument activity =
+                QActivityHistoryDocument.activityHistoryDocument;
+        String id = "a".repeat(64);
+
+        Document casFilter = querydsl.toDocument(
+                activity,
+                ACTIVITY_HISTORIES,
+                activity.id.eq(id).and(
+                        activity.projectionVersion.isNull()
+                                .or(activity.projectionVersion.lt(7L))
+                )
+        );
+        Document partialFilter = querydsl.toDocument(
+                activity,
+                ACTIVITY_HISTORIES,
+                activity.tombstone.isFalse()
+        );
+
+        assertThat(casFilter.getString("_id")).isEqualTo(id);
+        assertThat(casFilter.toJson())
+                .contains("projectionVersion", "$exists", "false", "$lt");
+        assertThat(partialFilter).isEqualTo(new Document("tombstone", false));
     }
 
     @AfterEach

@@ -61,6 +61,32 @@ cursor와 다르며 이미 사용한 cursor가 아닌지 확인한다. 이 진�
 UUID 대소 비교는 DB 정렬 규칙과 Java 비교 규칙이 다를 수 있어 사용하지 않는다.
 또한 매 page 조회 전과 MongoDB 검증 전에 claim lease 상태를 확인한다.
 
+MID4-253부터 MongoDB 검증기의 activity·snapshot ID 조건과 visible activity count 조건은
+각 document Q 타입으로 구성한다. 조회는 공통 Querydsl 지원 계층에서 실행하며 검증 항목,
+keyset 진행 규칙과 최종 보고서 형식은 변경하지 않는다.
+
+```java
+List<CommentActivitySnapshot> snapshots = querydsl.fetch(
+        COMMENT_SNAPSHOT,
+        COMMENT_SNAPSHOTS,
+        COMMENT_SNAPSHOT.id.in(snapshotIds)
+);
+
+long actualVisibleActivities = querydsl.count(
+        ACTIVITY,
+        ACTIVITY_HISTORIES,
+        ACTIVITY.type.eq(activityType(stage))
+                .and(ACTIVITY.targetType.eq(targetType(stage)))
+                .and(ACTIVITY.visible.isTrue())
+                .and(ACTIVITY.tombstone.isFalse())
+);
+```
+
+Q 타입의 `id` 경로는 Spring Data MongoDB mapping에서 `_id`로 변환된다.
+`actualVisibleActivities`는 이름 그대로 `visible=true`, `tombstone=false`인 실제 문서 수를
+센다. `status!=ACTIVE`처럼 문서는 노출 상태지만 필드 계약이 잘못된 경우는 count에서
+제외하지 않고, 개별 문서 검증의 `missingOrInvalidActivities`로 별도 집계한다.
+
 ```text
 last_processed_id = A, 다음 page 끝 = D
 -> pending_last_id = D, claim 시작
