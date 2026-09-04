@@ -300,7 +300,8 @@ Outbox가 수렴한 뒤의 성공 보고서를 조회 전환 판단 근거로 �
 
 ## 구현 경계
 
-- 조회 API는 계속 RDB를 사용한다.
+- 조회 API의 기본 source는 RDB다. `COMPLETED`, Outbox worker catch-up과 정합성 확인 후에만
+  [조회 source 설정](./10-mongodb-query-contract.md#조회-source-전환과-fallback)으로 MongoDB를 선택한다.
 - MongoDB에서 RDB로 역동기화하지 않는다.
 - 복구·재노출 및 `DEAD_LETTER` 운영 재처리는 MID4-251 범위로 남긴다.
 - 초기 투영 성능 측정과 전용 인덱스 추가는 수행하지 않는다.

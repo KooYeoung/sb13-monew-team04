@@ -202,10 +202,18 @@ MongoDB와 RDB 조회가 모두 실패
 -> 최초 MongoDB 예외는 suppressed exception으로 보존
 ```
 
+fallback WARN은 다음 필드를 남기고 원인 예외의 stack trace를 함께 기록한다.
+
+```text
+WARN MongoDB 활동내역 조회에 실패해 RDB로 fallback합니다. userId=4d0ca9f8-0123-4567-89ab-0123456789ab, exceptionType=MongoTimeoutException
+```
+
 연결·조회 오류뿐 아니라 문서 매핑 및 cursor 진행 오류를 포함한 MongoDB source의 모든
 `RuntimeException`을 fallback 대상으로 삼는다. JVM `Error`는 잡지 않는다. 지속 장애 시에도
 각 요청은 MongoDB를 먼저 시도하며 현재 retry, circuit breaker, 일부 결과 혼합은 적용하지
-않는다. 따라서 WARN 빈도와 fallback 발생률을 운영 지표로 감시해야 한다.
+않는다. 별도 fallback counter나 Micrometer metric도 제공하지 않으므로 현재는 WARN 로그를
+집계해 발생 건수와 원인을 감시한다. 정상적인 빈 MongoDB 결과처럼 예외가 발생하지 않은
+정합성 문제는 자동 fallback할 수 없으며 [RDB 조회 rollback 절차](../../environment-setup.md#mongodb-조회-rollback)를 사용한다.
 
 ## 제외 범위
 

@@ -785,7 +785,10 @@ ARTICLE_VIEWED + 기사 삭제 또는 비공개
 
 producer는 댓글·기사·관심사·사용자 삭제 전에 영향받는 activity natural key와 comment snapshot ID를 RDB에서 수집해 payload에 넣는다. worker는 source row 존재 여부를 재확인하고 각 키에 삭제 이벤트의 버전으로 tombstone을 물질화한다. 물리삭제 이후 더 낮은 버전의 지연 이벤트가 도착하면 동일 `_id`의 더 높은 tombstone 버전 때문에 no-op이 된다. 같은 버전 재시도도 이미 반영된 문서는 건너뛰면서 아직 빠진 fan-out 문서는 이어서 만들 수 있다.
 
-현재 Read Model은 기본 비활성화이고 운영 조회 경로에 연결되지 않았으므로 기존 무버전 문서의 온라인 변환은 하지 않는다. 이 계약을 적용한 로컬 환경은 MongoDB 볼륨/컬렉션을 비우고 초기 projection을 다시 수행해야 한다.
+MID4-139에서 조회 router는 연결했지만 기본값과 현재 운영 조회 설정은 RDB다. 기존 무버전
+문서의 온라인 변환은 제공하지 않으므로 `MONGODB` 조회 전환 전에 기존 문서를 초기화하거나
+별도 마이그레이션해야 한다. 이 계약을 적용한 로컬 환경은 MongoDB 볼륨/컬렉션을 비우고
+초기 projection을 다시 수행한다.
 
 추천 인덱스 예시는 다음과 같다.
 

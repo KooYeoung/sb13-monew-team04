@@ -11,7 +11,10 @@ MID4-125와 MID4-179 측정 결과 기준으로 RDB 인덱스 최적화 후 `GET
 
 이후 MID4-135에서 후속 구현과 비교 검증을 위한 MongoDB 연결 설정, 로컬 Compose, 컬렉션 이름과 인덱스 초기화 기반을 준비했다. MID4-136에서는 RDB `outbox_events` 기본 테이블과 JPA 저장 모델을 추가했고, MID4-246에서 payload와 RDB 재조회 책임을 구분하는 수렴 정책을 확정했다. MID4-137에서는 사용자·관심사·기사·댓글 도메인의 변경 트랜잭션이 Outbox 이벤트를 함께 저장하도록 producer를 연동했다. MID4-138에서는 Outbox worker와 RDB 현재 상태 batch 재조회, MongoDB projection writer를 추가했다. MID4-247에서는 같은 polling batch의 count 이벤트를 그룹화해 중복 projection과 상태 전이를 병합했다. MID4-248에서는 도메인별 물리삭제 cleanup과 stale replay 차단을 통합 검증했다. MID4-249에서는 네 활동 유형의 초기 데이터 투영, checkpoint 재개와 최종 정합성 보고를 추가했다. MID4-250에서는 기존 DTO를 반환하는 공통 조회 source와 MongoDB 복합 cursor 조회 계약을 준비했다. MID4-253에서는 MongoDB document Q 타입을 생성하고 조회·검증·CAS·partial filter의 조건식을 Querydsl로 통일했다. MID4-139에서는 별도 환경 설정으로 RDB/MongoDB source를 선택하고 MongoDB 조회 예외를 RDB fallback으로 처리하는 router를 연결했다. 두 worker와 MongoDB 조회는 기본 비활성화 상태이며 기본 조회 경로는 계속 RDB다.
 
-따라서 현재 판단은 MongoDB Read Model을 배포 범위에 포함하지 않고, RDB를 활동내역 조회의 기준 구현이자 Source of Truth로 유지하는 것이다. Redis도 활동내역 Read Model 저장소나 캐시로 적용하지 않는다.
+따라서 MongoDB Read Model 구현과 조회 router는 코드에 유지하되 현재 운영 기본 조회에는
+활성화하지 않는다. RDB는 활동내역의 기준 구현이자 Source of Truth로 유지하고, MongoDB
+조회는 초기 투영·worker catch-up·정합성 확인과 별도 전환 승인을 마친 환경에서만 선택한다.
+Redis는 활동내역 Read Model 저장소나 캐시로 적용하지 않는다.
 
 이 디렉터리의 `01`~`10` 문서는 MongoDB 적용 가능성과 후속 구현 계약을 기록한다. 최종 적용 여부는 이 README, MID4-125, MID4-179 측정 결과를 기준으로 판단한다.
 

@@ -150,6 +150,28 @@ Outbox worker를 함께 활성화해야 투영 도중 발생한 신규 변경도
 scheduler만 중지합니다. 실시간 변경을 계속 반영하려면 Outbox worker는 활성화 상태로
 유지합니다.
 
+### MongoDB 조회 rollback
+
+MongoDB 조회 전환 후 반복적인 fallback WARN이나 정상 응답의 정합성 문제가 확인되면 조회
+source만 RDB로 되돌립니다. 환경변수는 시작 시 바인딩되므로 다음 설정으로 변경한 뒤
+애플리케이션을 재배포하거나 재시작합니다.
+
+```properties
+MONEW_ACTIVITY_READ_SOURCE=RDB
+MONEW_MONGODB_ENABLED=true
+MONEW_MONGODB_WORKER_ENABLED=true
+MONEW_MONGODB_BACKFILL_ENABLED=false
+```
+
+Outbox worker를 유지하므로 조회가 RDB로 돌아간 동안에도 MongoDB projection은 계속 최신
+상태를 따라갑니다. MongoDB의 정상 빈 결과는 예외가 아니어서 자동 fallback되지 않으므로,
+누락이나 stale 결과가 발견된 경우에도 이 rollback 절차를 사용합니다. 현재 별도 fallback
+metric은 없으며 다음 형태의 WARN 로그를 집계해 발생 건수와 원인을 확인합니다.
+
+```text
+WARN MongoDB 활동내역 조회에 실패해 RDB로 fallback합니다. userId=4d0ca9f8-0123-4567-89ab-0123456789ab, exceptionType=MongoTimeoutException
+```
+
 ### MongoDB 계정 변경과 개발 볼륨 재생성
 
 MongoDB 공식 이미지의 계정과 `/docker-entrypoint-initdb.d` 스크립트는 빈 `mongodb-data` 볼륨을 처음 초기화할 때만 적용됩니다. 기존 볼륨을 유지하면서 `.env.dev`의 비밀번호만 바꾸면 database 계정은 변경되지 않아 healthcheck와 애플리케이션 인증이 실패합니다.
