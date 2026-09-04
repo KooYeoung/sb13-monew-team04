@@ -6,17 +6,19 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.codeit.sb13.monew.activity.service.UserActivityReadSource;
+import com.codeit.sb13.monew.activity.service.UserActivitySections;
+import com.codeit.sb13.monew.activity.service.dto.RecentArticle;
+import com.codeit.sb13.monew.activity.service.dto.RecentComment;
+import com.codeit.sb13.monew.activity.service.dto.RecentCommentLike;
+import com.codeit.sb13.monew.activity.service.dto.RecentSubscribed;
 import com.codeit.sb13.monew.activity.service.dto.UserActivityDto;
 import com.codeit.sb13.monew.article.domain.ArticleSource;
 import com.codeit.sb13.monew.article.service.dto.RecentArticleViewDto;
-import com.codeit.sb13.monew.article.service.impl.ArticleViewActivityService;
 import com.codeit.sb13.monew.comment.service.dto.RecentCommentActivityDto;
 import com.codeit.sb13.monew.comment.service.dto.RecentCommentLikeActivityDto;
-import com.codeit.sb13.monew.comment.service.impl.CommentActivityService;
-import com.codeit.sb13.monew.comment.service.impl.CommentLikeActivityService;
 import com.codeit.sb13.monew.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.monew.interest.service.dto.SubscribedInterestActivityDto;
-import com.codeit.sb13.monew.interest.service.impl.SubscribedActivityService;
 import com.codeit.sb13.monew.user.domain.User;
 import com.codeit.sb13.monew.user.service.UserService;
 import java.time.LocalDateTime;
@@ -37,22 +39,13 @@ class UserActivityServiceImplTest {
     UserService userService;
 
     @Mock
-    ArticleViewActivityService articleViewActivityService;
-
-    @Mock
-    CommentActivityService commentActivityService;
-
-    @Mock
-    CommentLikeActivityService commentLikeActivityService;
-
-    @Mock
-    SubscribedActivityService subscribedActivityService;
+    UserActivityReadSource activityReadSource;
 
     @InjectMocks
     UserActivityServiceImpl userActivityService;
 
     @Test
-    @DisplayName("userActivity composes activity from domain activity services")
+    @DisplayName("userActivity composes user information with the selected activity source")
     void userActivity_activeUser_returnsComposedActivity() {
         UUID userId = UUID.randomUUID();
         LocalDateTime userCreatedAt = LocalDateTime.of(2026, 8, 25, 13, 0);
@@ -102,10 +95,12 @@ class UserActivityServiceImplTest {
         );
 
         when(userService.findById(userId)).thenReturn(user);
-        when(subscribedActivityService.getSubscribedInterestActivities(userId)).thenReturn(List.of(subscription));
-        when(commentActivityService.getRecentCommentActivities(userId)).thenReturn(List.of(comment));
-        when(commentLikeActivityService.getRecentCommentLikes(userId)).thenReturn(List.of(commentLike));
-        when(articleViewActivityService.getRecentArticleViews(userId)).thenReturn(List.of(articleView));
+        when(activityReadSource.read(userId)).thenReturn(new UserActivitySections(
+                List.of(RecentSubscribed.from(subscription)),
+                List.of(RecentComment.from(comment)),
+                List.of(RecentCommentLike.from(commentLike)),
+                List.of(RecentArticle.from(articleView))
+        ));
 
         UserActivityDto result = userActivityService.userActivity(userId);
 
@@ -135,10 +130,7 @@ class UserActivityServiceImplTest {
                     assertThat(recent.articleTitle()).isEqualTo("viewed article");
                 });
         verify(userService).findById(userId);
-        verify(subscribedActivityService).getSubscribedInterestActivities(userId);
-        verify(commentActivityService).getRecentCommentActivities(userId);
-        verify(commentLikeActivityService).getRecentCommentLikes(userId);
-        verify(articleViewActivityService).getRecentArticleViews(userId);
+        verify(activityReadSource).read(userId);
     }
 
     @Test
@@ -148,10 +140,9 @@ class UserActivityServiceImplTest {
         User user = user(userId, LocalDateTime.of(2026, 8, 25, 13, 0));
 
         when(userService.findById(userId)).thenReturn(user);
-        when(subscribedActivityService.getSubscribedInterestActivities(userId)).thenReturn(List.of());
-        when(commentActivityService.getRecentCommentActivities(userId)).thenReturn(List.of());
-        when(commentLikeActivityService.getRecentCommentLikes(userId)).thenReturn(List.of());
-        when(articleViewActivityService.getRecentArticleViews(userId)).thenReturn(List.of());
+        when(activityReadSource.read(userId)).thenReturn(new UserActivitySections(
+                List.of(), List.of(), List.of(), List.of()
+        ));
 
         UserActivityDto result = userActivityService.userActivity(userId);
 
@@ -172,12 +163,7 @@ class UserActivityServiceImplTest {
         assertThatThrownBy(() -> userActivityService.userActivity(userId))
                 .isInstanceOf(UserNotFoundException.class);
 
-        verifyNoInteractions(
-                subscribedActivityService,
-                commentActivityService,
-                commentLikeActivityService,
-                articleViewActivityService
-        );
+        verifyNoInteractions(activityReadSource);
     }
 
     private User user(UUID id, LocalDateTime createdAt) {

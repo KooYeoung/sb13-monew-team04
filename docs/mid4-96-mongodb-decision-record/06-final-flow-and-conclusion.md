@@ -77,7 +77,7 @@ response 반환 이후
 -> 성공 시 PROCESSED, 실패 시 retry 또는 DEAD_LETTER
 ```
 
-MongoDB 문서, RDB 현재 상태 batch 재조회, projection writer와 Outbox worker는 구현됐지만 기본 비활성화 상태다. 현재 조회 API는 계속 RDB를 사용하며 MongoDB 조회 전환은 MID4-139 범위다. MID4-247은 네 가지 count 이벤트를 같은 polling batch의 `event_type + 대상 ID`로 묶어 최고 projection version으로 한 번 반영하고 그룹 전체 상태를 전이한다. MID4-248은 도메인별 물리삭제 cleanup과 낮은 버전의 `PENDING`·`FAILED`·in-flight stale replay가 높은 버전 tombstone을 덮지 못하는 경계를 실제 MongoDB 통합 테스트로 검증한다. MID4-249는 네 활동 유형의 기존 RDB 데이터를 run-id와 checkpoint 기반으로 초기 투영하고 완료 후 정합성 보고서를 저장한다. 상세 실행 계약과 예시는 [초기 데이터 투영 및 정합성 검증](./09-initial-projection-and-reconciliation.md)에 기록한다.
+MongoDB 문서, RDB 현재 상태 batch 재조회, projection writer와 Outbox worker는 구현됐지만 기본 비활성화 상태다. MID4-250은 공통 조회 source와 MongoDB 복합 cursor·snapshot 매핑을 구현하지만 현재 기본 source는 RDB로 유지한다. 설정 기반 MongoDB 전환과 장애 시 RDB fallback은 MID4-139 범위다. MID4-247은 네 가지 count 이벤트를 같은 polling batch의 `event_type + 대상 ID`로 묶어 최고 projection version으로 한 번 반영하고 그룹 전체 상태를 전이한다. MID4-248은 도메인별 물리삭제 cleanup과 낮은 버전의 `PENDING`·`FAILED`·in-flight stale replay가 높은 버전 tombstone을 덮지 못하는 경계를 실제 MongoDB 통합 테스트로 검증한다. MID4-249는 네 활동 유형의 기존 RDB 데이터를 run-id와 checkpoint 기반으로 초기 투영하고 완료 후 정합성 보고서를 저장한다. 상세 실행 계약과 예시는 [초기 데이터 투영 및 정합성 검증](./09-initial-projection-and-reconciliation.md)과 [MongoDB 활동내역 조회 계약](./10-mongodb-query-contract.md)에 기록한다.
 
 동일 ID 복구·재노출은 아직 구현 범위가 아니다. 현재 RDB에는 이를 발생시키는 명령이 없으며, S3 기사 복원은 새 UUID로 기사를 생성한다. 향후 같은 ID 복구 동작이 추가되면 그 transaction에서 event type과 producer를 함께 추가하고, 대상과 부모의 RDB 현재 상태를 다시 확인한 뒤 snapshot과 activity를 복구해야 한다.
 
@@ -135,11 +135,12 @@ outbox worker의 MongoDB 반영 시간은 쓰기 API response time에 포함하�
 
 기사 조회처럼 발생 빈도가 높은 이벤트는 일반 쓰기 이벤트와 분리해 별도 부하 테스트를 진행한다.
 
-활동내역 API 조회 흐름은 다음과 같이 둔다.
+MID4-139에서 MongoDB source를 선택한 경우의 활동내역 API 조회 흐름은 다음과 같이 둔다.
 
 ```text
 활동내역 API 요청
--> activity_histories에서 userId + type + visible=true 기준 최신순 조회
+-> activity_histories에서 userId + type + targetType + visible=true
+   + status=ACTIVE + tombstone=false 기준 최신순 조회
 -> occurredAt DESC, _id DESC 기준으로 cursor/limit 적용
 -> targetId 목록 추출
 -> 대상 snapshot 컬렉션 조회
@@ -149,7 +150,12 @@ outbox worker의 MongoDB 반영 시간은 쓰기 API response time에 포함하�
 -> 클라이언트 응답
 ```
 
-커서에는 `occurredAt`과 `_id`를 함께 포함한다. snapshot 누락 또는 `visible=false` 항목을 제외한 뒤에는 limit을 채우기 위한 추가 조회를 하지 않는다. 따라서 응답 개수는 요청 limit보다 적을 수 있다.
+커서에는 `occurredAt`과 `_id`를 함께 포함한다. snapshot 누락, `visible=false` 또는 tombstone 항목을 제외한 뒤에는 limit을 채우기 위한 추가 조회를 하지 않는다. 다음 cursor는 마지막 응답 항목이 아닌 마지막 스캔 activity를 기준으로 하므로 짧거나 빈 페이지에서도 scan이 진행된다. 따라서 응답 개수는 요청 limit보다 적을 수 있다.
+
+기존 응답 범위를 유지하기 위해 구독 관심사는 내부 page를 마지막까지 순회해 현재 활성
+구독 전체를 반환한다. 최근 작성 댓글, 최근 좋아요한 댓글, 최근 조회 기사는 첫 page의
+최대 10건만 반환한다. 구독 page의 cursor가 없거나 내림차순으로 진행하지 않으면 무한
+반복을 막기 위해 조회를 실패 처리한다.
 
 ## 후속 설계 결론
 
