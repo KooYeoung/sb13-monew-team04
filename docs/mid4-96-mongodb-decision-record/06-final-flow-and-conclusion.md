@@ -77,7 +77,7 @@ response 반환 이후
 -> 성공 시 PROCESSED, 실패 시 retry 또는 DEAD_LETTER
 ```
 
-MongoDB 문서, RDB 현재 상태 batch 재조회, projection writer와 Outbox worker는 구현됐지만 기본 비활성화 상태다. MID4-250은 공통 조회 source와 MongoDB 복합 cursor·snapshot 매핑을 구현하지만 현재 기본 source는 RDB로 유지한다. MID4-253은 MongoDB document Q 타입을 생성하고 조회·검증·CAS·partial filter 조건을 Querydsl로 통일하되 원자적 쓰기 실행은 `MongoTemplate`에 유지한다. 설정 기반 MongoDB 전환과 장애 시 RDB fallback은 MID4-139 범위다. MID4-247은 네 가지 count 이벤트를 같은 polling batch의 `event_type + 대상 ID`로 묶어 최고 projection version으로 한 번 반영하고 그룹 전체 상태를 전이한다. MID4-248은 도메인별 물리삭제 cleanup과 낮은 버전의 `PENDING`·`FAILED`·in-flight stale replay가 높은 버전 tombstone을 덮지 못하는 경계를 실제 MongoDB 통합 테스트로 검증한다. MID4-249는 네 활동 유형의 기존 RDB 데이터를 run-id와 checkpoint 기반으로 초기 투영하고 완료 후 정합성 보고서를 저장한다. 상세 실행 계약과 예시는 [초기 데이터 투영 및 정합성 검증](./09-initial-projection-and-reconciliation.md)과 [MongoDB 활동내역 조회 계약](./10-mongodb-query-contract.md)에 기록한다.
+MongoDB 문서, RDB 현재 상태 batch 재조회, projection writer와 Outbox worker는 구현됐지만 기본 비활성화 상태다. MID4-250은 공통 조회 source와 MongoDB 복합 cursor·snapshot 매핑을 구현하고, MID4-253은 MongoDB document Q 타입을 생성해 조회·검증·CAS·partial filter 조건을 Querydsl로 통일하되 원자적 쓰기 실행은 `MongoTemplate`에 유지한다. MID4-139는 기본값이 RDB인 설정 기반 router와 MongoDB 조회 실패 시 요청 전체를 RDB에서 다시 읽는 fallback을 연결한다. MID4-247은 네 가지 count 이벤트를 같은 polling batch의 `event_type + 대상 ID`로 묶어 최고 projection version으로 한 번 반영하고 그룹 전체 상태를 전이한다. MID4-248은 도메인별 물리삭제 cleanup과 낮은 버전의 `PENDING`·`FAILED`·in-flight stale replay가 높은 버전 tombstone을 덮지 못하는 경계를 실제 MongoDB 통합 테스트로 검증한다. MID4-249는 네 활동 유형의 기존 RDB 데이터를 run-id와 checkpoint 기반으로 초기 투영하고 완료 후 정합성 보고서를 저장한다. 상세 실행 계약과 예시는 [초기 데이터 투영 및 정합성 검증](./09-initial-projection-and-reconciliation.md)과 [MongoDB 활동내역 조회 계약](./10-mongodb-query-contract.md)에 기록한다.
 
 동일 ID 복구·재노출은 아직 구현 범위가 아니다. 현재 RDB에는 이를 발생시키는 명령이 없으며, S3 기사 복원은 새 UUID로 기사를 생성한다. 향후 같은 ID 복구 동작이 추가되면 그 transaction에서 event type과 producer를 함께 추가하고, 대상과 부모의 RDB 현재 상태를 다시 확인한 뒤 snapshot과 activity를 복구해야 한다.
 
@@ -135,7 +135,7 @@ outbox worker의 MongoDB 반영 시간은 쓰기 API response time에 포함하�
 
 기사 조회처럼 발생 빈도가 높은 이벤트는 일반 쓰기 이벤트와 분리해 별도 부하 테스트를 진행한다.
 
-MID4-139에서 MongoDB source를 선택한 경우의 활동내역 API 조회 흐름은 다음과 같이 둔다.
+`MONEW_ACTIVITY_READ_SOURCE=MONGODB`로 선택한 경우의 활동내역 API 조회 흐름은 다음과 같다.
 
 ```text
 활동내역 API 요청
@@ -148,6 +148,10 @@ MID4-139에서 MongoDB source를 선택한 경우의 활동내역 API 조회 흐
 -> snapshot이 없거나 노출 불가능한 항목 제외
 -> DTO 변환
 -> 클라이언트 응답
+
+MongoDB RuntimeException 발생
+-> 사용자 ID와 원인을 WARN으로 기록
+-> 일부 MongoDB 결과를 사용하지 않고 요청 전체를 RDB source에서 다시 조회
 ```
 
 커서에는 `occurredAt`과 `_id`를 함께 포함한다. snapshot 누락, `visible=false` 또는 tombstone 항목을 제외한 뒤에는 limit을 채우기 위한 추가 조회를 하지 않는다. 다음 cursor는 마지막 응답 항목이 아닌 마지막 스캔 activity를 기준으로 하므로 짧거나 빈 페이지에서도 scan이 진행된다. 따라서 응답 개수는 요청 limit보다 적을 수 있다.
@@ -156,6 +160,11 @@ MID4-139에서 MongoDB source를 선택한 경우의 활동내역 API 조회 흐
 구독 전체를 반환한다. 최근 작성 댓글, 최근 좋아요한 댓글, 최근 조회 기사는 첫 page의
 최대 10건만 반환한다. 구독 page의 cursor가 없거나 내림차순으로 진행하지 않으면 무한
 반복을 막기 위해 조회를 실패 처리한다.
+
+MongoDB 조회가 예외 없이 빈 결과를 반환한 경우는 정상 결과이므로 RDB fallback을 실행하지
+않는다. `MONGODB` source는 MongoDB 기반이 활성화되어 있고 초기 투영 완료, worker catch-up,
+정합성 확인을 마친 뒤에만 선택한다. 설정과 장애 처리의 상세 예시는
+[MongoDB 활동내역 조회 계약](./10-mongodb-query-contract.md#조회-source-전환과-fallback)을 따른다.
 
 ## 후속 설계 결론
 

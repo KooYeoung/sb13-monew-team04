@@ -4,13 +4,17 @@
 
 ## 결론
 
-이번 배포 전에는 활동내역 조회 경로에 MongoDB Read Model과 Redis를 적용하지 않는다.
+활동내역 조회 경로의 기본값은 RDB로 유지하며 Redis는 적용하지 않는다. MongoDB Read Model은
+초기 투영과 정합성 검증을 마친 환경에서만 설정으로 선택할 수 있다.
 
 MID4-125와 MID4-179 측정 결과 기준으로 RDB 인덱스 최적화 후 `GET /api/user-activities/{userId}`는 10m seed에서 `200 rps`까지 안정적으로 처리됐다. 당시에는 MongoDB 환경 구성부터 Outbox, projection 동기화, 삭제 전파, 장애 재처리 정책까지 배포 전에 추가할 만큼의 성능 병목이 확인되지 않았다.
 
-이후 MID4-135에서 후속 구현과 비교 검증을 위한 MongoDB 연결 설정, 로컬 Compose, 컬렉션 이름과 인덱스 초기화 기반을 준비했다. MID4-136에서는 RDB `outbox_events` 기본 테이블과 JPA 저장 모델을 추가했고, MID4-246에서 payload와 RDB 재조회 책임을 구분하는 수렴 정책을 확정했다. MID4-137에서는 사용자·관심사·기사·댓글 도메인의 변경 트랜잭션이 Outbox 이벤트를 함께 저장하도록 producer를 연동했다. MID4-138에서는 Outbox worker와 RDB 현재 상태 batch 재조회, MongoDB projection writer를 추가했다. MID4-247에서는 같은 polling batch의 count 이벤트를 그룹화해 중복 projection과 상태 전이를 병합했다. MID4-248에서는 도메인별 물리삭제 cleanup과 stale replay 차단을 통합 검증했다. MID4-249에서는 네 활동 유형의 초기 데이터 투영, checkpoint 재개와 최종 정합성 보고를 추가했다. MID4-250에서는 기존 DTO를 반환하는 공통 조회 source와 MongoDB 복합 cursor 조회 계약을 준비했다. MID4-253에서는 MongoDB document Q 타입을 생성하고 조회·검증·CAS·partial filter의 조건식을 Querydsl로 통일했다. 두 worker는 기본 비활성화 상태이며 운영 조회 경로는 계속 RDB를 사용한다.
+이후 MID4-135에서 후속 구현과 비교 검증을 위한 MongoDB 연결 설정, 로컬 Compose, 컬렉션 이름과 인덱스 초기화 기반을 준비했다. MID4-136에서는 RDB `outbox_events` 기본 테이블과 JPA 저장 모델을 추가했고, MID4-246에서 payload와 RDB 재조회 책임을 구분하는 수렴 정책을 확정했다. MID4-137에서는 사용자·관심사·기사·댓글 도메인의 변경 트랜잭션이 Outbox 이벤트를 함께 저장하도록 producer를 연동했다. MID4-138에서는 Outbox worker와 RDB 현재 상태 batch 재조회, MongoDB projection writer를 추가했다. MID4-247에서는 같은 polling batch의 count 이벤트를 그룹화해 중복 projection과 상태 전이를 병합했다. MID4-248에서는 도메인별 물리삭제 cleanup과 stale replay 차단을 통합 검증했다. MID4-249에서는 네 활동 유형의 초기 데이터 투영, checkpoint 재개와 최종 정합성 보고를 추가했다. MID4-250에서는 기존 DTO를 반환하는 공통 조회 source와 MongoDB 복합 cursor 조회 계약을 준비했다. MID4-253에서는 MongoDB document Q 타입을 생성하고 조회·검증·CAS·partial filter의 조건식을 Querydsl로 통일했다. MID4-139에서는 별도 환경 설정으로 RDB/MongoDB source를 선택하고 MongoDB 조회 예외를 RDB fallback으로 처리하는 router를 연결했다. 두 worker와 MongoDB 조회는 기본 비활성화 상태이며 기본 조회 경로는 계속 RDB다.
 
-따라서 현재 판단은 MongoDB Read Model을 배포 범위에 포함하지 않고, RDB를 활동내역 조회의 기준 구현이자 Source of Truth로 유지하는 것이다. Redis도 활동내역 Read Model 저장소나 캐시로 적용하지 않는다.
+따라서 MongoDB Read Model 구현과 조회 router는 코드에 유지하되 현재 운영 기본 조회에는
+활성화하지 않는다. RDB는 활동내역의 기준 구현이자 Source of Truth로 유지하고, MongoDB
+조회는 초기 투영·worker catch-up·정합성 확인과 별도 전환 승인을 마친 환경에서만 선택한다.
+Redis는 활동내역 Read Model 저장소나 캐시로 적용하지 않는다.
 
 이 디렉터리의 `01`~`10` 문서는 MongoDB 적용 가능성과 후속 구현 계약을 기록한다. 최종 적용 여부는 이 README, MID4-125, MID4-179 측정 결과를 기준으로 판단한다.
 
@@ -23,9 +27,9 @@ MID4-125와 MID4-179 측정 결과 기준으로 RDB 인덱스 최적화 후 `GET
 | RDB | Source of Truth로 유지 |
 | 배포 조회 경로 | RDB 최적화 상태 유지 |
 
-## MID4-253까지의 현재 구현 상태
+## 현재 구현 상태
 
-MID4-135 이후 MID4-253까지의 작업은 MongoDB 적용 결론을 변경하지 않고, 후속 구현과 비교 검증에 필요한 환경, Outbox 저장 구조, producer, 비동기 projection, 초기 데이터 투영과 조회 계약을 단계적으로 추가했다.
+MID4-135 이후 관련 작업은 MongoDB를 기본 조회 경로로 전환하지 않고, 후속 구현과 비교 검증에 필요한 환경, Outbox 저장 구조, producer, 비동기 projection, 초기 데이터 투영, 조회 계약과 안전한 전환 경계를 단계적으로 추가했다.
 
 | 구분 | 현재 상태 |
 | --- | --- |
@@ -43,8 +47,9 @@ MID4-135 이후 MID4-253까지의 작업은 MongoDB 적용 결론을 변경하�
 | 실패 처리 | 1분, 5분, 15분, 1시간 retry 후 5회 실패 시 `DEAD_LETTER`; 단건 또는 count 그룹 상태 저장은 독립 트랜잭션으로 처리 |
 | 다중 인스턴스 순서 보호 | commit 순서와 일치하는 전역 projection version 및 MongoDB CAS로 서로 다른 batch의 동일 target stale write 차단 |
 | 초기 데이터 투영 | 네 활동 유형을 UUID PK keyset page로 scan하고 run-id별 checkpoint/lease로 재개. 공통 source reader와 projection handler를 사용하며 완료 후 활동 수·노출 상태·snapshot count를 JSON으로 검증 |
-| MongoDB 조회 계약 | 공통 `UserActivityReadSource`와 MongoDB 구현을 준비하고, 구독 전체·나머지 최근 10건 응답 범위와 `occurredAt DESC, _id DESC` 복합 cursor 및 snapshot 필터링 후 짧은 page 계약을 검증. MongoDB document Q 타입과 공통 Querydsl 지원 계층으로 조회·검증·CAS·partial filter 조건을 표현하며 현재 기본 source는 RDB |
-| 아직 구현하지 않은 범위 | 복구·재노출, MongoDB 조회 경로 전환, shadow read 비교, 운영 재처리 |
+| MongoDB 조회 계약 | 공통 `UserActivityReadSource`와 MongoDB 구현을 준비하고, 구독 전체·나머지 최근 10건 응답 범위와 `occurredAt DESC, _id DESC` 복합 cursor 및 snapshot 필터링 후 짧은 page 계약을 검증. MongoDB document Q 타입과 공통 Querydsl 지원 계층으로 조회·검증·CAS·partial filter 조건을 표현 |
+| 조회 source routing | `MONEW_ACTIVITY_READ_SOURCE`의 기본값은 `RDB`. `MONGODB` 선택 시 기반 활성화를 시작 단계에서 검증하고 MongoDB `RuntimeException`은 WARN 기록 후 요청 전체를 RDB에서 재조회. 정상 빈 결과는 fallback하지 않음 |
+| 아직 구현하지 않은 범위 | 복구·재노출, shadow read 비교, 자동 retry·circuit breaker, 운영 재처리 |
 
 따라서 현재 API는 계속 RDB를 조회하지만, MID4-137에서 연동한 쓰기 요청은 원본 변경과 같은 RDB 트랜잭션에 Outbox row를 생성한다. payload 직렬화 뒤 전역 clock row를 잠그는 버전 발급도 요청 처리 중 동기 수행되므로 서로 무관한 쓰기 요청 사이에 잠깐의 대기가 생길 수 있다. MID4-138에서 구현하고 MID4-247에서 count 그룹 처리를 확장한 worker의 RDB 재조회와 MongoDB 반영은 response 반환 이후 별도 thread에서 blocking 방식으로 수행된다. 여러 인스턴스에서 worker를 활성화할 수 있으며, 각 실행은 batch UUID와 lease를 원자적으로 기록해 서로 다른 이벤트 row를 병렬 처리한다. worker polling 인덱스는 성능 측정 없이 추가하지 않는다.
 

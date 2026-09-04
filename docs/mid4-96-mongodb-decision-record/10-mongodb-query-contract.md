@@ -8,9 +8,9 @@ MID4-250은 MongoDB Read Model에서 기존 사용자 활동내역 DTO를 만들
 구현한다. `GET /api/user-activities/{userId}`의 endpoint와 응답 필드는 바꾸지 않는다.
 
 `UserActivityReadSource`는 활동 목록 저장소를 추상화하고 RDB와 MongoDB 구현이 같은
-`UserActivitySections`를 반환한다. 현재는 RDB 구현이 기본 source다. 설정 기반 MongoDB
-선택과 MongoDB 장애 시 RDB fallback은 MID4-139에서 연결한다. shadow read 비교도 이
-티켓에 포함하지 않는다.
+`UserActivitySections`를 반환한다. MID4-139는 설정 기반 router를 연결하며 기본 source는
+RDB다. MongoDB source를 선택한 상태에서 조회가 실패하면 같은 요청 전체를 RDB source로
+다시 조회한다. shadow read 비교는 포함하지 않는다.
 
 사용자 존재, 이메일, 닉네임, 가입일은 계속 RDB에서 읽는다. MongoDB 구현은 다음 네
 활동 목록만 담당한다.
@@ -161,12 +161,63 @@ snapshot에서 가져오며 시간 필드는 기존 DTO 의미에 맞춰 다음�
 
 저장 문서의 필수 UUID를 변환할 수 없으면 `ReadModelDocumentMappingException`으로 처리한다.
 snapshot 누락과 비노출은 정상적인 짧은 페이지이고 예외가 아니다. MongoDB 연결·조회
-예외는 이 계층에서 숨기지 않으며 MID4-139의 routing 계층이 RDB fallback 여부를 판단한다.
+예외는 이 계층에서 숨기지 않으며 routing 계층이 RDB fallback 여부를 판단한다.
+
+## 조회 source 전환과 fallback
+
+조회 source는 MongoDB 기반 활성화와 별도 설정으로 선택한다. 기본값은 `RDB`다.
+
+```properties
+# 기본 조회
+MONEW_ACTIVITY_READ_SOURCE=RDB
+MONEW_MONGODB_ENABLED=false
+
+# 초기 투영 완료, worker catch-up 및 정합성 확인 뒤 MongoDB 조회
+MONEW_ACTIVITY_READ_SOURCE=MONGODB
+MONEW_MONGODB_ENABLED=true
+```
+
+`MONEW_ACTIVITY_READ_SOURCE=MONGODB`인데 `MONEW_MONGODB_ENABLED=false`이면 잘못된 배포
+설정이므로 애플리케이션 시작을 실패시킨다. MongoDB 조회로 전환하기 전에는 초기 투영
+run이 `COMPLETED`인지, Outbox worker가 신규 변경을 따라잡았는지, 최종 정합성 보고가
+통과했는지를 확인한다.
+
+router의 요청별 동작은 다음과 같다.
+
+```text
+readSource=RDB
+-> RDB source 조회
+
+readSource=MONGODB, MongoDB 조회 성공
+-> MongoDB 결과 반환
+-> 결과가 비어 있어도 정상 성공이므로 RDB를 조회하지 않음
+
+readSource=MONGODB, MongoDB RuntimeException 발생
+-> 사용자 ID와 원인 예외를 WARN으로 기록
+-> 일부 MongoDB 결과는 폐기
+-> 요청 전체를 RDB source에서 다시 조회해 반환
+
+MongoDB와 RDB 조회가 모두 실패
+-> RDB 예외를 호출자에게 전달
+-> 최초 MongoDB 예외는 suppressed exception으로 보존
+```
+
+fallback WARN은 다음 필드를 남기고 원인 예외의 stack trace를 함께 기록한다.
+
+```text
+WARN MongoDB 활동내역 조회에 실패해 RDB로 fallback합니다. userId=4d0ca9f8-0123-4567-89ab-0123456789ab, exceptionType=MongoTimeoutException
+```
+
+연결·조회 오류뿐 아니라 문서 매핑 및 cursor 진행 오류를 포함한 MongoDB source의 모든
+`RuntimeException`을 fallback 대상으로 삼는다. JVM `Error`는 잡지 않는다. 지속 장애 시에도
+각 요청은 MongoDB를 먼저 시도하며 현재 retry, circuit breaker, 일부 결과 혼합은 적용하지
+않는다. 별도 fallback counter나 Micrometer metric도 제공하지 않으므로 현재는 WARN 로그를
+집계해 발생 건수와 원인을 감시한다. 정상적인 빈 MongoDB 결과처럼 예외가 발생하지 않은
+정합성 문제는 자동 fallback할 수 없으며 [RDB 조회 rollback 절차](../../environment-setup.md#mongodb-조회-rollback)를 사용한다.
 
 ## 제외 범위
 
 - 공개 API에 cursor 또는 새 응답 필드 추가
-- 설정에 따른 MongoDB/RDB source 선택
-- MongoDB 장애 시 RDB fallback 실행
 - shadow read 비교
+- 자동 retry와 circuit breaker
 - 신규 인덱스와 성능 측정
