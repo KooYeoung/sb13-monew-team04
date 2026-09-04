@@ -12,6 +12,7 @@
 - 일반 조회만 보면 MongoDB 조회용 데이터를 바로 도입할 근거가 부족해 적용을 후순위로 두었다.
 - MID4-135에서 후속 비교를 위한 MongoDB 환경과 인덱스 초기화 기반은 준비했지만 기본 비활성화 상태이며, 실제 조회는 계속 RDB를 사용한다.
 - MID4-136에서 Outbox 기본 테이블과 JPA 저장 모델을 준비했고, MID4-137에서 producer를 연동했으며, MID4-138의 MongoDB worker와 MID4-247의 count batch 병합까지 구현했다. MID4-248은 물리삭제와 stale replay를 검증했지만 worker는 기본 비활성화이고 조회 전환은 아직 없다.
+- MID4-249에서 초기 데이터 투영과 정합성 검증, MID4-250에서 복합 cursor 조회 계약을 준비했으며 MID4-253에서 MongoDB 조건식을 Querydsl Q 타입으로 통일했다. 이 작업들도 조회 전환이나 성능 측정 결과를 의미하지 않는다.
 - 하지만 한 댓글·기사·관심사에 연결 데이터가 몰리거나 제외할 데이터가 많으면 반복 조회 비용이 다시 커졌다.
 - 활동 데이터에 노출 상태를 저장하고 직접 확인하도록 바꾸자 이 특수 조건도 크게 개선됐다.
 - 남은 문제는 결과마다 댓글 수·조회 수·구독자 수를 다시 세는 과정과 비활성 데이터를 읽은 뒤 제외하는 일부 인덱스 경로다.
@@ -34,6 +35,9 @@
 | 구현 | MID4-138 Outbox worker와 projection | commit된 이벤트를 MongoDB에 어떻게 반영하는가 | RDB 현재 상태 재조회, 다중 worker claim/lease, 전역 version CAS, hidden guard와 scrubbed tombstone을 구현했다. |
 | 구현 | MID4-247 count batch 병합 | 같은 대상의 count 이벤트 중복 처리를 어떻게 줄이는가 | polling batch 안에서 같은 event type과 대상 ID를 그룹화해 최고 version으로 한 번 투영한다. |
 | 검증 | MID4-248 삭제와 stale replay | 물리삭제 뒤 오래된 이벤트가 문서를 되살릴 수 있는가 | 도메인별 cleanup과 낮은 version의 PENDING·FAILED·in-flight 쓰기가 tombstone을 덮지 못함을 실제 MongoDB에서 검증했다. |
+| 구현 | MID4-249 초기 데이터 투영 | 기존 RDB 활동을 어떻게 채우고 검증하는가 | checkpoint 재개와 activity·snapshot 정합성 보고를 구현했다. |
+| 구현 | MID4-250 MongoDB 조회 계약 | 기존 DTO를 MongoDB에서 어떻게 조립하는가 | 복합 cursor, snapshot 필터링과 구독 전체 조회 계약을 검증했다. |
+| 리팩터링 | MID4-253 Querydsl 조건식 전환 | MongoDB 조건식을 어떻게 타입 안전하게 유지하는가 | 조회·검증·CAS·partial filter는 Q 타입으로 표현하고 원자적 DML은 MongoTemplate에 유지했다. |
 
 ## 궁금한 내용으로 바로 가기
 
@@ -44,6 +48,7 @@
 | 짧은 요청량 단계에서 통과와 실패 경계 | [MID4-179 처리 가능한 요청량 측정](mid4-179-rdb-throughput-limit/README.md) |
 | MongoDB 적용을 미룬 이유와 재검토 조건 | [MID4-125 MongoDB 적용 대상 선정](mid4-125-mongodb-read-model-target-selection/README.md) |
 | 현재 MongoDB 환경과 활성화 방법 | [환경 설정 방법](environment-setup.md#7-mongodb-read-model-로컬-설정) |
+| MongoDB 저장·조회·Querydsl 조건식 계약 | [MongoDB/Redis 적용 판단 기록](mid4-96-mongodb-decision-record/README.md) |
 | 일반·장시간·데이터 몰림·제외·혼합 부하 결과 | [MID4-206 확장 성능 측정](mid4-206-mongodb-k6-compare.md) |
 | `visibility_status` 적용 효과와 남은 병목 | [MID4-227 노출 상태 적용 전후 재측정](mid4-227-rdb-bottleneck-remeasure/README.md) |
 
@@ -62,6 +67,7 @@
 | MID4-136 | 성능 측정 없이 Outbox 저장 기반 준비 | 테이블과 JPA 모델만 추가했으며 쓰기 요청에 Outbox insert가 포함된 성능 결과가 아니다. |
 | MID4-137 | 성능 측정 없이 도메인 Outbox producer 연동 | MID4-137에서 연동한 쓰기 요청에는 Outbox 저장 비용이 포함되지만, 기존 MID4-206 측정값을 Outbox 적용 후 결과로 재분류하지 않는다. |
 | MID4-138·247·248 | 성능 측정 없이 worker 구현과 정합성 검증 | MongoDB projection 동작과 삭제·재시도 경계를 검증한 결과이며 RDB 대비 조회 성능 결과가 아니다. worker와 조회 경로는 기본 전환되지 않았다. |
+| MID4-249·250·253 | 성능 측정 없이 초기 투영·조회 계약·Querydsl 리팩터링 | 데이터 이관과 조회 동작 및 조건식 유지보수성을 검증한 결과이며 RDB 대비 MongoDB 성능 결과가 아니다. 기본 조회 source는 RDB다. |
 
 따라서 MID4-179의 `200 rps`와 MID4-206의 `190 rps`는 서로 모순되는 값이 아니다. 앞의 값은 1분 단기 경계이고, 뒤의 값은 더 엄격한 응답 시간 기준으로 30분 동안 확인한 보수적인 구간이다.
 

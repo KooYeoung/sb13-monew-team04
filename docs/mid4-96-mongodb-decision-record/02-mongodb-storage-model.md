@@ -132,9 +132,9 @@ tombstone
 
 한 activity가 이미 `visible=false`이면 다른 논리삭제 또는 비노출 이벤트가 `hiddenByTargetType`, `hiddenByTargetId`를 덮어쓰지 않을 수 있다. 따라서 이 한 쌍만으로 복구 가능 여부를 판단하지 않고, 복구 시 `targetType`, `targetId`, `parentTargetType`, `parentTargetId`로 후보를 찾은 뒤 RDB 현재 상태를 다시 계산한다.
 
-MID4-135에서는 아래 컬렉션 이름과 인덱스 정의만 후속 구현 계약으로 코드에 반영했다. MID4-138에서 document와 `MongoTemplate` 기반 projection writer를 구현했다. `monew.mongodb.enabled=true`이고 인덱스 초기화가 활성화된 경우에만 애플리케이션 시작 시 인덱스를 멱등하게 생성한다.
+MID4-135에서는 아래 컬렉션 이름과 인덱스 정의만 후속 구현 계약으로 코드에 반영했다. MID4-138에서 document와 `MongoTemplate` 기반 projection writer를 구현했고, MID4-253에서 document Q 타입과 공통 Querydsl 지원 계층을 추가해 조회·검증·CAS·partial filter 조건식을 타입 안전하게 표현하도록 전환했다. `monew.mongodb.enabled=true`이고 인덱스 초기화가 활성화된 경우에만 애플리케이션 시작 시 인덱스를 멱등하게 생성한다.
 
-Spring Data MongoDB의 repository 방식도 사용할 수 있지만 MID4-138 쓰기 경로는 `MongoTemplate`을 선택했다. 선행 조회 없이 결정적 `_id`와 `projectionVersion` 조건에 `$setOnInsert`, `$set`, `$max`, `$unset`을 조합한 원자적 CAS upsert가 필요하기 때문이다. 이 쓰기 호출은 reactive/non-blocking API가 아니며 worker thread가 각 MongoDB 명령의 완료를 기다린다.
+Spring Data MongoDB의 repository 방식도 사용할 수 있지만 쓰기 실행은 계속 `MongoTemplate`을 사용한다. 선행 조회 없이 결정적 `_id`와 `projectionVersion` 조건에 `$setOnInsert`, `$set`, `$max`, `$unset`을 조합한 원자적 CAS upsert가 필요하기 때문이다. MID4-253의 Querydsl은 이때 사용할 filter를 Q 타입으로 만들고 Spring Data `Query` 또는 BSON으로 변환하며 update 명령 자체를 대신하지 않는다. 이 쓰기 호출은 reactive/non-blocking API가 아니며 worker thread가 각 MongoDB 명령의 완료를 기다린다.
 
 ```text
 MongoRepository save 방식
@@ -142,12 +142,32 @@ MongoRepository save 방식
 -> 애플리케이션에서 insert/update 판단
 -> 저장 사이에 경쟁 조건이 생길 수 있음
 
-MongoTemplate 방식
--> 결정적 _id + 저장 projectionVersion < incoming version 조건의 단일 atomic upsert
+Querydsl predicate + MongoTemplate atomic DML 방식
+-> Q 타입으로 결정적 _id + (projectionVersion 미저장 OR 저장 version < incoming version) 조건 구성
+-> Querydsl isNull은 MongoDB의 $exists:false로 직렬화
+-> 조건은 Spring Data Query로 변환하고 MongoTemplate이 단일 atomic upsert 실행
 -> 최초 생성 필드는 $setOnInsert
 -> 변경 필드는 $set, occurredAt은 $max
 -> 취소/논리삭제는 문서가 없어도 versioned hidden guard 생성
 -> 물리삭제는 식별·표시 필드를 $unset한 scrubbed tombstone 생성
+```
+
+```java
+QActivityHistoryDocument activity = QActivityHistoryDocument.activityHistoryDocument;
+BooleanExpression staleVersion = activity.projectionVersion.isNull()
+        .or(activity.projectionVersion.lt(incomingVersion));
+Query query = querydsl.toQuery(
+        activity,
+        ACTIVITY_HISTORIES,
+        activity.id.eq(documentId).and(staleVersion)
+);
+
+mongoTemplate.upsert(
+        query,
+        update,
+        ActivityHistoryDocument.class,
+        ACTIVITY_HISTORIES
+);
 ```
 
 RDB UUID는 MongoDB 문서에서 canonical 문자열로 저장한다. MongoDB `_id`는 activity의 `userId|type|targetType|targetId`, snapshot의 `종류|대상 UUID`를 canonical key로 만들어 SHA-256으로 계산한다. 따라서 tombstone이 원본 식별 필드를 지워도 같은 논리 키의 과거 쓰기는 동일 `_id`에서 차단된다. 기존 활동내역 API의 id는 `sourceActivityId`에서 복원한다.
@@ -182,7 +202,7 @@ MongoDB 인덱스에서 숫자는 저장값이 아니라 인덱스 정렬 방향
 예: U1 + COMMENT_LIKED + COMMENT + C1
 ```
 
-MID4-135의 인덱스 초기화가 이 조합을 `tombstone=false`인 문서에만 적용되는 partial unique index로 생성한다. MID4-138 worker는 같은 outbox 이벤트를 재처리하거나 동일 활동 이벤트가 중복 발행되어도 결정적 `_id`와 이 natural key를 기준으로 하나의 activity만 유지한다. 이는 새 조회용 인덱스를 추가한 것이 아니라 기존 고유 인덱스가 scrubbed tombstone을 제외하도록 조건을 조정한 것이다.
+MID4-135의 인덱스 초기화가 이 조합을 `tombstone=false`인 문서에만 적용되는 partial unique index로 생성한다. MID4-253에서는 이 partial filter도 각 document Q 타입의 `tombstone.isFalse()`에서 BSON으로 변환하며 인덱스 구성 자체는 바꾸지 않는다. MID4-138 worker는 같은 outbox 이벤트를 재처리하거나 동일 활동 이벤트가 중복 발행되어도 결정적 `_id`와 이 natural key를 기준으로 하나의 activity만 유지한다. 이는 새 조회용 인덱스를 추가한 것이 아니라 기존 고유 인덱스가 scrubbed tombstone을 제외하도록 조건을 조정한 것이다.
 
 이 인덱스와 versioned atomic upsert는 중복 문서와 stale overwrite를 함께 막는다. event payload의 과거 표시값이 아니라 worker가 조회한 RDB 현재 상태를 반영하고, 같은 문서에는 더 큰 `projectionVersion`만 저장한다.
 
@@ -257,7 +277,7 @@ activity 상태 변경은 이벤트 종류만 보고 payload의 과거 상태를
 
 한 worker의 claim batch 내부에서는 이벤트를 순차 처리하지만, 여러 worker instance는 서로 다른 batch의 같은 target을 동시에 처리할 수 있다. 이때 claim UUID는 이벤트 row 소유권만 보호하고 projection 순서는 전역 `projectionVersion`과 MongoDB CAS가 보호한다.
 
-producer는 원본 변경 transaction 안에서 singleton `outbox_projection_clock` row를 `PESSIMISTIC_WRITE`로 잠그고 다음 버전을 발급한다. 잠금은 commit 또는 rollback까지 유지되므로 단순 DB sequence와 달리 버전 순서가 commit 순서와 일치한다. MongoDB query는 `_id`가 같고 저장 `projectionVersion`이 없거나 incoming보다 작은 경우에만 upsert한다. 조건에서 탈락한 upsert가 `_id` 중복으로 실패하면 같은 `_id`의 저장 버전이 incoming 이상인지 재확인한 경우에만 stale 성공으로 처리한다.
+producer는 원본 변경 transaction 안에서 singleton `outbox_projection_clock` row를 `PESSIMISTIC_WRITE`로 잠그고 다음 버전을 발급한다. 잠금은 commit 또는 rollback까지 유지되므로 단순 DB sequence와 달리 버전 순서가 commit 순서와 일치한다. MongoDB query는 Querydsl로 `_id.eq(id).and(projectionVersion.isNull().or(projectionVersion.lt(incoming)))`를 구성해, `_id`가 같고 저장 `projectionVersion`이 없거나 incoming보다 작은 경우에만 upsert한다. 조건에서 탈락한 upsert가 `_id` 중복으로 실패하면 같은 `_id`의 저장 버전이 incoming 이상인지 재확인한 경우에만 stale 성공으로 처리한다.
 
 ```text
 W1: target=C1, projectionVersion=41 이벤트 claim -> RDB 상태 조회
