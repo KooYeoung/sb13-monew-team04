@@ -131,7 +131,19 @@ CAS 도입 전에 생성된 Outbox 삭제 payload에는 삭제 전에만 알 수
 DELETE FROM outbox_events WHERE projection_version = 0;
 ```
 
-운영 환경에서는 별도 데이터 마이그레이션과 초기 투영 절차가 마련되기 전까지 worker와 MongoDB 조회 경로를 활성화하지 않습니다. 전환이 끝나기 전에는 `MONEW_MONGODB_WORKER_ENABLED=false`를 유지합니다.
+운영 환경에서는 별도 데이터 마이그레이션과 초기 투영 절차가 마련되기 전까지 worker와
+MongoDB 조회 경로를 활성화하지 않습니다. 실제 초기 투영 시점에는 새 run-id를 지정하고
+Outbox worker를 함께 활성화해야 투영 도중 발생한 신규 변경도 누락하지 않습니다.
+
+| 단계 | `MONEW_MONGODB_ENABLED` | `MONEW_MONGODB_WORKER_ENABLED` | `MONEW_MONGODB_BACKFILL_ENABLED` | 조회 경로 |
+| --- | --- | --- | --- | --- |
+| 마이그레이션 준비 전 | `false` | `false` | `false` | RDB |
+| 초기 투영 및 정합성 검증 중 | `true` | `true` | `true` | RDB |
+| `COMPLETED` 확인 후 | `true` | `true` | `false` | MID4-139 전환 전까지 RDB |
+
+완료 후에는 애플리케이션을 `MONEW_MONGODB_BACKFILL_ENABLED=false`로 재시작해 초기 투영
+scheduler만 중지합니다. 실시간 변경을 계속 반영하려면 Outbox worker는 활성화 상태로
+유지합니다.
 
 ### MongoDB 계정 변경과 개발 볼륨 재생성
 

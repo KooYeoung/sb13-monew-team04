@@ -81,6 +81,15 @@ claim UUID/lease가 한 인스턴스에만 page를 배정한다. claim 만료 �
 인스턴스 시계가 아닌 DB `CURRENT_TIMESTAMP`를 사용한다. 소유권을 잃은 worker는 다음
 MongoDB 명령이나 상태 저장을 시작하지 않는다.
 
+```text
+인스턴스 A: claim_id=CA, pending_last_id=D, claim_until=10:05로 page claim
+인스턴스 A: B/C를 반영한 뒤 중단되어 heartbeat 종료
+인스턴스 B: DB 시각 10:05 전에는 같은 run-id를 claim하지 못함
+인스턴스 B: DB 시각 10:05 이후 claim_id=CB로 같은 완료 cursor 다음 범위를 회수
+-> B/C/D를 다시 반영하고 성공한 뒤 last_processed_id=D로 이동
+-> 늦게 돌아온 A의 CA 기반 상태 저장은 RMB_003으로 거부
+```
+
 초기 투영은 Outbox worker와 같은 `ProjectionCommand`, RDB source reader, projection
 handler 및 MongoDB writer를 사용한다. 별도의 과거 Outbox row를 대량 생성하지 않는다.
 
@@ -123,6 +132,67 @@ MONEW_MONGODB_BACKFILL_HEARTBEAT_INTERVAL=1m
 단계에서 커스텀 설정 예외로 거부한다. 세 활성화 값 중 하나라도 `false`이면 초기 투영
 scheduler는 생성되지 않는다.
 
+### 운영 실행과 재개
+
+실행마다 새 UUID를 생성해 모든 인스턴스에 같은 값으로 설정한다. Windows PowerShell과
+Mac/Linux에서는 각각 다음처럼 생성할 수 있다.
+
+```powershell
+[guid]::NewGuid().ToString()
+```
+
+```bash
+uuidgen
+```
+
+애플리케이션을 시작한 뒤에는 다음 조회로 진행 상태를 확인한다.
+
+```sql
+SELECT run_id,
+       stage,
+       status,
+       last_processed_id,
+       pending_last_id,
+       processed_count,
+       retry_count,
+       last_error,
+       verified_at
+FROM read_model_backfill_runs
+WHERE run_id = '9f5292bf-bfca-4b9d-922a-5d2bd4a13de7';
+```
+
+| 관찰한 상태 | 운영 동작 |
+| --- | --- |
+| `RUNNING` 또는 `VERIFYING` | 현재 claim과 heartbeat가 끝날 때까지 기다린다. |
+| `FAILED` | 같은 run-id를 유지하면 다음 polling에서 완료 cursor 이후 또는 pending 범위를 자동 재시도한다. |
+| `VERIFICATION_FAILED` | 보고서가 있으면 불일치 내용을 확인하며 첫 stage부터 재투영한다. 보고서가 없으면 검증 claim 시작 실패 여부를 로그에서 확인한다. |
+| `COMPLETED` | backfill만 비활성화하고 Outbox worker는 계속 활성화한다. 같은 run-id는 다시 처리되지 않는다. |
+
+Backfill 실패에는 별도 backoff, 최대 retry 횟수 또는 `DEAD_LETTER` 전이가 없다. 실패할
+때마다 fixed delay 다음 polling에서 다시 시도한다. claim 이후 page 처리 또는 검증 실패가
+`FAILED`로 저장되면 `retry_count`가 누적되지만, claim 획득이나 heartbeat 시작 단계의
+실패는 checkpoint보다 애플리케이션 로그에만 원인이 남을 수 있다. 반복 실패를 멈추려면
+`MONEW_MONGODB_BACKFILL_ENABLED=false`로 애플리케이션을 재시작한 뒤 `last_error`와 로그를
+함께 확인한다. 장애 후 이어서 처리할 때는 기존 run-id를 유지하고, 완료된 범위를 포함해
+전체를 새로 실행할 때만 새 UUID를 사용한다.
+
+### 실패 코드
+
+| 코드 | 의미 |
+| --- | --- |
+| `RMB_001` | run-id, polling, batch, lease 또는 heartbeat 설정이 유효하지 않음 |
+| `RMB_002` | 현재 checkpoint status에서 허용되지 않는 상태 전이를 시도함 |
+| `RMB_003` | 만료·회수 등으로 현재 claim UUID의 소유권을 잃음 |
+| `RMB_004` | heartbeat 예약 또는 lease 갱신에 실패함 |
+| `RMB_005` | 정합성 보고서를 JSON으로 직렬화하지 못함 |
+| `RMB_006` | 생성 또는 잠금 조회 후 checkpoint row를 찾지 못함 |
+| `RMB_007` | 검증 page의 cursor 진행 불변식이 깨짐 |
+
+`RMB_007`의 `reason`은 `LAST_CURSOR_MISSING`, `LAST_EVENT_CURSOR_MISMATCH`,
+`CURSOR_NOT_CHANGED`, `CURSOR_REPEATED` 중 하나다. 예외로 실패한 실행은 `FAILED`로
+기록되어 기존 run-id로 재시도한다. 정상적으로 계산한 검증 보고서가 불일치한 경우에만
+`VERIFICATION_FAILED`로 전환해 첫 stage부터 다시 투영한다.
+
 ## 완료 검증
 
 마지막 stage 후 검증기는 repeatable-read RDB snapshot에서 네 원본을 다시 keyset
@@ -152,16 +222,55 @@ checkpoint의 `verification_report`에는 다음 형태의 JSON이 저장된다.
       "missingOrInvalidActivities": 0,
       "snapshotChecks": 350,
       "snapshotMismatches": 0
+    },
+    "COMMENT_LIKED": {
+      "expectedActivities": 480,
+      "actualVisibleActivities": 480,
+      "missingOrInvalidActivities": 0,
+      "snapshotChecks": 480,
+      "snapshotMismatches": 0
+    },
+    "ARTICLE_VIEWED": {
+      "expectedActivities": 900,
+      "actualVisibleActivities": 900,
+      "missingOrInvalidActivities": 0,
+      "snapshotChecks": 900,
+      "snapshotMismatches": 0
     }
   }
 }
 ```
 
-실제 보고서에는 네 stage가 모두 포함된다. 어느 하나라도 예상/실제 수, 활동 핵심 필드,
-snapshot 상태 또는 count가 다르면 `VERIFICATION_FAILED` 보고서를 남기고 다음 polling에서
-첫 stage부터 다시 멱등 투영한다. RDB와 MongoDB를 하나의 snapshot transaction으로 묶지
-않으므로 쓰기가 계속 발생하는 순간에는 일시적인 불일치가 가능하며, Outbox가 수렴한 뒤의
-성공 보고서를 조회 전환 판단 근거로 사용한다.
+어느 하나라도 예상/실제 수, 활동 핵심 필드, snapshot 상태 또는 count가 다르면, 예를
+들어 보고서의 `stages.ARTICLE_VIEWED` 값이 다음과 같이 기록될 수 있다.
+
+```json
+{
+  "expectedActivities": 900,
+  "actualVisibleActivities": 899,
+  "missingOrInvalidActivities": 1,
+  "snapshotChecks": 900,
+  "snapshotMismatches": 1
+}
+```
+
+실제 `verification_report`에는 이 항목을 포함한 네 stage가 모두 저장된다. 보고서가
+불일치하면 checkpoint는 다음 상태로 바뀌고, 보고서와 검증 시각은 원인 확인을 위해
+유지된다.
+
+```text
+status = VERIFICATION_FAILED
+stage = SUBSCRIPTION
+last_processed_id = null
+pending_last_id = null
+processed_count = 0
+verification_report = 불일치 보고서 유지
+verified_at = 마지막 검증 시각 유지
+```
+
+다음 polling은 첫 stage부터 다시 멱등 투영한다. RDB와 MongoDB를 하나의 snapshot
+transaction으로 묶지 않으므로 쓰기가 계속 발생하는 순간에는 일시적인 불일치가 가능하며,
+Outbox가 수렴한 뒤의 성공 보고서를 조회 전환 판단 근거로 사용한다.
 
 ## 구현 경계
 
