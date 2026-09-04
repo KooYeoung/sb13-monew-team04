@@ -34,5 +34,5 @@ public record DecodedOutboxEvent(
         int retryCount,
         LocalDateTime occurredAt,
         LocalDateTime createdAt
-) {
+) implements ProjectionCommand {
 }

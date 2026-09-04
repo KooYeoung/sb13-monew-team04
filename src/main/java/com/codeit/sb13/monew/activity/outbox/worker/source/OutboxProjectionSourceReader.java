@@ -17,7 +17,7 @@ import com.codeit.sb13.monew.activity.outbox.payload.InterestOutboxPayload;
 import com.codeit.sb13.monew.activity.outbox.payload.OutboxEventPayload;
 import com.codeit.sb13.monew.activity.outbox.payload.ProjectionImpact;
 import com.codeit.sb13.monew.activity.outbox.payload.UserOutboxPayload;
-import com.codeit.sb13.monew.activity.outbox.worker.DecodedOutboxEvent;
+import com.codeit.sb13.monew.activity.outbox.worker.ProjectionCommand;
 import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch.ArticleState;
 import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch.CommentState;
 import com.codeit.sb13.monew.activity.outbox.worker.source.ProjectionSourceBatch.InterestState;
@@ -65,7 +65,7 @@ public class OutboxProjectionSourceReader {
      * @return 대상 ID로 즉시 조회할 수 있는 불변 source batch
      */
     @Transactional(readOnly = true)
-    public ProjectionSourceBatch read(List<DecodedOutboxEvent> events) {
+    public ProjectionSourceBatch read(List<? extends ProjectionCommand> events) {
         SourceIds ids = collectIds(events);
         return new ProjectionSourceBatch(
                 readUsers(ids.userIds()),
@@ -78,13 +78,13 @@ public class OutboxProjectionSourceReader {
         );
     }
 
-    private SourceIds collectIds(List<DecodedOutboxEvent> events) {
+    private SourceIds collectIds(List<? extends ProjectionCommand> events) {
         Set<UUID> userIds = new LinkedHashSet<>();
         Set<UUID> interestIds = new LinkedHashSet<>();
         Set<UUID> commentIds = new LinkedHashSet<>();
         Set<UUID> articleIds = new LinkedHashSet<>();
 
-        for (DecodedOutboxEvent event : events) {
+        for (ProjectionCommand event : events) {
             if (event.actorUserId() != null) {
                 userIds.add(event.actorUserId());
             }

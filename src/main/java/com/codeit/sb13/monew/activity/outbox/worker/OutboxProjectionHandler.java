@@ -43,7 +43,7 @@ public class OutboxProjectionHandler {
     private final MongoReadModelWriter writer;
 
     public void project(
-            DecodedOutboxEvent event,
+            ProjectionCommand event,
             ProjectionSourceBatch source,
             LocalDateTime now
     ) {
@@ -72,7 +72,7 @@ public class OutboxProjectionHandler {
     }
 
     private void projectInterestActivity(
-            DecodedOutboxEvent event,
+            ProjectionCommand event,
             ProjectionSourceBatch source,
             LocalDateTime now
     ) {
@@ -107,7 +107,7 @@ public class OutboxProjectionHandler {
     }
 
     private void projectWrittenComment(
-            DecodedOutboxEvent event,
+            ProjectionCommand event,
             ProjectionSourceBatch source,
             LocalDateTime now
     ) {
@@ -140,7 +140,7 @@ public class OutboxProjectionHandler {
     }
 
     private void projectCommentLike(
-            DecodedOutboxEvent event,
+            ProjectionCommand event,
             ProjectionSourceBatch source,
             LocalDateTime now
     ) {
@@ -178,7 +178,7 @@ public class OutboxProjectionHandler {
     }
 
     private void projectArticleView(
-            DecodedOutboxEvent event,
+            ProjectionCommand event,
             ProjectionSourceBatch source,
             LocalDateTime now
     ) {
@@ -255,7 +255,7 @@ public class OutboxProjectionHandler {
         }
     }
 
-    private void softDeleteComment(DecodedOutboxEvent event, LocalDateTime now) {
+    private void softDeleteComment(ProjectionCommand event, LocalDateTime now) {
         writer.hideCommentSnapshot(event.aggregateId(), event.projectionVersion(), now);
         writer.hideActivitiesByTarget(
                 ActivityTargetType.COMMENT, event.aggregateId(), event.projectionVersion(), now);
@@ -263,14 +263,14 @@ public class OutboxProjectionHandler {
                 event.aggregateId(), event, now);
     }
 
-    private void hardDeleteComment(DecodedOutboxEvent event, LocalDateTime now) {
+    private void hardDeleteComment(ProjectionCommand event, LocalDateTime now) {
         writer.tombstoneComment(event.aggregateId(), event.projectionVersion(), now);
         writer.tombstoneActivitiesByTarget(
                 ActivityTargetType.COMMENT, event.aggregateId(), event.projectionVersion(), now);
         tombstoneImpact(impactOf(event), event, now);
     }
 
-    private void softDeleteArticle(DecodedOutboxEvent event, LocalDateTime now) {
+    private void softDeleteArticle(ProjectionCommand event, LocalDateTime now) {
         ProjectionImpact impact = impactOf(event);
         writer.hideArticleSnapshot(event.aggregateId(), event.projectionVersion(), now);
         writer.hideCommentSnapshotsByArticle(
@@ -285,7 +285,7 @@ public class OutboxProjectionHandler {
                 event.aggregateId(), event, now);
     }
 
-    private void hardDeleteArticle(DecodedOutboxEvent event, LocalDateTime now) {
+    private void hardDeleteArticle(ProjectionCommand event, LocalDateTime now) {
         ProjectionImpact impact = impactOf(event);
         writer.tombstoneArticle(event.aggregateId(), event.projectionVersion(), now);
         writer.tombstoneCommentSnapshotsByArticle(
@@ -299,7 +299,7 @@ public class OutboxProjectionHandler {
         tombstoneImpact(impact, event, now);
     }
 
-    private void hardDeleteInterest(DecodedOutboxEvent event, LocalDateTime now) {
+    private void hardDeleteInterest(ProjectionCommand event, LocalDateTime now) {
         writer.tombstoneInterest(event.aggregateId(), event.projectionVersion(), now);
         writer.tombstoneActivitiesByTarget(
                 ActivityTargetType.INTEREST, event.aggregateId(), event.projectionVersion(), now);
@@ -307,7 +307,7 @@ public class OutboxProjectionHandler {
     }
 
     private void refreshUserNickname(
-            DecodedOutboxEvent event,
+            ProjectionCommand event,
             ProjectionSourceBatch source,
             LocalDateTime now
     ) {
@@ -320,7 +320,7 @@ public class OutboxProjectionHandler {
                 refreshComment(id, event.projectionVersion(), source, now));
     }
 
-    private void softDeleteUser(DecodedOutboxEvent event, LocalDateTime now) {
+    private void softDeleteUser(ProjectionCommand event, LocalDateTime now) {
         ProjectionImpact impact = impactOf(event);
         writer.hideActivitiesByUser(event.aggregateId(), event.projectionVersion(), now);
         writer.hideCommentSnapshotsByAuthor(
@@ -331,7 +331,7 @@ public class OutboxProjectionHandler {
     }
 
     private void hardDeleteUser(
-            DecodedOutboxEvent event,
+            ProjectionCommand event,
             ProjectionSourceBatch source,
             LocalDateTime now
     ) {
@@ -359,7 +359,7 @@ public class OutboxProjectionHandler {
             com.codeit.sb13.monew.activity.mongo.document.ActivityHistoryStatus status,
             ActivityTargetType hiddenByType,
             UUID hiddenById,
-            DecodedOutboxEvent event,
+            ProjectionCommand event,
             LocalDateTime now
     ) {
         impact.activityKeys().forEach(key -> writer.hideActivity(
@@ -369,14 +369,14 @@ public class OutboxProjectionHandler {
 
     private void tombstoneImpact(
             ProjectionImpact impact,
-            DecodedOutboxEvent event,
+            ProjectionCommand event,
             LocalDateTime now
     ) {
         impact.activityKeys().forEach(key -> writer.tombstoneActivity(
                 activity(key, event.occurredAt()), event.projectionVersion(), now));
     }
 
-    private ProjectionImpact impactOf(DecodedOutboxEvent event) {
+    private ProjectionImpact impactOf(ProjectionCommand event) {
         if (event.payload() instanceof ArticleOutboxPayload value) {
             return value.impact();
         }
@@ -395,17 +395,17 @@ public class OutboxProjectionHandler {
         return ProjectionImpact.EMPTY;
     }
 
-    private boolean actorActive(DecodedOutboxEvent event, ProjectionSourceBatch source) {
+    private boolean actorActive(ProjectionCommand event, ProjectionSourceBatch source) {
         UserState actor = source.users().get(event.actorUserId());
         return actor != null && actor.active();
     }
 
-    private RelationKey relationKey(DecodedOutboxEvent event) {
+    private RelationKey relationKey(ProjectionCommand event) {
         return new RelationKey(event.aggregateId(), event.actorUserId());
     }
 
     private ActivityProjection activity(
-            DecodedOutboxEvent event,
+            ProjectionCommand event,
             RelationState relation,
             ActivityHistoryType type,
             ActivityTargetType targetType,
